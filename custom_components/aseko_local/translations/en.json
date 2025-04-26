@@ -1,0 +1,54 @@
+{
+  "config": {
+    "title": "Aseko Local",
+    "abort": {
+      "already_configured": "Device is already configured",
+      "reconfigure_successful": "Reconfiguration successful"
+    },
+    "error": {
+      "cannot_connect": "Failed to connect",
+      "unknown": "Unexpected error"
+    },
+    "step": {
+      "user": {
+        "data": {
+          "host": "Listening address",
+          "port": "Port"
+        }
+      },
+      "reconfigure": {
+        "data": {
+          "host": "Listening address",
+          "port": "Port"
+        }
+      }
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "water_flow_to_probes": {
+        "name": "Water flow to probes"
+      }
+    },
+    "sensor": {
+      "air_temperature": {
+        "name": "Air temperature"
+      },
+      "electrolyzer": {
+        "name": "Electrolyzer"
+      },
+      "free_chlorine": {
+        "name": "Free chlorine"
+      },
+      "redox": {
+        "name": "Redox potential"
+      },
+      "salinity": {
+        "name": "Salinity"
+      },
+      "water_temperature": {
+        "name": "Water temperature"
+      }
+    }
+  }
+}

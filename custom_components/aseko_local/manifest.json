@@ -1,0 +1,11 @@
+{
+  "codeowners": ["@hopkins-tk"],
+  "config_flow": true,
+  "dependencies": [],
+  "documentation": "https://github.com/hopkins-tk/aseko-local",
+  "domain": "aseko_local",
+  "iot_class": "local_push",
+  "name": "Aseko Local",
+  "requirements": [],
+  "version": "1.0.0"
+}
