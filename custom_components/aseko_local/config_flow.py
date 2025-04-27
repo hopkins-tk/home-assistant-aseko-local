@@ -92,7 +92,7 @@ class AsekoLocalConfigFlow(ConfigFlow, domain=DOMAIN):
             try:
                 user_input[CONF_HOST] = config_entry.data[CONF_HOST]
                 user_input[CONF_PORT] = config_entry.data[CONF_PORT]
-                await validate_input(self.hass, user_input)
+                info = await validate_input(self.hass, user_input)
             except CannotConnect:
                 errors["base"] = "cannot_connect"
             except Exception:  # pylint: disable=broad-except
@@ -101,6 +101,7 @@ class AsekoLocalConfigFlow(ConfigFlow, domain=DOMAIN):
             else:
                 return self.async_update_reload_and_abort(
                     config_entry,
+                    title=info["title"],
                     unique_id=config_entry.unique_id,
                     data={**config_entry.data, **user_input},
                     reason="reconfigure_successful",

@@ -5,7 +5,13 @@ from collections.abc import Awaitable, Callable
 from datetime import datetime, time
 import logging
 
-from .aseko_data import AsekoData, AsekoDeviceType, AsekoUnitData
+from .aseko_data import (
+    AsekoData,
+    AsekoDeviceType,
+    AsekoElectrolyzerDirection,
+    AsekoUnitData,
+)
+from .const import MESSAGE_SIZE, YEAR_OFFSET
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -51,12 +57,6 @@ class AsekoUnitServer:
 
             _LOGGER.info("AsekoUnitServer stopped")
 
-    #    @property
-    #    def data(self):
-    #        """Public accessor for Aseko Data attribute."""
-    #
-    #        return self._data
-
     @property
     def running(self) -> bool:
         """Check if the server is running."""
@@ -73,11 +73,12 @@ class AsekoUnitServer:
         _LOGGER.debug("Connection from %s", addr)
 
         try:
-            byteData = await reader.readexactly(120)
+            byteData = await reader.readexactly(MESSAGE_SIZE)
             aseko_unit_data = self.decode(byteData)
             self._data.set(aseko_unit_data.serial_number, aseko_unit_data)
 
             _LOGGER.debug("Received data from %s: %s", addr, byteData.hex())
+            _LOGGER.debug("Received data parsed as %s", aseko_unit_data)
 
             if self.on_data:
                 self.on_data(aseko_unit_data)
@@ -88,30 +89,52 @@ class AsekoUnitServer:
             await writer.wait_closed()
 
     @staticmethod
+    def _decode_timestamp(
+        data: bytes,
+    ) -> datetime:
+        """Decode datetime from the bynary data."""
+
+        return datetime(
+            year=YEAR_OFFSET + data[6],
+            month=data[7],
+            day=data[8],
+            hour=data[9],
+            minute=data[10],
+            second=data[11],
+        )
+
+    @staticmethod
+    def _decode_electrolyzer_direction(
+        data: bytes,
+    ) -> AsekoElectrolyzerDirection | None:
+        """Decode electrolyzer direction from the bynary data."""
+
+        if data[29] & 0x50:
+            return AsekoElectrolyzerDirection.LEFT
+        if data[29] & 0x10:
+            return AsekoElectrolyzerDirection.RIGHT
+        return None
+
+    @staticmethod
     def decode(data: bytes) -> AsekoUnitData:
         """Decode received 120-byte array into AsekoData."""
 
         return AsekoUnitData(
             serial_number=int.from_bytes(data[0:4], "big"),
             type=AsekoDeviceType.SALT,
-            timestamp=datetime(
-                year=2000 + data[6],
-                month=data[7],
-                day=data[8],
-                hour=data[9],
-                minute=data[10],
-                second=data[11],
-            ),
+            timestamp=AsekoUnitServer._decode_timestamp(data),
             ph=int.from_bytes(data[14:16], "big") / 100,
-            cl_free=int.from_bytes(data[16:18], "big"),
+            # cl_free=int.from_bytes(data[16:18], "big"),
             redox=int.from_bytes(data[18:20], "big"),
             salinity=data[20] / 10,
-            electrolyzer=data[21] if data[21] > 1 else 0,
+            electrolyzer_power=data[21] if data[29] & 0x10 else 0,
+            electrolyzer_active=bool(data[29] & 0x10),
+            electrolyzer_direction=AsekoUnitServer._decode_electrolyzer_direction(data),
             water_temperature=int.from_bytes(data[25:27], "big") / 10,
-            water_flow_to_probes=data[28] == 170,
+            water_flow_to_probes=bool(data[28] & 0xAA),
             required_ph=data[52] / 10,
             required_redox=data[53] * 10,
-            required_cl_free=data[53] * 10,
+            # required_cl_free=data[53] * 10,
             required_algicide=data[54],
             required_temperature=data[55],
             start1=time(hour=data[56], minute=data[57]),
@@ -119,6 +142,7 @@ class AsekoUnitServer:
             start2=time(hour=data[60], minute=data[61]),
             stop2=time(hour=data[62], minute=data[63]),
             pool_volume=int.from_bytes(data[92:94], "big"),
+            max_filling_time=int.from_bytes(data[94:96], "big"),
         )
 
     @classmethod
