@@ -51,11 +51,11 @@ class AsekoUnitServer:
 
             _LOGGER.info("AsekoUnitServer stopped")
 
-    @property
-    def data(self):
-        """Public accessor for Aseko Data attribute."""
-
-        return self._data
+    #    @property
+    #    def data(self):
+    #        """Public accessor for Aseko Data attribute."""
+    #
+    #        return self._data
 
     @property
     def running(self) -> bool:

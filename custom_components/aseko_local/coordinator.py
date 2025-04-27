@@ -56,13 +56,12 @@ class AsekoLocalDataUpdateCoordinator(DataUpdateCoordinator):
 
     # self.async_refresh()
 
+    def get_unit(self, serial_number: int) -> AsekoUnitData | None:
+        """Return unit by serial number."""
 
-#    def get_unit(self, serial_number: int) -> AsekoUnitData | None:
-#        """Return unit by serial number."""
-#
-#        return self.data.get(serial_number) if self.data is not None else None
-#
-#    def get_units(self) -> list[AsekoUnitData]:
-#        """Return units."""
-#
-#        return self.data.get_all() if self.data is not None else []
+        return self.data.get(serial_number) if self.data is not None else None
+
+    def get_units(self) -> list[AsekoUnitData]:
+        """Return units."""
+
+        return self.data.get_all() if self.data is not None else []

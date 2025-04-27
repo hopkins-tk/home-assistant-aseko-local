@@ -43,14 +43,14 @@ SENSORS: list[AsekoSensorEntityDescription] = [
         icon="mdi:lightning-bolt",
         value_fn=lambda unit: unit.electrolyzer,
     ),
-#    AsekoSensorEntityDescription(
-#        key="free_chlorine",
-#        translation_key="free_chlorine",
-#        native_unit_of_measurement="mg/l",
-#        state_class=SensorStateClass.MEASUREMENT,
-#        icon="mdi:pool",
-#        value_fn=lambda unit: unit.cl_free,
-#    ),
+    #    AsekoSensorEntityDescription(
+    #        key="free_chlorine",
+    #        translation_key="free_chlorine",
+    #        native_unit_of_measurement="mg/l",
+    #        state_class=SensorStateClass.MEASUREMENT,
+    #        icon="mdi:pool",
+    #        value_fn=lambda unit: unit.cl_free,
+    #    ),
     AsekoSensorEntityDescription(
         key="ph",
         device_class=SensorDeviceClass.PH,
@@ -94,8 +94,8 @@ async def async_setup_entry(
     """Set up the Aseko Local sensors."""
 
     coordinator = config_entry.runtime_data.coordinator
-    #    units = coordinator.get_units()
-    units = config_entry.runtime_data.api.data.get_all()
+    units = coordinator.get_units()
+    #    units = config_entry.runtime_data.api.data.get_all()
     async_add_entities(
         AsekoLocalSensorEntity(unit, coordinator, description)
         for description in SENSORS
@@ -112,6 +112,4 @@ class AsekoLocalSensorEntity(AsekoLocalEntity, SensorEntity):
     @property
     def native_value(self) -> StateType:
         """Return the state of the sensor."""
-        return self.entity_description.value_fn(
-            self.coordinator.data.get(self.unit.serial_number)
-        )
+        return self.entity_description.value_fn(self.unit)

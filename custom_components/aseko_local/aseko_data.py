@@ -1,6 +1,6 @@
 """Data model for Aseko pool devices."""
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from datetime import datetime, time, timedelta
 from enum import Enum
 
@@ -68,6 +68,10 @@ class AsekoData:
 
     units: dict[int, AsekoUnitData] = field(default_factory=dict)
 
+    def _copy_attributes(self, src: AsekoUnitData, dest: AsekoUnitData) -> None:
+        for f in fields(AsekoUnitData):
+            setattr(dest, f.name, getattr(src, f.name))
+
     def get_all(self) -> list[AsekoUnitData] | None:
         """Return the AsekoData for all units."""
         return self.units.values()
@@ -78,4 +82,8 @@ class AsekoData:
 
     def set(self, serial_number: int, value: AsekoUnitData) -> None:
         """Set the AsekoData for a given serial number."""
-        self.units[serial_number] = value
+
+        if serial_number in self.units:
+            self._copy_attributes(value, self.units[serial_number])
+        else:
+            self.units[serial_number] = value
