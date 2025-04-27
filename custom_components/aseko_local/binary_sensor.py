@@ -43,8 +43,8 @@ async def async_setup_entry(
     """Set up the Aseko Local binary sensors."""
 
     coordinator = config_entry.runtime_data.coordinator
-    #    units = coordinator.get_units()
-    units = config_entry.runtime_data.api.data.get_all()
+    units = coordinator.get_units()
+    #    units = config_entry.runtime_data.api.data.get_all()
     async_add_entities(
         AsekoLocalBinarySensorEntity(unit, coordinator, description)
         for description in BINARY_SENSORS
@@ -61,6 +61,4 @@ class AsekoLocalBinarySensorEntity(AsekoLocalEntity, BinarySensorEntity):
     @property
     def is_on(self) -> bool | None:
         """Return the state of the sensor."""
-        return self.entity_description.value_fn(
-            self.coordinator.data.get(self.unit.serial_number)
-        )
+        return self.entity_description.value_fn(self.unit)
