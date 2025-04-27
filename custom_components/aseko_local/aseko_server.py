@@ -9,6 +9,7 @@ from .aseko_data import (
     AsekoData,
     AsekoDeviceType,
     AsekoElectrolyzerDirection,
+    AsekoProbeType,
     AsekoUnitData,
 )
 from .const import MESSAGE_SIZE, YEAR_OFFSET
@@ -89,6 +90,33 @@ class AsekoUnitServer:
             await writer.wait_closed()
 
     @staticmethod
+    def _determine_unit_type(
+        data: bytes,
+    ) -> AsekoDeviceType:
+        """Determine the unit type from the binary data."""
+
+        return AsekoDeviceType.SALT
+
+    @staticmethod
+    def _determine_probes(
+        deviceType: AsekoDeviceType,
+        data: bytes,
+    ) -> list[AsekoProbeType]:
+        """Determine types of probes installed from the binary data."""
+        match deviceType:
+            case AsekoDeviceType.PROFI:
+                return [AsekoProbeType.PH, AsekoProbeType.REDOX, AsekoProbeType.CL]
+            case AsekoDeviceType.SALT:
+                # Can be either CL or REDOX (REDOX is used typically)
+                return [AsekoProbeType.PH, AsekoProbeType.REDOX]
+            case AsekoDeviceType.HOME:
+                # Can be either CL or REDOX or OXY (CL is used typically)
+                return [AsekoProbeType.PH, AsekoProbeType.CL]
+            case AsekoDeviceType.NET:
+                # Can be either CL or REDOX (REDOX is used typically)
+                return [AsekoProbeType.PH, AsekoProbeType.REDOX]
+
+    @staticmethod
     def _decode_timestamp(
         data: bytes,
     ) -> datetime:
@@ -113,28 +141,21 @@ class AsekoUnitServer:
             return AsekoElectrolyzerDirection.LEFT
         if data[29] & 0x10:
             return AsekoElectrolyzerDirection.RIGHT
-        return None
+        return AsekoElectrolyzerDirection.WAITING
 
     @staticmethod
     def decode(data: bytes) -> AsekoUnitData:
         """Decode received 120-byte array into AsekoData."""
 
-        return AsekoUnitData(
+        unitType = AsekoUnitServer._determine_unit_type(data)
+        probeTypes = AsekoUnitServer._determine_probes(unitType, data)
+
+        unitData = AsekoUnitData(
             serial_number=int.from_bytes(data[0:4], "big"),
-            type=AsekoDeviceType.SALT,
+            type=unitType,
             timestamp=AsekoUnitServer._decode_timestamp(data),
-            ph=int.from_bytes(data[14:16], "big") / 100,
-            # cl_free=int.from_bytes(data[16:18], "big"),
-            redox=int.from_bytes(data[18:20], "big"),
-            salinity=data[20] / 10,
-            electrolyzer_power=data[21] if data[29] & 0x10 else 0,
-            electrolyzer_active=bool(data[29] & 0x10),
-            electrolyzer_direction=AsekoUnitServer._decode_electrolyzer_direction(data),
             water_temperature=int.from_bytes(data[25:27], "big") / 10,
             water_flow_to_probes=bool(data[28] & 0xAA),
-            required_ph=data[52] / 10,
-            required_redox=data[53] * 10,
-            # required_cl_free=data[53] * 10,
             required_algicide=data[54],
             required_temperature=data[55],
             start1=time(hour=data[56], minute=data[57]),
@@ -144,6 +165,26 @@ class AsekoUnitServer:
             pool_volume=int.from_bytes(data[92:94], "big"),
             max_filling_time=int.from_bytes(data[94:96], "big"),
         )
+
+        if AsekoProbeType.PH in probeTypes:
+            unitData.ph = int.from_bytes(data[14:16], "big") / 100
+            unitData.required_ph = data[52] / 10
+        if AsekoProbeType.REDOX in probeTypes:
+            unitData.redox = int.from_bytes(data[18:20], "big")
+            unitData.required_redox = data[53] * 10
+        if AsekoProbeType.CL in probeTypes:
+            unitData.cl_free = int.from_bytes(data[16:18], "big") / 100
+            unitData.required_cl_free = data[53] / 10
+
+        if unitType == AsekoDeviceType.SALT:
+            unitData.salinity = data[20] / 10
+            unitData.electrolyzer_power = data[21] if data[29] & 0x10 else 0
+            unitData.electrolyzer_active = bool(data[29] & 0x10)
+            unitData.electrolyzer_direction = (
+                AsekoUnitServer._decode_electrolyzer_direction(data)
+            )
+
+        return unitData
 
     @classmethod
     async def create(

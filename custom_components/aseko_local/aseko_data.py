@@ -8,11 +8,18 @@ from enum import Enum
 class AsekoDeviceType(Enum):
     """Enumeration of Aseko pool device types."""
 
-    AQUA_NET = "ASIN AQUA NET"
+    NET = "ASIN AQUA NET"
     HOME = "ASIN AQUA Home"
-    PRO = "ASIN AQUA Pro"
     PROFI = "ASIN AQUA Profi"
     SALT = "ASIN AQUA Salt"
+
+
+class AsekoProbeType(Enum):
+    """Enumeration of Aseko Probes."""
+
+    PH = "ph"
+    REDOX = "redox"
+    CL = "cl"
 
 
 class AsekoElectrolyzerDirection(Enum):
@@ -20,6 +27,7 @@ class AsekoElectrolyzerDirection(Enum):
 
     LEFT = "left"
     RIGHT = "right"
+    WAITING = "waiting"
 
 
 @dataclass

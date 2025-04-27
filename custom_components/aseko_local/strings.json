@@ -44,7 +44,8 @@
         "name": "Electrolyzer direction",
         "state": {
           "LEFT": "Left",
-          "RIGHT": "Right"
+          "RIGHT": "Right",
+          "WAITING": "Waiting"
         }
       },
       "free_chlorine": {

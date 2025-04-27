@@ -44,7 +44,8 @@
         "name": "Směr elektrolyzéru",
         "state": {
           "LEFT": "Levá",
-          "RIGHT": "Pravá"
+          "RIGHT": "Pravá",
+          "WAITING": "Čekání"
         }
       },
       "free_chlorine": {
