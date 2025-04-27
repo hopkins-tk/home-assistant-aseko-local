@@ -32,6 +32,12 @@ BINARY_SENSORS: tuple[AsekoLocalBinarySensorEntityDescription, ...] = (
         icon="mdi:waves-arrow-right",
         value_fn=lambda unit: unit.water_flow_to_probes,
     ),
+    AsekoLocalBinarySensorEntityDescription(
+        key="electrolyzer_active",
+        translation_key="electrolyzer_active",
+        icon="mdi:lightning-bolt",
+        value_fn=lambda unit: unit.electrolyzer_active,
+    ),
 )
 
 

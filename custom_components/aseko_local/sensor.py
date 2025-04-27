@@ -15,7 +15,7 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.typing import StateType
 
 from . import AsekoLocalConfigEntry
-from .aseko_data import AsekoUnitData
+from .aseko_data import AsekoElectrolyzerDirection, AsekoUnitData
 from .entity import AsekoLocalEntity
 
 
@@ -37,20 +37,28 @@ SENSORS: list[AsekoSensorEntityDescription] = [
     ),
     AsekoSensorEntityDescription(
         key="electrolyzer",
-        translation_key="electrolyzer",
+        translation_key="electrolyzer_power",
         native_unit_of_measurement="g/h",
         state_class=SensorStateClass.MEASUREMENT,
         icon="mdi:lightning-bolt",
-        value_fn=lambda unit: unit.electrolyzer,
+        value_fn=lambda unit: unit.electrolyzer_power,
     ),
-    #    AsekoSensorEntityDescription(
-    #        key="free_chlorine",
-    #        translation_key="free_chlorine",
-    #        native_unit_of_measurement="mg/l",
-    #        state_class=SensorStateClass.MEASUREMENT,
-    #        icon="mdi:pool",
-    #        value_fn=lambda unit: unit.cl_free,
-    #    ),
+    AsekoSensorEntityDescription(
+        key="electrolyzer_direction",
+        translation_key="electrolyzer_direction",
+        device_class=SensorDeviceClass.ENUM,
+        options=[direction.name for direction in AsekoElectrolyzerDirection],
+        icon="mdi:arrow-left-right-bold",
+        value_fn=lambda unit: unit.electrolyzer_direction.name,
+    ),
+    AsekoSensorEntityDescription(
+        key="free_chlorine",
+        translation_key="free_chlorine",
+        native_unit_of_measurement="mg/l",
+        state_class=SensorStateClass.MEASUREMENT,
+        icon="mdi:pool",
+        value_fn=lambda unit: unit.cl_free,
+    ),
     AsekoSensorEntityDescription(
         key="ph",
         device_class=SensorDeviceClass.PH,
@@ -95,7 +103,6 @@ async def async_setup_entry(
 
     coordinator = config_entry.runtime_data.coordinator
     units = coordinator.get_units()
-    #    units = config_entry.runtime_data.api.data.get_all()
     async_add_entities(
         AsekoLocalSensorEntity(unit, coordinator, description)
         for description in SENSORS

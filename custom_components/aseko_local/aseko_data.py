@@ -15,15 +15,18 @@ class AsekoDeviceType(Enum):
     SALT = "ASIN AQUA Salt"
 
 
+class AsekoElectrolyzerDirection(Enum):
+    """Enumeration of Aseko Electrolyzer direction."""
+
+    LEFT = "left"
+    RIGHT = "right"
+
+
 @dataclass
 class AsekoUnitData:
     """Holds data received from Aseko pool device."""
 
-    # 4 bit ,1' aqua NET
-    # 5 bit ,1' salt
-    # 6 bit ,1' home
-    # 7 bit ,1' profi
-    type: AsekoDeviceType = None  # byte 4-7
+    type: AsekoDeviceType = None  # byte 4-7?
 
     serial_number: int = None  # byte 0 - 4
     timestamp: datetime = None  # byte 6 - 11
@@ -31,7 +34,11 @@ class AsekoUnitData:
     cl_free: int = None  # byte 16 & 17
     redox: int = None  # byte 18 & 19
     salinity: float = None  # byte 20
-    electrolyzer: int = None  # byte 21
+    electrolyzer_power: int = None  # byte 21
+    electrolyzer_active: bool = None  # byte 29 (4-th bit for LEFT)
+    electrolyzer_direction: AsekoElectrolyzerDirection = (
+        None  # byte 29 (6-th bit for LEFT)
+    )
     water_temperature: float = None  # byte 25 & 26
     water_flow_to_probes: bool = None  # byte 28 == aah
 
@@ -47,12 +54,11 @@ class AsekoUnitData:
     stop2: time = None  # byte 62 & 63
 
     pool_volume: int = None  # byte 92 & 93
+    max_filling_time: int = None  # byte 94
 
     error_1: int = None
     error_2: int = None
     air_temperature: float = None
-    power_active: bool = None
-    power_direction: str = None
     required_flocc: float = None
     delay: int = None  # byte 30 & 31 ?
     delay_startup: int = None  # byte 74 & 75 ?
@@ -62,7 +68,7 @@ class AsekoUnitData:
         return self.timestamp > datetime.now() - timedelta(seconds=20)
 
 
-@dataclass(slots=True)
+@dataclass
 class AsekoData:
     """Hold a mapping of serial numbers to AsekoData."""
 

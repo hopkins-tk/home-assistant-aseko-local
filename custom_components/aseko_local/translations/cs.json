@@ -1,0 +1,64 @@
+{
+  "config": {
+    "title": "Aseko Local",
+    "abort": {
+      "already_configured": "Zařízení je již nakonfigurováno",
+      "reconfigure_successful": "Nastavení bylo úspěšně změněno"
+    },
+    "error": {
+      "cannot_connect": "Nepodařilo se připojit",
+      "unknown": "Neočekávaná chyba"
+    },
+    "step": {
+      "user": {
+        "data": {
+          "host": "Naslouchat na (IP adrese)",
+          "port": "Port"
+        }
+      },
+      "reconfigure": {
+        "data": {
+          "host": "Naslouchat na (IP adrese)",
+          "port": "Port"
+        }
+      }
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "electrolyzer_active": {
+        "name": "Elektrolyzér aktivní"
+      },
+      "water_flow_to_probes": {
+        "name": "Průtok vody k sondám"
+      }
+    },
+    "sensor": {
+      "air_temperature": {
+        "name": "Teplota vzduchu"
+      },
+      "electrolyzer_power": {
+        "name": "Výkon elektrolyzéru"
+      },
+      "electrolyzer_direction": {
+        "name": "Směr elektrolyzéru",
+        "state": {
+          "LEFT": "Levá",
+          "RIGHT": "Pravá"
+        }
+      },
+      "free_chlorine": {
+        "name": "Volný chlor"
+      },
+      "redox": {
+        "name": "Redox potenciál"
+      },
+      "salinity": {
+        "name": "Salinita"
+      },
+      "water_temperature": {
+        "name": "Teplota vody"
+      }
+    }
+  }
+}

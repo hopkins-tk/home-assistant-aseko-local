@@ -12,13 +12,13 @@
     "step": {
       "user": {
         "data": {
-          "host": "Listening address",
+          "host": "Listen on (IP address)",
           "port": "Port"
         }
       },
       "reconfigure": {
         "data": {
-          "host": "Listening address",
+          "host": "Listen on (IP address)",
           "port": "Port"
         }
       }
@@ -26,6 +26,9 @@
   },
   "entity": {
     "binary_sensor": {
+      "electrolyzer_active": {
+        "name": "Electrolyzer active"
+      },
       "water_flow_to_probes": {
         "name": "Water flow to probes"
       }
@@ -34,8 +37,15 @@
       "air_temperature": {
         "name": "Air temperature"
       },
-      "electrolyzer": {
-        "name": "Electrolyzer"
+      "electrolyzer_power": {
+        "name": "Electrolyzer power"
+      },
+      "electrolyzer_direction": {
+        "name": "Electrolyzer direction",
+        "state": {
+          "LEFT": "Left",
+          "RIGHT": "Right"
+        }
       },
       "free_chlorine": {
         "name": "Free chlorine"
