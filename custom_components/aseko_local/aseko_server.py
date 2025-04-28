@@ -137,7 +137,7 @@ class AsekoUnitServer:
     ) -> AsekoElectrolyzerDirection | None:
         """Decode electrolyzer direction from the bynary data."""
 
-        if data[29] & 0x50:
+        if (data[29] & 0x50) == 0x50:
             return AsekoElectrolyzerDirection.LEFT
         if data[29] & 0x10:
             return AsekoElectrolyzerDirection.RIGHT
@@ -155,7 +155,8 @@ class AsekoUnitServer:
             type=unitType,
             timestamp=AsekoUnitServer._decode_timestamp(data),
             water_temperature=int.from_bytes(data[25:27], "big") / 10,
-            water_flow_to_probes=bool(data[28] & 0xAA),
+            water_flow_to_probes=(data[28] == 0xAA),
+            pump_running=bool(data[29] & 0x08),
             required_algicide=data[54],
             required_temperature=data[55],
             start1=time(hour=data[56], minute=data[57]),

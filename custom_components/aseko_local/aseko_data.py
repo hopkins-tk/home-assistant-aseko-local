@@ -43,12 +43,13 @@ class AsekoUnitData:
     redox: int = None  # byte 18 & 19
     salinity: float = None  # byte 20
     electrolyzer_power: int = None  # byte 21
-    electrolyzer_active: bool = None  # byte 29 (4-th bit for LEFT)
+    electrolyzer_active: bool = None  # byte 29 (4-th bit)
     electrolyzer_direction: AsekoElectrolyzerDirection = (
         None  # byte 29 (6-th bit for LEFT)
     )
     water_temperature: float = None  # byte 25 & 26
     water_flow_to_probes: bool = None  # byte 28 == aah
+    pump_running: bool = None  # byte 29 (3-rd bit)
 
     required_ph: float = None  # byte 52/10
     required_redox: int = None  # byte 53*10

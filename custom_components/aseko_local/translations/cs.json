@@ -29,6 +29,9 @@
       "electrolyzer_active": {
         "name": "Elektrolyzér aktivní"
       },
+      "pump_running": {
+        "name": "Čerpadlo běží"
+      },
       "water_flow_to_probes": {
         "name": "Průtok vody k sondám"
       }

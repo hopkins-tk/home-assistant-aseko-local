@@ -29,6 +29,9 @@
       "electrolyzer_active": {
         "name": "Electrolyzer active"
       },
+      "pump_running": {
+        "name": "Pump running"
+      },
       "water_flow_to_probes": {
         "name": "Water flow to probes"
       }
