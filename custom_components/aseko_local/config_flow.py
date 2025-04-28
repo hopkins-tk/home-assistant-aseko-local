@@ -12,7 +12,7 @@ from homeassistant.const import CONF_HOST, CONF_PORT
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 
-from .aseko_server import AsekoUnitServer, ServerConnectionError
+from .aseko_server import AsekoDeviceServer, ServerConnectionError
 from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
@@ -29,11 +29,11 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
     """Validate the user input allows us to connect."""
 
     try:
-        await AsekoUnitServer.create(host=data[CONF_HOST], port=data[CONF_PORT])
-        await AsekoUnitServer.remove(host=data[CONF_HOST], port=data[CONF_PORT])
+        await AsekoDeviceServer.create(host=data[CONF_HOST], port=data[CONF_PORT])
+        await AsekoDeviceServer.remove(host=data[CONF_HOST], port=data[CONF_PORT])
         # If you cannot connect, raise CannotConnect
     except ServerConnectionError as err:
-        await AsekoUnitServer.remove(host=data[CONF_HOST], port=data[CONF_PORT])
+        await AsekoDeviceServer.remove(host=data[CONF_HOST], port=data[CONF_PORT])
         raise CannotConnect from err
     return {"title": f"Aseko Local - {data[CONF_HOST]}:{data[CONF_PORT]}"}
 

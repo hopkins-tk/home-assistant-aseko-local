@@ -31,8 +31,8 @@ class AsekoElectrolyzerDirection(Enum):
 
 
 @dataclass
-class AsekoUnitData:
-    """Holds data received from Aseko pool device."""
+class AsekoDevice:
+    """Holds data received from Aseko device."""
 
     type: AsekoDeviceType = None  # byte 4-7?
 
@@ -79,26 +79,26 @@ class AsekoUnitData:
 
 @dataclass
 class AsekoData:
-    """Hold a mapping of serial numbers to AsekoData."""
+    """Holds a mapping of serial numbers to Aseko devices."""
 
-    units: dict[int, AsekoUnitData] = field(default_factory=dict)
+    devices: dict[int, AsekoDevice] = field(default_factory=dict)
 
-    def _copy_attributes(self, src: AsekoUnitData, dest: AsekoUnitData) -> None:
-        for f in fields(AsekoUnitData):
+    def _copy_attributes(self, src: AsekoDevice, dest: AsekoDevice) -> None:
+        for f in fields(AsekoDevice):
             setattr(dest, f.name, getattr(src, f.name))
 
-    def get_all(self) -> list[AsekoUnitData] | None:
-        """Return the AsekoData for all units."""
-        return self.units.values()
+    def get_all(self) -> list[AsekoDevice] | None:
+        """Return the list of Aseko devices."""
+        return self.devices.values()
 
-    def get(self, serial_number: int) -> AsekoUnitData | None:
-        """Return the AsekoData for a given serial number, or None if not found."""
-        return self.units.get(serial_number)
+    def get(self, serial_number: int) -> AsekoDevice | None:
+        """Return the Aseko device for a given serial number, or None if not found."""
+        return self.devices.get(serial_number)
 
-    def set(self, serial_number: int, value: AsekoUnitData) -> None:
-        """Set the AsekoData for a given serial number."""
+    def set(self, serial_number: int, value: AsekoDevice) -> None:
+        """Set the Aseko device for a given serial number."""
 
-        if serial_number in self.units:
-            self._copy_attributes(value, self.units[serial_number])
+        if serial_number in self.devices:
+            self._copy_attributes(value, self.devices[serial_number])
         else:
-            self.units[serial_number] = value
+            self.devices[serial_number] = value

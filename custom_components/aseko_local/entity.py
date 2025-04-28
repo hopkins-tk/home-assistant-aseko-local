@@ -4,7 +4,7 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity import EntityDescription
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .aseko_data import AsekoUnitData
+from .aseko_data import AsekoDevice
 from .const import DOMAIN, MANUFACTURER
 from .coordinator import AsekoLocalDataUpdateCoordinator
 
@@ -16,7 +16,7 @@ class AsekoLocalEntity(CoordinatorEntity[AsekoLocalDataUpdateCoordinator]):
 
     def __init__(
         self,
-        unit: AsekoUnitData,
+        unit: AsekoDevice,
         coordinator: AsekoLocalDataUpdateCoordinator,
         description: EntityDescription,
     ) -> None:
@@ -26,19 +26,21 @@ class AsekoLocalEntity(CoordinatorEntity[AsekoLocalDataUpdateCoordinator]):
 
         self.entity_description = description
 
-        self.unit = unit
-        self._attr_unique_id = f"{self.unit.serial_number}{self.entity_description.key}"
+        self.device = unit
+        self._attr_unique_id = (
+            f"{self.device.serial_number}{self.entity_description.key}"
+        )
         self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, self.unit.serial_number)},
-            serial_number=self.unit.serial_number,
-            name=f"{MANUFACTURER} {self.unit.type.value} - {self.unit.serial_number}",
+            identifiers={(DOMAIN, self.device.serial_number)},
+            serial_number=self.device.serial_number,
+            name=f"{MANUFACTURER} {self.device.type.value} - {self.device.serial_number}",
             manufacturer=MANUFACTURER,
-            model=self.unit.type.value,
-            configuration_url=f"https://aseko.cloud/unit/{self.unit.serial_number}",
+            model=self.device.type.value,
+            configuration_url=f"https://aseko.cloud/unit/{self.device.serial_number}",
         )
 
     @property
     def available(self) -> bool:
         """Return True if entity is available."""
 
-        return super().available and self.unit.online()
+        return super().available and self.device.online()

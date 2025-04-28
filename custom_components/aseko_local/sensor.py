@@ -15,15 +15,15 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.typing import StateType
 
 from . import AsekoLocalConfigEntry
-from .aseko_data import AsekoElectrolyzerDirection, AsekoUnitData
+from .aseko_data import AsekoDevice, AsekoElectrolyzerDirection
 from .entity import AsekoLocalEntity
 
 
 @dataclass(frozen=True, kw_only=True)
 class AsekoSensorEntityDescription(SensorEntityDescription):
-    """Describes an Aseko sensor entity."""
+    """Describes an Aseko device sensor entity."""
 
-    value_fn: Callable[[AsekoUnitData], StateType]
+    value_fn: Callable[[AsekoDevice], StateType]
 
 
 SENSORS: list[AsekoSensorEntityDescription] = [
@@ -33,7 +33,7 @@ SENSORS: list[AsekoSensorEntityDescription] = [
         device_class=SensorDeviceClass.TEMPERATURE,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
         state_class=SensorStateClass.MEASUREMENT,
-        value_fn=lambda unit: unit.air_temperature,
+        value_fn=lambda device: device.air_temperature,
     ),
     AsekoSensorEntityDescription(
         key="electrolyzer",
@@ -41,7 +41,7 @@ SENSORS: list[AsekoSensorEntityDescription] = [
         native_unit_of_measurement="g/h",
         state_class=SensorStateClass.MEASUREMENT,
         icon="mdi:lightning-bolt",
-        value_fn=lambda unit: unit.electrolyzer_power,
+        value_fn=lambda device: device.electrolyzer_power,
     ),
     AsekoSensorEntityDescription(
         key="electrolyzer_direction",
@@ -49,7 +49,7 @@ SENSORS: list[AsekoSensorEntityDescription] = [
         device_class=SensorDeviceClass.ENUM,
         options=[direction.name for direction in AsekoElectrolyzerDirection],
         icon="mdi:arrow-left-right-bold",
-        value_fn=lambda unit: unit.electrolyzer_direction.name,
+        value_fn=lambda device: device.electrolyzer_direction.name,
     ),
     AsekoSensorEntityDescription(
         key="free_chlorine",
@@ -57,14 +57,14 @@ SENSORS: list[AsekoSensorEntityDescription] = [
         native_unit_of_measurement="mg/l",
         state_class=SensorStateClass.MEASUREMENT,
         icon="mdi:pool",
-        value_fn=lambda unit: unit.cl_free,
+        value_fn=lambda device: device.cl_free,
     ),
     AsekoSensorEntityDescription(
         key="ph",
         device_class=SensorDeviceClass.PH,
         state_class=SensorStateClass.MEASUREMENT,
         icon="mdi:pool",
-        value_fn=lambda unit: unit.ph,
+        value_fn=lambda device: device.ph,
     ),
     AsekoSensorEntityDescription(
         key="rx",
@@ -72,7 +72,7 @@ SENSORS: list[AsekoSensorEntityDescription] = [
         native_unit_of_measurement=UnitOfElectricPotential.MILLIVOLT,
         state_class=SensorStateClass.MEASUREMENT,
         icon="mdi:pool",
-        value_fn=lambda unit: unit.redox,
+        value_fn=lambda device: device.redox,
     ),
     AsekoSensorEntityDescription(
         key="salinity",
@@ -80,7 +80,7 @@ SENSORS: list[AsekoSensorEntityDescription] = [
         native_unit_of_measurement="kg/m³",
         state_class=SensorStateClass.MEASUREMENT,
         icon="mdi:shaker-outline",
-        value_fn=lambda unit: unit.salinity,
+        value_fn=lambda device: device.salinity,
     ),
     AsekoSensorEntityDescription(
         key="waterTemp",
@@ -89,7 +89,7 @@ SENSORS: list[AsekoSensorEntityDescription] = [
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
         state_class=SensorStateClass.MEASUREMENT,
         icon="mdi:pool-thermometer",
-        value_fn=lambda unit: unit.water_temperature,
+        value_fn=lambda device: device.water_temperature,
     ),
 ]
 
@@ -99,24 +99,24 @@ async def async_setup_entry(
     config_entry: AsekoLocalConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    """Set up the Aseko Local sensors."""
+    """Set up the Aseko device sensors."""
 
     coordinator = config_entry.runtime_data.coordinator
-    units = coordinator.get_units()
+    devices = coordinator.get_devices()
     async_add_entities(
-        AsekoLocalSensorEntity(unit, coordinator, description)
+        AsekoLocalSensorEntity(device, coordinator, description)
         for description in SENSORS
-        for unit in units
-        if description.value_fn(unit) is not None
+        for device in devices
+        if description.value_fn(device) is not None
     )
 
 
 class AsekoLocalSensorEntity(AsekoLocalEntity, SensorEntity):
-    """Representation of an Aseko unit sensor entity."""
+    """Representation of an Aseko device sensor entity."""
 
     entity_description: AsekoSensorEntityDescription
 
     @property
     def native_value(self) -> StateType:
         """Return the state of the sensor."""
-        return self.entity_description.value_fn(self.unit)
+        return self.entity_description.value_fn(self.device)
