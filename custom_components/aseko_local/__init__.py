@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
-from dataclasses import dataclass
 import logging
+from dataclasses import dataclass
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, CONF_PORT, Platform
@@ -29,7 +28,7 @@ class AsekoLocalRuntimeData:
 
     coordinator: AsekoLocalDataUpdateCoordinator
     api: AsekoDeviceServer
-    cancel_update_listener: Callable
+    cancel_update_listener: None
 
 
 async def async_setup_entry(
@@ -38,7 +37,7 @@ async def async_setup_entry(
 ) -> bool:
     """Set up Aseko Local from a config entry."""
 
-    def new_device_callback(device: AsekoDevice):
+    def new_device_callback(device: AsekoDevice) -> None:
         """Register new unit."""
 
         hass.loop.create_task(
@@ -66,7 +65,7 @@ async def async_setup_entry(
     # This will be removed automatically if the integraiton is unloaded.
     # See config_flow for defining an options setting that shows up as configure
     # on the integration.
-    cancel_update_listener = config_entry.async_on_unload(
+    cancel_update_listener: None = config_entry.async_on_unload(
         config_entry.add_update_listener(_async_update_listener)
     )
 
@@ -79,7 +78,9 @@ async def async_setup_entry(
     return True
 
 
-async def _async_update_listener(hass: HomeAssistant, config_entry):
+async def _async_update_listener(
+    hass: HomeAssistant, config_entry: AsekoLocalConfigEntry
+) -> None:
     """Handle config options update."""
 
     # Reload the integration when the options change.
@@ -87,7 +88,7 @@ async def _async_update_listener(hass: HomeAssistant, config_entry):
 
 
 async def async_remove_config_entry_device(
-    hass: HomeAssistant, config_entry: ConfigEntry, device_entry: DeviceEntry
+    hass: HomeAssistant, config_entry: AsekoLocalConfigEntry, device_entry: DeviceEntry
 ) -> bool:
     """Delete device if selected from UI."""
 

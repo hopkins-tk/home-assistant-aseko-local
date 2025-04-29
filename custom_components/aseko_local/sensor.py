@@ -49,7 +49,9 @@ SENSORS: list[AsekoSensorEntityDescription] = [
         device_class=SensorDeviceClass.ENUM,
         options=[direction.name for direction in AsekoElectrolyzerDirection],
         icon="mdi:arrow-left-right-bold",
-        value_fn=lambda device: device.electrolyzer_direction.name,
+        value_fn=lambda device: device.electrolyzer_direction.value
+        if device.electrolyzer_direction is not None
+        else None,
     ),
     AsekoSensorEntityDescription(
         key="free_chlorine",

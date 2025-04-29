@@ -3,11 +3,16 @@
     "image": "mcr.microsoft.com/devcontainers/python:3.13",
     "postCreateCommand": "scripts/setup",
     "forwardPorts": [
-        8123
+        8123,
+        47524
     ],
     "portsAttributes": {
         "8123": {
             "label": "Home Assistant",
+            "onAutoForward": "notify"
+        },
+        "47524": {
+            "label": "Aseko device server",
             "onAutoForward": "notify"
         }
     },
