@@ -47,7 +47,7 @@ SENSORS: list[AsekoSensorEntityDescription] = [
         key="electrolyzer_direction",
         translation_key="electrolyzer_direction",
         device_class=SensorDeviceClass.ENUM,
-        options=[direction.name for direction in AsekoElectrolyzerDirection],
+        options=[direction.value for direction in AsekoElectrolyzerDirection],
         icon="mdi:arrow-left-right-bold",
         value_fn=lambda device: device.electrolyzer_direction.value
         if device.electrolyzer_direction is not None

@@ -1,5 +1,5 @@
 {
-    "name": "hopkins-tk/aseko-local",
+    "name": "Aseko Local Dev",
     "image": "mcr.microsoft.com/devcontainers/python:3.13",
     "postCreateCommand": "scripts/setup",
     "forwardPorts": [

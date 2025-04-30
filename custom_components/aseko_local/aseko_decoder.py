@@ -45,6 +45,7 @@ class AsekoDecoder:
         data: bytes,
     ) -> list[AsekoProbeType]:
         """Determine types of probes installed from the binary data."""
+
         redox_clf_probe = (
             AsekoProbeType.CLF
             if int.from_bytes(data[16:18], "big") < MAX_CLF_LIMIT
