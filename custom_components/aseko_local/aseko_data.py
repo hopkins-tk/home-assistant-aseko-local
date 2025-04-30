@@ -30,6 +30,7 @@ class AsekoElectrolyzerDirection(Enum):
 
     LEFT = "left"
     RIGHT = "right"
+    WAITING = "waiting"
 
 
 @dataclass

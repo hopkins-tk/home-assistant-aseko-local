@@ -12,7 +12,7 @@ ignore = [
     "D202", # no-blank-line-after-function
     "D203", # no-blank-line-before-class (incompatible with formatter)
     "D212", # multi-line-summary-first-line (incompatible with formatter)
-    "E501",     # line too long
+    "E501",   # line too long
     "COM812", # incompatible with formatter
     "ISC001", # incompatible with formatter
     # Moving imports into type-checking blocks can mess with pytest.patch()

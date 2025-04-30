@@ -31,7 +31,7 @@ class AsekoDecoder:
     ) -> AsekoDeviceType:
         """Determine the unit type from the binary data."""
 
-        if data[20]:
+        if data[20] or data[21]:
             return AsekoDeviceType.SALT
 
         if int.from_bytes(data[16:18], "big") != int.from_bytes(data[18:20], "big"):
@@ -94,7 +94,7 @@ class AsekoDecoder:
             return AsekoElectrolyzerDirection.LEFT
         if data[29] & ELECTROLYZER_RUNNING:
             return AsekoElectrolyzerDirection.RIGHT
-        return None
+        return AsekoElectrolyzerDirection.WAITING
 
     @staticmethod
     def _fill_ph_data(
