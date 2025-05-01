@@ -64,9 +64,7 @@ async def async_setup_entry(
     # This will be removed automatically if the integraiton is unloaded.
     # See config_flow for defining an options setting that shows up as configure
     # on the integration.
-    config_entry.async_on_unload(
-        config_entry.add_update_listener(_async_update_listener)
-    )
+    config_entry.async_on_unload(config_entry.add_update_listener(async_reload_entry))
 
     config_entry.runtime_data = AsekoLocalRuntimeData(coordinator, api)
 
@@ -75,7 +73,7 @@ async def async_setup_entry(
     return True
 
 
-async def _async_update_listener(
+async def async_reload_entry(
     hass: HomeAssistant, config_entry: AsekoLocalConfigEntry
 ) -> None:
     """Handle config options update."""

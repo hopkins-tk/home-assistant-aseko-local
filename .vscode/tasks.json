@@ -72,14 +72,25 @@
       "problemMatcher": []
     },
     {
-      "label": "Pylint",
+      "label": "Install all Requirements",
       "type": "shell",
-      "command": "pylint homeassistant",
-      "dependsOn": [
-        "Install all Requirements"
-      ],
+      "command": "python3 -m pip install --requirement requirements.txt",
       "group": {
-        "kind": "test",
+        "kind": "build",
+        "isDefault": true
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Install all Test Requirements",
+      "type": "shell",
+      "command": "python3 -m pip install --requirement requirements.txt --requirement requirements.test.txt",
+      "group": {
+        "kind": "build",
         "isDefault": true
       },
       "presentation": {
