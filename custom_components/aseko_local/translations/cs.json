@@ -1,6 +1,5 @@
 {
   "config": {
-    "title": "Aseko Local",
     "abort": {
       "already_configured": "Zařízení je již nakonfigurováno",
       "reconfigure_successful": "Nastavení bylo úspěšně změněno"
@@ -46,9 +45,9 @@
       "electrolyzer_direction": {
         "name": "Směr elektrolyzéru",
         "state": {
-          "LEFT": "Levá",
-          "RIGHT": "Pravá",
-          "WAITING": "Čekání"
+          "left": "Levá",
+          "right": "Pravá",
+          "waiting": "Čekání"
         }
       },
       "free_chlorine": {

@@ -6,21 +6,20 @@ import logging
 from typing import Any
 
 import voluptuous as vol
-
 from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
 from homeassistant.const import CONF_HOST, CONF_PORT
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 
 from .aseko_server import AsekoDeviceServer, ServerConnectionError
-from .const import DOMAIN
+from .const import DEFAULT_BINDING_ADDRESS, DEFAULT_BINDING_PORT, DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
 STEP_USER_DATA_SCHEMA = vol.Schema(
     {
-        vol.Required(CONF_HOST, default="0.0.0.0"): str,
-        vol.Required(CONF_PORT, default=47524): int,
+        vol.Required(CONF_HOST, default=DEFAULT_BINDING_ADDRESS): str,
+        vol.Required(CONF_PORT, default=DEFAULT_BINDING_PORT): int,
     }
 )
 
@@ -34,7 +33,7 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
         # If you cannot connect, raise CannotConnect
     except ServerConnectionError as err:
         await AsekoDeviceServer.remove(host=data[CONF_HOST], port=data[CONF_PORT])
-        raise CannotConnect from err
+        raise CannotConnectError from err
     return {"title": f"Aseko Local - {data[CONF_HOST]}:{data[CONF_PORT]}"}
 
 
@@ -57,7 +56,7 @@ class AsekoLocalConfigFlow(ConfigFlow, domain=DOMAIN):
                 # Validate that the setup data is valid and if not handle errors.
                 # The errors["base"] values match the values in your strings.json and translation files.
                 info = await validate_input(self.hass, user_input)
-            except CannotConnect:
+            except CannotConnectError:
                 errors["base"] = "cannot_connect"
             except Exception:  # pylint: disable=broad-except
                 _LOGGER.exception("Unexpected exception")
@@ -84,16 +83,22 @@ class AsekoLocalConfigFlow(ConfigFlow, domain=DOMAIN):
         # It can be used to reconfigure any of the data submitted when first installed.
         # This is optional and can be removed if you do not want to allow reconfiguration.
         errors: dict[str, str] = {}
-        config_entry = self.hass.config_entries.async_get_entry(
-            self.context["entry_id"]
-        )
+        entry_id = self.context.get("entry_id")
+
+        if entry_id is None:
+            return self.async_abort(reason="missing_entry_id")
+
+        config_entry = self.hass.config_entries.async_get_entry(entry_id)
+
+        if config_entry is None:
+            return self.async_abort(reason="missing_entry")
 
         if user_input is not None:
             try:
                 user_input[CONF_HOST] = config_entry.data[CONF_HOST]
                 user_input[CONF_PORT] = config_entry.data[CONF_PORT]
                 info = await validate_input(self.hass, user_input)
-            except CannotConnect:
+            except CannotConnectError:
                 errors["base"] = "cannot_connect"
             except Exception:  # pylint: disable=broad-except
                 _LOGGER.exception("Unexpected exception")
@@ -118,5 +123,5 @@ class AsekoLocalConfigFlow(ConfigFlow, domain=DOMAIN):
         )
 
 
-class CannotConnect(HomeAssistantError):
+class CannotConnectError(HomeAssistantError):
     """Error to indicate we cannot connect."""

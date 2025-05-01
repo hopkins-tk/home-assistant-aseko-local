@@ -1,12 +1,13 @@
 """Server for receiving and parsing Aseko unit data."""
 
 import asyncio
-from collections.abc import Awaitable, Callable
 import logging
+from collections.abc import Callable
+from typing import ClassVar
 
-from .aseko_data import AsekoData, AsekoDevice
+from .aseko_data import AsekoDevice
 from .aseko_decoder import AsekoDecoder
-from .const import MESSAGE_SIZE
+from .const import DEFAULT_BINDING_ADDRESS, DEFAULT_BINDING_PORT, MESSAGE_SIZE
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -14,13 +15,13 @@ _LOGGER = logging.getLogger(__name__)
 class AsekoDeviceServer:
     """Async TCP server for receiving and parsing Aseko unit data."""
 
-    _instances: dict[str, "AsekoDeviceServer"] = {}
+    _instances: ClassVar[dict[str, "AsekoDeviceServer"]] = {}
 
     def __init__(
         self,
-        host: str = "0.0.0.0",
-        port: int = 47524,
-        on_data: Callable[[AsekoDevice], Awaitable[None]] | None = None,
+        host: str = DEFAULT_BINDING_ADDRESS,
+        port: int = DEFAULT_BINDING_PORT,
+        on_data: Callable[[AsekoDevice], None] | None = None,
     ) -> None:
         """Initialize the server."""
         self.host = host
@@ -40,7 +41,8 @@ class AsekoDeviceServer:
         except OSError as err:
             _LOGGER.error("Failed to start AsekoUnitServer: %s", err)
 
-            raise ServerConnectionError(f"Failed to start server: {err}") from err
+            message = f"Failed to start server: {err}"
+            raise ServerConnectionError(message) from err
 
     async def stop(self) -> None:
         """Stop the TCP server."""
@@ -67,10 +69,10 @@ class AsekoDeviceServer:
         _LOGGER.debug("Connection from %s", addr)
 
         try:
-            byteData = await reader.readexactly(MESSAGE_SIZE)
-            device = AsekoDecoder.decode(byteData)
+            byte_data = await reader.readexactly(MESSAGE_SIZE)
+            device = AsekoDecoder.decode(byte_data)
 
-            _LOGGER.debug("Received data from %s: %s", addr, byteData.hex())
+            _LOGGER.debug("Received data from %s: %s", addr, byte_data.hex())
             _LOGGER.debug("Received data parsed as %s", device)
 
             if self.on_data:
@@ -84,9 +86,9 @@ class AsekoDeviceServer:
     @classmethod
     async def create(
         cls,
-        host: str = "0.0.0.0",
-        port: int = 47524,
-        on_data: Callable[[AsekoData], Awaitable[None]] | None = None,
+        host: str = DEFAULT_BINDING_ADDRESS,
+        port: int = DEFAULT_BINDING_PORT,
+        on_data: Callable[[AsekoDevice], None] | None = None,
     ) -> "AsekoDeviceServer":
         """Get or create an instance of AsekoUnitServer for the given host and port."""
 
@@ -102,10 +104,9 @@ class AsekoDeviceServer:
         """Remove an instance of AsekoUnitServer for the given host and port."""
 
         key = f"{host}:{port}"
-        if key in cls._instances:
-            if cls._instances[key] is not None:
-                await cls._instances[key].stop()
-                del cls._instances[key]
+        if key in cls._instances and cls._instances[key] is not None:
+            await cls._instances[key].stop()
+            del cls._instances[key]
 
 
 class ServerConnectionError(Exception):

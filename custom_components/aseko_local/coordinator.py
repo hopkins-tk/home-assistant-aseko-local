@@ -1,11 +1,12 @@
 """Example integration using DataUpdateCoordinator."""
 
-from collections.abc import Callable
 import logging
+from collections.abc import Callable
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, CONF_PORT
-from homeassistant.core import DOMAIN as HOMEASSISTANT_DOMAIN, HomeAssistant
+from homeassistant.core import DOMAIN as HOMEASSISTANT_DOMAIN
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .aseko_data import AsekoData, AsekoDevice
@@ -13,7 +14,7 @@ from .aseko_data import AsekoData, AsekoDevice
 _LOGGER = logging.getLogger(__name__)
 
 
-class AsekoLocalDataUpdateCoordinator(DataUpdateCoordinator):
+class AsekoLocalDataUpdateCoordinator(DataUpdateCoordinator[AsekoData]):
     """Aseko Local coordinator."""
 
     data: AsekoData | None = None
@@ -22,7 +23,7 @@ class AsekoLocalDataUpdateCoordinator(DataUpdateCoordinator):
         self,
         hass: HomeAssistant,
         config_entry: ConfigEntry,
-        cb_new_device: Callable[[AsekoData], None] | None = None,
+        cb_new_device: Callable[[AsekoDevice], None] | None = None,
     ) -> None:
         """Initialize coordinator."""
 
@@ -35,16 +36,16 @@ class AsekoLocalDataUpdateCoordinator(DataUpdateCoordinator):
         super().__init__(
             hass,
             _LOGGER,
-            # update_method=async_update_data,
             name=f"{HOMEASSISTANT_DOMAIN} ({config_entry.unique_id})",
         )
 
-    def devices_update_callback(self, device: AsekoDevice):
+    def devices_update_callback(self, device: AsekoDevice) -> None:
         """Receive callback from api with device update."""
 
         new_data: AsekoData = AsekoData() if self.data is None else self.data
-        is_new_device = new_data.get(device.serial_number) is None
-        new_data.set(device.serial_number, device)
+        if device.serial_number is not None:
+            is_new_device = new_data.get(device.serial_number) is None
+            new_data.set(device.serial_number, device)
 
         self.async_set_updated_data(new_data)
 
@@ -62,4 +63,4 @@ class AsekoLocalDataUpdateCoordinator(DataUpdateCoordinator):
     def get_devices(self) -> list[AsekoDevice]:
         """Return units."""
 
-        return self.data.get_all() if self.data is not None else []
+        return self.data.get_all() or [] if self.data is not None else []

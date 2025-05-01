@@ -1,4 +1,6 @@
 {
   "name": "Aseko Local",
+  "hacs": "2.0.5",
+  "homeassistant": "2025.4.4",
   "render_readme": true
 }

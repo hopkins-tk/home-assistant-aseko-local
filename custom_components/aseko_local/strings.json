@@ -1,6 +1,5 @@
 {
   "config": {
-    "title": "Aseko Local",
     "abort": {
       "already_configured": "Device is already configured",
       "reconfigure_successful": "Reconfiguration successful"
@@ -46,9 +45,9 @@
       "electrolyzer_direction": {
         "name": "Electrolyzer direction",
         "state": {
-          "LEFT": "Left",
-          "RIGHT": "Right",
-          "WAITING": "Waiting"
+          "left": "Left",
+          "right": "Right",
+          "waiting": "Waiting"
         }
       },
       "free_chlorine": {

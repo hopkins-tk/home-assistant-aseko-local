@@ -30,12 +30,13 @@ class AsekoLocalEntity(CoordinatorEntity[AsekoLocalDataUpdateCoordinator]):
         self._attr_unique_id = (
             f"{self.device.serial_number}{self.entity_description.key}"
         )
+        model = self.device.type.value if self.device.type is not None else None
         self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, self.device.serial_number)},
-            serial_number=self.device.serial_number,
-            name=f"{MANUFACTURER} {self.device.type.value} - {self.device.serial_number}",
+            identifiers={(DOMAIN, str(self.device.serial_number))},
+            serial_number=str(self.device.serial_number),
+            name=f"{MANUFACTURER} {model} - {self.device.serial_number}",
             manufacturer=MANUFACTURER,
-            model=self.device.type.value,
+            model=model,
             configuration_url=f"https://aseko.cloud/unit/{self.device.serial_number}",
         )
 

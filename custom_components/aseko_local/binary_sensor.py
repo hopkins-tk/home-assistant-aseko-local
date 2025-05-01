@@ -1,8 +1,8 @@
 """Interfaces with the Aseko Local binary sensors."""
 
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass
-import logging
 
 from homeassistant.components.binary_sensor import (
     BinarySensorEntity,
