@@ -2,20 +2,8 @@
     "name": "Aseko Local Dev",
     "image": "mcr.microsoft.com/devcontainers/python:3.13",
     "postCreateCommand": "scripts/setup",
-    "forwardPorts": [
-        8123,
-        47524
-    ],
-    "portsAttributes": {
-        "8123": {
-            "label": "Home Assistant",
-            "onAutoForward": "notify"
-        },
-        "47524": {
-            "label": "Aseko device server",
-            "onAutoForward": "notify"
-        }
-    },
+    // Port 5683 udp is used by Shelly integration, port 47524 is used by Aseko units
+    "appPort": ["8123:8123", "47524:47524", "5683:5683/udp"],
     "customizations": {
         "vscode": {
             "extensions": [

@@ -28,7 +28,6 @@ class AsekoLocalRuntimeData:
 
     coordinator: AsekoLocalDataUpdateCoordinator
     api: AsekoDeviceServer
-    cancel_update_listener: None
 
 
 async def async_setup_entry(
@@ -65,13 +64,11 @@ async def async_setup_entry(
     # This will be removed automatically if the integraiton is unloaded.
     # See config_flow for defining an options setting that shows up as configure
     # on the integration.
-    cancel_update_listener: None = config_entry.async_on_unload(
+    config_entry.async_on_unload(
         config_entry.add_update_listener(_async_update_listener)
     )
 
-    config_entry.runtime_data = AsekoLocalRuntimeData(
-        coordinator, api, cancel_update_listener
-    )
+    config_entry.runtime_data = AsekoLocalRuntimeData(coordinator, api)
 
     # Return true to denote a successful setup.
     # async_forward_entry_setups will be called once first data are received to add sensors for the discovered devices.
@@ -103,9 +100,9 @@ async def async_unload_entry(
     # If you have created any custom services, they need to be removed here too.
 
     # Unload platforms and return result
-
     await hass.config_entries.async_unload_platforms(config_entry, PLATFORMS)
 
+    # Stop & remove the server
     await AsekoDeviceServer.remove(
         host=config_entry.data[CONF_HOST],
         port=config_entry.data[CONF_PORT],
