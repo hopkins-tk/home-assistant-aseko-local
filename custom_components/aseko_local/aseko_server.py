@@ -69,10 +69,13 @@ class AsekoDeviceServer:
         _LOGGER.debug("Connection from %s", addr)
 
         try:
-            byte_data = await reader.readexactly(MESSAGE_SIZE)
-            device = AsekoDecoder.decode(byte_data)
+            byte_data = await reader.read(MESSAGE_SIZE)
 
-            _LOGGER.debug("Received data from %s: %s", addr, byte_data.hex())
+            _LOGGER.debug(
+                "Received %s bytes from %s: %s", len(byte_data), addr, byte_data.hex()
+            )
+
+            device = AsekoDecoder.decode(byte_data)
             _LOGGER.debug("Received data parsed as %s", device)
 
             if self.on_data:
