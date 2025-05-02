@@ -36,11 +36,11 @@ class AsekoDecoder:
         """Determine the unit type from the binary data."""
 
         if len(data) == MESSAGE_SIZE:
-            if data[20] or data[21]:
-                return AsekoDeviceType.SALT
-
             if int.from_bytes(data[16:18], "big") != int.from_bytes(data[18:20], "big"):
                 return AsekoDeviceType.PROFI
+
+            if data[20] or data[21]:
+                return AsekoDeviceType.SALT
 
             return AsekoDeviceType.HOME
 
@@ -124,10 +124,11 @@ class AsekoDecoder:
         unit: AsekoDevice,
         data: bytes,
     ) -> None:
-        unit.salinity = data[20] / 10
-        unit.electrolyzer_power = data[21] if data[29] & ELECTROLYZER_RUNNING else 0
-        unit.electrolyzer_active = bool(data[29] & ELECTROLYZER_RUNNING)
-        unit.electrolyzer_direction = AsekoDecoder._electrolyzer_direction(data)
+        if data[21]:
+            unit.salinity = data[20] / 10
+            unit.electrolyzer_power = data[21] if data[29] & ELECTROLYZER_RUNNING else 0
+            unit.electrolyzer_active = bool(data[29] & ELECTROLYZER_RUNNING)
+            unit.electrolyzer_direction = AsekoDecoder._electrolyzer_direction(data)
 
     @staticmethod
     def decode(data: bytes) -> AsekoDevice:
@@ -167,7 +168,7 @@ class AsekoDecoder:
         if AsekoProbeType.CLF in probes:
             AsekoDecoder._fill_clf_data(device, data)
 
-        if unit_type == AsekoDeviceType.SALT:
+        if unit_type in (AsekoDeviceType.SALT, AsekoDeviceType.PROFI):
             AsekoDecoder._fill_salt_unit_data(device, data)
 
         return device
