@@ -15,9 +15,8 @@ from .const import (
     ELECTROLYZER_RUNNING,
     ELECTROLYZER_RUNNING_LEFT,
     MESSAGE_SIZE,
-    PROBE_CLF_INVERTED,
-    PROBE_CLT_INVERTED,
-    PROBE_REDOX_INVERTED,
+    PROBE_CLF,
+    PROBE_REDOX,
     PUMP_RUNNING,
     WATER_FLOW_TO_PROBES,
     YEAR_OFFSET,
@@ -52,18 +51,15 @@ class AsekoDecoder:
     ) -> list[AsekoProbeType]:
         """Determine types of probes installed from the binary data."""
 
-        probe_info = ~data[4]
-        has_redox_probe = (probe_info & PROBE_REDOX_INVERTED) == PROBE_REDOX_INVERTED
-        has_clf_probe = (probe_info & PROBE_CLF_INVERTED) == PROBE_CLF_INVERTED
-        has_clt_probe = (probe_info & PROBE_CLT_INVERTED) == PROBE_CLT_INVERTED
+        probe_info = data[4]
+        has_redox_probe = bool(probe_info & PROBE_REDOX)
+        has_clf_probe = bool(probe_info & PROBE_CLF)
 
         probes = [AsekoProbeType.PH]
         if has_redox_probe:
             probes.append(AsekoProbeType.REDOX)
         if has_clf_probe:
             probes.append(AsekoProbeType.CLF)
-        if has_clt_probe:
-            probes.append(AsekoProbeType.CLT)
 
         return probes
 
