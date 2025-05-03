@@ -35,7 +35,11 @@ class AsekoDecoder:
         """Determine the unit type from the binary data."""
 
         if len(data) == MESSAGE_SIZE:
-            if int.from_bytes(data[16:18], "big") != int.from_bytes(data[18:20], "big"):
+            probe_info = data[4]
+            has_redox_probe = bool(probe_info & PROBE_REDOX)
+            has_clf_probe = bool(probe_info & PROBE_CLF)
+
+            if has_redox_probe and has_clf_probe:
                 return AsekoDeviceType.PROFI
 
             if data[20] or data[21]:
