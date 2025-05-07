@@ -30,8 +30,6 @@ jobs:
         uses: hacs/action@main
         with:
           category: integration
-          # Remove this 'ignore' key once https://github.com/home-assistant/brands/pull/6970 is merged
-          ignore: brands
 
   test:
     name: Run Tests
