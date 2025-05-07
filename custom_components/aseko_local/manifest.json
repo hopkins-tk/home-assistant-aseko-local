@@ -1,11 +1,13 @@
 {
   "domain": "aseko_local",
   "name": "Aseko Local",
-  "codeowners": ["@hopkins-tk"],
+  "codeowners": [
+    "@hopkins-tk"
+  ],
   "config_flow": true,
   "documentation": "https://github.com/hopkins-tk/aseko-local",
   "iot_class": "local_push",
   "issue_tracker": "https://github.com/hopkins-tk/aseko-local/issues",
   "requirements": [],
-  "version": "v1.0.0-beta1"
+  "version": "v1.0.0"
 }
