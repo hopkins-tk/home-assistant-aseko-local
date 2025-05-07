@@ -53,7 +53,7 @@ max-complexity = 25
 "tests/**/*.py" = [
     # at least this three should be fine in tests:
     "S101", # asserts allowed in tests...
-    "ANN01",
+    "ANN001",
     "ARG", # Unused function args -> fixtures nevertheless are functionally relevant...
     "FBT", # Don't care about booleans as positional arguments in tests, e.g. via @pytest.mark.parametrize()
     # The below are debateable
