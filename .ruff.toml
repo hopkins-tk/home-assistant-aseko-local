@@ -49,7 +49,7 @@ keep-runtime-typing = true
 [lint.mccabe]
 max-complexity = 25
 
-[per-file-ignores]
+[lint.per-file-ignores]
 "tests/**/*.py" = [
     # at least this three should be fine in tests:
     "S101", # asserts allowed in tests...
