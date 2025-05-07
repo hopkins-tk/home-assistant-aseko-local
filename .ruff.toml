@@ -49,11 +49,11 @@ keep-runtime-typing = true
 [lint.mccabe]
 max-complexity = 25
 
-
-[tool.ruff.per-file-ignores]
+[per-file-ignores]
 "tests/**/*.py" = [
     # at least this three should be fine in tests:
     "S101", # asserts allowed in tests...
+    "ANN01",
     "ARG", # Unused function args -> fixtures nevertheless are functionally relevant...
     "FBT", # Don't care about booleans as positional arguments in tests, e.g. via @pytest.mark.parametrize()
     # The below are debateable
