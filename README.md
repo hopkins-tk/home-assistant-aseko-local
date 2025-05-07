@@ -6,7 +6,7 @@
 
 Local integration for receiving data directly from **Aseko** pool unit without relying on the **[Aseko Cloud](https://aseko.cloud)**.
 
-![Home Assistant Sensors](images/sensors.png)
+![Home Assistant Sensors](images/sensors-salt.png)
 
 The Aseko unit and your Home Assistant need to run on the same network (Aseko unit needs to be able to send data to a configured port on your Home Assistant) as the integration relies on direct data stream from the unit.
 
@@ -34,24 +34,24 @@ You need to re-configure your Aseko unit to send data to your Home Assistant ins
 
 ### Aseko unit configuration
 
-1) Access your Aseko unit IP address
-    - default credentials: **admin**/**admin**
+1. Access your Aseko unit IP address
 
-2) Go to **Serial Port** configuration
+   - default credentials: **admin**/**admin**
 
-     ![Aseko unit initial configuration](images/aseko-init.png)
-     You can see the default **Remote Srver Address** is **pool.aseko.com** (or something similar) - make note of that if you would like to keep sending the data there as well - see [Optional: Keep data to Aseko Cloud](#optional-keep-data-to-aseko-cloud)
+2. Go to **Serial Port** configuration
 
-3) Change **Remote Server Addr** to the IP address or DNS record of your **Home Assistant** instance on your local network (or your TCP mirror - see [Optional: Keep data to Aseko Cloud](#optional-keep-data-to-aseko-cloud))
- 
-     ![Aseko unit changed configuration](images/aseko-changed.png)
+   ![Aseko unit initial configuration](images/aseko-init.png)
+   You can see the default **Remote Srver Address** is **pool.aseko.com** (or something similar) - make note of that if you would like to keep sending the data there as well - see [Optional: Keep data to Aseko Cloud](#optional-keep-data-to-aseko-cloud)
 
+3. Change **Remote Server Addr** to the IP address or DNS record of your **Home Assistant** instance on your local network (or your TCP mirror - see [Optional: Keep data to Aseko Cloud](#optional-keep-data-to-aseko-cloud))
 
-3) (Optional) Change **Remote Port Number** to the port on which the integration will be listening on your **Home Assistant** instance
+   ![Aseko unit changed configuration](images/aseko-changed.png)
 
-4) Confirm the **Restart** of the module
+4. (Optional) Change **Remote Port Number** to the port on which the integration will be listening on your **Home Assistant** instance
 
-     ![Aseko unit - modul restart required](images/aseko-restart.png)
+5. Confirm the **Restart** of the module
+
+   ![Aseko unit - modul restart required](images/aseko-restart.png)
 
 ### Optional: Keep data to Aseko Cloud
 
@@ -60,6 +60,7 @@ If you want to keep sending the data to Aseko Cloud, you will have to ensure mir
 You can achieve that by introducing a TCP proxy, which will mirror the trafic to Aseko Cloud as well as your Home Assistant server - e.g. using https://github.com/mkevac/goduplicator
 
 ### Example configuration in Docker Compose
+
 ```
   goduplicator:
     container_name: goduplicator
@@ -67,6 +68,7 @@ You can achieve that by introducing a TCP proxy, which will mirror the trafic to
     command: "-l ':47524' -f 'pool.aseko.com:47524' -m '192.168.192.168:47524'"
     restart: unless-stopped
 ```
+
 - `pool.aseko.com` being the original **Remote Server Addr** with port `47524` configured as **Remote Port Number** in the Aseko unit previously
 - `192.168.192.168` being your **Home Assistant** server with port `47524` configured for this integration
 
