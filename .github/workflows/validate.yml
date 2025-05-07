@@ -30,5 +30,23 @@ jobs:
         uses: hacs/action@main
         with:
           category: integration
-          # Remove this 'ignore' key when you have added brand images for your integration to https://github.com/home-assistant/brands
+          # Remove this 'ignore' key once https://github.com/home-assistant/brands/pull/6970 is merged
           ignore: brands
+
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout the repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --requirement requirements.txt --requirement requirements.test.txt
+      - name: Run tests
+        run: |
+          python -m pytest --timeout=10 tests

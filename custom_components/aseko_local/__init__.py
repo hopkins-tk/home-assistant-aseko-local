@@ -27,7 +27,7 @@ class AsekoLocalRuntimeData:
     """Class to hold your data."""
 
     coordinator: AsekoLocalDataUpdateCoordinator
-    api: AsekoDeviceServer
+    device_discovered: bool = False
 
 
 async def async_setup_entry(
@@ -36,12 +36,11 @@ async def async_setup_entry(
 ) -> bool:
     """Set up Aseko Local from a config entry."""
 
-    def new_device_callback(device: AsekoDevice) -> None:
+    async def new_device_callback(device: AsekoDevice) -> None:
         """Register new unit."""
+        await hass.config_entries.async_forward_entry_setups(config_entry, PLATFORMS)
 
-        hass.loop.create_task(
-            hass.config_entries.async_forward_entry_setups(config_entry, PLATFORMS)
-        )
+        config_entry.runtime_data.device_discovered = True
 
         _LOGGER.info("New Aseko device registered: %s", device.serial_number)
 
@@ -60,26 +59,11 @@ async def async_setup_entry(
     if not api.running:
         raise ConfigEntryNotReady
 
-    # Initialise a listener for config flow options changes.
-    # This will be removed automatically if the integraiton is unloaded.
-    # See config_flow for defining an options setting that shows up as configure
-    # on the integration.
-    config_entry.async_on_unload(config_entry.add_update_listener(async_reload_entry))
-
-    config_entry.runtime_data = AsekoLocalRuntimeData(coordinator, api)
+    config_entry.runtime_data = AsekoLocalRuntimeData(coordinator)
 
     # Return true to denote a successful setup.
     # async_forward_entry_setups will be called once first data are received to add sensors for the discovered devices.
     return True
-
-
-async def async_reload_entry(
-    hass: HomeAssistant, config_entry: AsekoLocalConfigEntry
-) -> None:
-    """Handle config options update."""
-
-    # Reload the integration when the options change.
-    await hass.config_entries.async_reload(config_entry.entry_id)
 
 
 async def async_remove_config_entry_device(
@@ -97,13 +81,14 @@ async def async_unload_entry(
     # This is called when you remove your integration or shutdown HA.
     # If you have created any custom services, they need to be removed here too.
 
-    # Unload platforms and return result
-    await hass.config_entries.async_unload_platforms(config_entry, PLATFORMS)
-
     # Stop & remove the server
     await AsekoDeviceServer.remove(
         host=config_entry.data[CONF_HOST],
         port=config_entry.data[CONF_PORT],
     )
+
+    # Unload platforms and return result
+    if config_entry.runtime_data.device_discovered:
+        return await hass.config_entries.async_unload_platforms(config_entry, PLATFORMS)
 
     return True

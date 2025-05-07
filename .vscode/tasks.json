@@ -74,7 +74,7 @@
     {
       "label": "Install all Requirements",
       "type": "shell",
-      "command": "python3 -m pip install --requirement requirements.txt",
+      "command": "python -m pip install --requirement requirements.txt",
       "group": {
         "kind": "build",
         "isDefault": true
@@ -88,7 +88,7 @@
     {
       "label": "Install all Test Requirements",
       "type": "shell",
-      "command": "python3 -m pip install --requirement requirements.txt --requirement requirements.test.txt",
+      "command": "python -m pip install --requirement requirements.txt --requirement requirements.test.txt",
       "group": {
         "kind": "build",
         "isDefault": true

@@ -65,8 +65,7 @@ class AsekoLocalConfigFlow(ConfigFlow, domain=DOMAIN):
             if "base" not in errors:
                 # Validation was successful, so create a unique id for this instance of your integration
                 # and create the config entry.
-                await self.async_set_unique_id(info.get("title"))
-                self._abort_if_unique_id_configured()
+                await self._async_handle_discovery_without_unique_id()
                 return self.async_create_entry(title=info["title"], data=user_input)
 
         # Show initial form.
@@ -95,8 +94,6 @@ class AsekoLocalConfigFlow(ConfigFlow, domain=DOMAIN):
 
         if user_input is not None:
             try:
-                user_input[CONF_HOST] = config_entry.data[CONF_HOST]
-                user_input[CONF_PORT] = config_entry.data[CONF_PORT]
                 info = await validate_input(self.hass, user_input)
             except CannotConnectError:
                 errors["base"] = "cannot_connect"
@@ -111,12 +108,23 @@ class AsekoLocalConfigFlow(ConfigFlow, domain=DOMAIN):
                     data={**config_entry.data, **user_input},
                     reason="reconfigure_successful",
                 )
+
         return self.async_show_form(
             step_id="reconfigure",
             data_schema=vol.Schema(
                 {
-                    vol.Required(CONF_HOST, default=config_entry.data[CONF_HOST]): str,
-                    vol.Required(CONF_PORT, default=config_entry.data[CONF_PORT]): int,
+                    vol.Required(
+                        CONF_HOST,
+                        default=user_input[CONF_HOST]
+                        if user_input is not None
+                        else config_entry.data[CONF_HOST],
+                    ): str,
+                    vol.Required(
+                        CONF_PORT,
+                        default=user_input[CONF_PORT]
+                        if user_input is not None
+                        else config_entry.data[CONF_PORT],
+                    ): int,
                 }
             ),
             errors=errors,

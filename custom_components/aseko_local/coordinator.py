@@ -2,6 +2,8 @@
 
 import logging
 from collections.abc import Callable
+from types import CoroutineType
+from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, CONF_PORT
@@ -23,7 +25,8 @@ class AsekoLocalDataUpdateCoordinator(DataUpdateCoordinator[AsekoData]):
         self,
         hass: HomeAssistant,
         config_entry: ConfigEntry,
-        cb_new_device: Callable[[AsekoDevice], None] | None = None,
+        cb_new_device: Callable[[AsekoDevice], CoroutineType[Any, Any, None]]
+        | None = None,
     ) -> None:
         """Initialize coordinator."""
 
@@ -31,6 +34,7 @@ class AsekoLocalDataUpdateCoordinator(DataUpdateCoordinator[AsekoData]):
         self.host = config_entry.data[CONF_HOST]
         self.port = config_entry.data[CONF_PORT]
         self.cb_new_device = cb_new_device
+        self.hass = hass
 
         # Initialise DataUpdateCoordinator
         super().__init__(
@@ -40,7 +44,7 @@ class AsekoLocalDataUpdateCoordinator(DataUpdateCoordinator[AsekoData]):
         )
 
     def devices_update_callback(self, device: AsekoDevice) -> None:
-        """Receive callback from api with device update."""
+        """Receive callback with device update."""
 
         new_data: AsekoData = AsekoData() if self.data is None else self.data
         if device.serial_number is not None:
@@ -53,7 +57,7 @@ class AsekoLocalDataUpdateCoordinator(DataUpdateCoordinator[AsekoData]):
             _LOGGER.info("New Aseko unit discovered: %s", device.serial_number)
             if self.cb_new_device is not None:
                 # Call the callback function with the new unit data
-                self.cb_new_device(device)
+                self.hass.loop.create_task(self.cb_new_device(device))
 
     def get_device(self, serial_number: int) -> AsekoDevice | None:
         """Return unit by serial number."""
