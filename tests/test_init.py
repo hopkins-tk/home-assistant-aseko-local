@@ -39,7 +39,10 @@ async def test_setup_unload_entry(hass, bypass_get_data, api_server_running) -> 
     assert isinstance(
         config_entry.runtime_data.coordinator, AsekoLocalDataUpdateCoordinator
     )
-    if config_entry.runtime_data.coordinator and config_entry.runtime_data.coordinator.cb_new_device:
+    if (
+        config_entry.runtime_data.coordinator
+        and config_entry.runtime_data.coordinator.cb_new_device
+    ):
         await config_entry.runtime_data.coordinator.cb_new_device(test_device)
     else:
         pytest.fail("Coordinator or cb_new_device is not initialized")
