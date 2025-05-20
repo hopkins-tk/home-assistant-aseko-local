@@ -182,6 +182,25 @@ def test_decode_net() -> None:
     """Test decoding of NET device data."""
 
     data = _make_base_bytes(111)
+    data[6] = 0xFF  # year
+    data[7] = 0xFF  # month
+    data[8] = 0xFF  # day
+    data[9] = 0xFF  # hour
+    data[10] = 0xFF  # minute
+    data[11] = 0xFF  # second
+
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.type == AsekoDeviceType.NET
+
+
+def test_decode_net_120_bytes() -> None:
+    """Test decoding of NET device data with 120 bytes."""
+
+    data = bytearray.fromhex(
+        "0690ffff0901ffffffffffff0000027300caffff0140ff0c3c0120ffaa000d340000000000ff007f"
+        "0690ffff0903ffffffffffff480608ffffffffffffffffff02720128ffffffffffffffffffffffe5"
+        "0690ffff0902ffffffffffff0026003cffff003cffff010183ff012c0502581e28ffffffff0047a2"
+    )
 
     device = AsekoDecoder.decode(bytes(data))
     assert device.type == AsekoDeviceType.NET
