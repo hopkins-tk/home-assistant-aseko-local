@@ -14,10 +14,10 @@ from .aseko_data import (
 from .const import (
     ELECTROLYZER_RUNNING,
     ELECTROLYZER_RUNNING_LEFT,
-    MESSAGE_SIZE,
     PROBE_CLF,
     PROBE_REDOX,
     PUMP_RUNNING,
+    UNSPECIFIED_VALUE,
     WATER_FLOW_TO_PROBES,
     YEAR_OFFSET,
 )
@@ -34,7 +34,7 @@ class AsekoDecoder:
     ) -> AsekoDeviceType:
         """Determine the unit type from the binary data."""
 
-        if len(data) == MESSAGE_SIZE:
+        if data[6] != UNSPECIFIED_VALUE:
             probe_info = data[4]
             has_redox_probe = bool(probe_info & PROBE_REDOX)
             has_clf_probe = bool(probe_info & PROBE_CLF)
@@ -70,17 +70,37 @@ class AsekoDecoder:
     @staticmethod
     def _timestamp(
         data: bytes,
-    ) -> datetime:
+    ) -> datetime | None:
         """Decode datetime from the bynary data."""
 
-        return datetime(
-            year=YEAR_OFFSET + data[6],
-            month=data[7],
-            day=data[8],
-            hour=data[9],
-            minute=data[10],
-            second=data[11],
-            tzinfo=homeassistant.util.dt.get_default_time_zone(),
+        if data[6] != UNSPECIFIED_VALUE:
+            return datetime(
+                year=YEAR_OFFSET + data[6],
+                month=data[7],
+                day=data[8],
+                hour=data[9],
+                minute=data[10],
+                second=data[11],
+                tzinfo=homeassistant.util.dt.get_default_time_zone(),
+            )
+
+        return datetime.now(
+            tz=homeassistant.util.dt.get_default_time_zone(),
+        )
+
+    @staticmethod
+    def _time(
+        data: bytes,
+    ) -> time | None:
+        """Decode time from the bynary data."""
+
+        return (
+            time(
+                hour=data[0],
+                minute=data[1],
+            )
+            if data[0] != UNSPECIFIED_VALUE
+            else None
         )
 
     @staticmethod
@@ -146,12 +166,12 @@ class AsekoDecoder:
             pump_running=bool(data[29] & PUMP_RUNNING),
             required_algicide=data[54],
             required_temperature=data[55],
-            start1=time(hour=data[56], minute=data[57]),
-            stop1=time(hour=data[58], minute=data[59]),
-            start2=time(hour=data[60], minute=data[61]),
-            stop2=time(hour=data[62], minute=data[63]),
+            start1=AsekoDecoder._time(data[56:58]),
+            stop1=AsekoDecoder._time(data[58:60]),
+            start2=AsekoDecoder._time(data[60:62]),
+            stop2=AsekoDecoder._time(data[62:64]),
             backwash_every_n_days=data[68],
-            backwash_time=time(hour=data[69], minute=data[70]),
+            backwash_time=AsekoDecoder._time(data[69:71]),
             backwash_duration=data[71] * 10,
             pool_volume=int.from_bytes(data[92:94], "big"),
             max_filling_time=int.from_bytes(data[94:96], "big"),
