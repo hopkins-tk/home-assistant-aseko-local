@@ -128,7 +128,7 @@ class AsekoDecoder:
         unit: AsekoDevice,
         data: bytes,
     ) -> None:
-        unit.redox = int.from_bytes(data[18:20], "big")
+        unit.redox = int.from_bytes(data[16:18], "big")
         unit.required_redox = data[53] * 10
 
     @staticmethod
@@ -136,7 +136,7 @@ class AsekoDecoder:
         unit: AsekoDevice,
         data: bytes,
     ) -> None:
-        unit.cl_free = int.from_bytes(data[16:18], "big") / 100
+        unit.cl_free = int.from_bytes(data[18:20], "big") / 100
         unit.required_cl_free = data[53] / 10
 
     @staticmethod

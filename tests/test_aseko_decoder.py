@@ -56,7 +56,7 @@ def test_decode_redox() -> None:
 
     data = _make_base_bytes()
     data[4] = 0x02  # Redox probe
-    data[18:20] = (550).to_bytes(2, "big")  # Redox
+    data[16:18] = (550).to_bytes(2, "big")  # Redox
     data[53] = 65  # required Redox
 
     device = AsekoDecoder.decode(bytes(data))
@@ -69,7 +69,7 @@ def test_decode_clf() -> None:
 
     data = _make_base_bytes()
     data[4] = 0x01  # CL probe
-    data[16:18] = (50).to_bytes(2, "big")  # CL free
+    data[18:20] = (50).to_bytes(2, "big")  # CL free
     data[53] = 9  # required CL free
 
     device = AsekoDecoder.decode(bytes(data))
@@ -162,8 +162,8 @@ def test_decode_profi() -> None:
 
     data = _make_base_bytes()
     data[4] = 0x03  # Redox & CLF probe
-    data[16:18] = (100).to_bytes(2, "big")
-    data[18:20] = (200).to_bytes(2, "big")
+    data[16:18] = (200).to_bytes(2, "big")
+    data[18:20] = (100).to_bytes(2, "big")
     data[14:16] = (800).to_bytes(2, "big")
     data[52] = 80
     data[53] = 20
@@ -204,3 +204,34 @@ def test_decode_net_120_bytes() -> None:
 
     device = AsekoDecoder.decode(bytes(data))
     assert device.type == AsekoDeviceType.NET
+
+
+def test_decode_issue_17() -> None:
+    """Test decoding data from issue #17."""
+
+    data = bytearray.fromhex(
+        "0690ffff0d01190519160832000002c6006c0249200000fe7000e0fe00400000000000000033001f"
+        "0690ffff0d031905191608324809001b07000b1e0c1e1500030c00e8000c1e0aff2800780e1081bd"
+        "0690ffff0d02190519160832003c003c3a1066ff003c1e3c6e9603840a0bb80f0900b505fff401eb"
+    )
+
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.type == AsekoDeviceType.SALT
+
+
+def test_decode_issue_20() -> None:
+    """Test decoding data from issue #20."""
+
+    data = bytearray.fromhex(
+        "0691ffff0a01ffffffffffff000002d002bfffff02bfff01bc00ffffaa0000080000000000ff0173"
+        "0691ffff0a03ffffffffffff484608ffffffffffffffffff02d100ffffffffffffffffffffffff97"
+        "0691ffff0a02ffffffffffff0007003cffff003cffff010181ff012c0102581e28ffffffff0048cd"
+    )
+
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.type == AsekoDeviceType.NET
+    assert device.timestamp is not None
+    assert device.timestamp.year == YEAR_OFFSET + 25
+    assert device.timestamp.month == 6
+    assert device.timestamp.day == 12
+    assert device.redox == 703
