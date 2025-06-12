@@ -2,7 +2,6 @@
 
 from datetime import time
 
-from custom_components.aseko_local import aseko_data
 from custom_components.aseko_local.aseko_data import (
     AsekoDeviceType,
     AsekoElectrolyzerDirection,
@@ -230,7 +229,6 @@ def test_decode_issue_20() -> None:
     )
 
     device = AsekoDecoder.decode(bytes(data))
-    print(device)
     assert device.type == AsekoDeviceType.NET
     assert device.timestamp is not None
     assert device.timestamp.year == YEAR_OFFSET + 25
