@@ -14,8 +14,10 @@ from .aseko_data import (
 from .const import (
     ELECTROLYZER_RUNNING,
     ELECTROLYZER_RUNNING_LEFT,
-    PROBE_CLF,
-    PROBE_REDOX,
+    PROBE_CLF_MISSING,
+    PROBE_DOSE_MISSING,
+    PROBE_REDOX_MISSING,
+    PROBE_SANOSIL_MISSING,
     PUMP_RUNNING,
     UNSPECIFIED_VALUE,
     WATER_FLOW_TO_PROBES,
@@ -35,14 +37,16 @@ class AsekoDecoder:
         """Determine the unit type from the binary data."""
 
         if data[6] != UNSPECIFIED_VALUE:
-            probe_info = data[4]
-            has_redox_probe = bool(probe_info & PROBE_REDOX)
-            has_clf_probe = bool(probe_info & PROBE_CLF)
+            probe_info = AsekoDecoder._available_probes(data)
 
-            if has_redox_probe and has_clf_probe:
+            if AsekoProbeType.REDOX in probe_info and AsekoProbeType.CLF in probe_info:
                 return AsekoDeviceType.PROFI
 
-            if data[20] or data[21]:
+            if (
+                (data[20] or data[21])
+                and AsekoProbeType.SANOSIL not in probe_info
+                and AsekoProbeType.DOSE not in probe_info
+            ):
                 return AsekoDeviceType.SALT
 
             return AsekoDeviceType.HOME
@@ -52,18 +56,25 @@ class AsekoDecoder:
     @staticmethod
     def _available_probes(
         data: bytes,
-    ) -> list[AsekoProbeType]:
+    ) -> set[AsekoProbeType]:
         """Determine types of probes installed from the binary data."""
 
         probe_info = data[4]
-        has_redox_probe = bool(probe_info & PROBE_REDOX)
-        has_clf_probe = bool(probe_info & PROBE_CLF)
 
-        probes = [AsekoProbeType.PH]
-        if has_redox_probe:
-            probes.append(AsekoProbeType.REDOX)
-        if has_clf_probe:
-            probes.append(AsekoProbeType.CLF)
+        probes = set()
+        probes.add(AsekoProbeType.PH)
+
+        if not bool(probe_info & PROBE_REDOX_MISSING):
+            probes.add(AsekoProbeType.REDOX)
+
+        if not bool(probe_info & PROBE_CLF_MISSING):
+            probes.add(AsekoProbeType.CLF)
+
+        if not bool(probe_info & PROBE_SANOSIL_MISSING):
+            probes.add(AsekoProbeType.SANOSIL)
+
+        if not bool(probe_info & PROBE_DOSE_MISSING):
+            probes.add(AsekoProbeType.DOSE)
 
         return probes
 
@@ -128,7 +139,10 @@ class AsekoDecoder:
         unit: AsekoDevice,
         data: bytes,
     ) -> None:
-        unit.redox = int.from_bytes(data[16:18], "big")
+        if data[18] == UNSPECIFIED_VALUE and data[19] == UNSPECIFIED_VALUE:
+            unit.redox = int.from_bytes(data[16:18], "big")
+        else:
+            unit.redox = int.from_bytes(data[18:20], "big")
         unit.required_redox = data[53] * 10
 
     @staticmethod
@@ -136,7 +150,7 @@ class AsekoDecoder:
         unit: AsekoDevice,
         data: bytes,
     ) -> None:
-        unit.cl_free = int.from_bytes(data[18:20], "big") / 100
+        unit.cl_free = int.from_bytes(data[16:18], "big") / 100
         unit.required_cl_free = data[53] / 10
 
     @staticmethod
