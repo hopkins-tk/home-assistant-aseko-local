@@ -21,8 +21,10 @@ class AsekoProbeType(Enum):
 
     CLF = "clf"
     CLT = "clt"
+    DOSE = "dose"
     PH = "ph"
     REDOX = "redox"
+    SANOSIL = "sanosil"
 
 
 class AsekoElectrolyzerDirection(Enum):
