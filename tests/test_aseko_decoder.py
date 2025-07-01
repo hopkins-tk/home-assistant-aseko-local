@@ -236,7 +236,7 @@ def test_decode_issue_20() -> None:
 
 
 def test_decode_issue_22() -> None:
-    """Test decoding data from issue #20."""
+    """Test decoding data from issue #22."""
 
     data = bytearray.fromhex(
         "0690ffff0901ffffffffffff000002cb003bffff007bff00000121ffaa0000040000000000ff0000"
@@ -249,3 +249,25 @@ def test_decode_issue_22() -> None:
     assert device.timestamp is not None
     assert device.cl_free == 0.59
     assert device.redox is None
+
+
+def test_decode_issue_28() -> None:
+    """Test decoding data from issue #28."""
+
+    data = bytearray.fromhex(
+        "068fffff0e0119061d113428000002ee019001902300ff006f011c32aa48000000000000004720c5"
+        "068fffff0e0319061d1134284c2803200a0014001605160a02d3010c07110006ff2800780e10021b"
+        "068fffff0e0219061d1134280012003c330434ff003c2d2f323402580a0bb80f0f0134ffff990197"
+    )
+
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.type == AsekoDeviceType.SALT
+    assert device.timestamp is not None
+    assert device.cl_free is None
+    assert device.redox == 400
+    assert device.ph == 7.5
+    assert device.salinity == 3.5
+    assert device.electrolyzer_power == 0
+    assert device.electrolyzer_active is False
+    assert device.electrolyzer_direction == AsekoElectrolyzerDirection.WAITING
+    assert device.water_temperature == 28.4

@@ -158,11 +158,10 @@ class AsekoDecoder:
         unit: AsekoDevice,
         data: bytes,
     ) -> None:
-        if data[21]:
-            unit.salinity = data[20] / 10
-            unit.electrolyzer_power = data[21] if data[29] & ELECTROLYZER_RUNNING else 0
-            unit.electrolyzer_active = bool(data[29] & ELECTROLYZER_RUNNING)
-            unit.electrolyzer_direction = AsekoDecoder._electrolyzer_direction(data)
+        unit.salinity = data[20] / 10
+        unit.electrolyzer_power = data[21] if data[29] & ELECTROLYZER_RUNNING else 0
+        unit.electrolyzer_active = bool(data[29] & ELECTROLYZER_RUNNING)
+        unit.electrolyzer_direction = AsekoDecoder._electrolyzer_direction(data)
 
     @staticmethod
     def decode(data: bytes) -> AsekoDevice:
