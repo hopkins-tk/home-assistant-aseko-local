@@ -178,7 +178,7 @@ class AsekoDecoder:
             water_flow_to_probes=(data[28] == WATER_FLOW_TO_PROBES),
             pump_running=bool(data[29] & PUMP_RUNNING),
             required_algicide=data[54],
-            required_temperature=data[55],
+            required_water_temperature=data[55],
             start1=AsekoDecoder._time(data[56:58]),
             stop1=AsekoDecoder._time(data[58:60]),
             start2=AsekoDecoder._time(data[60:62]),

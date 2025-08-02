@@ -60,7 +60,7 @@ class AsekoDevice:
     required_redox: int | None = None  # byte 53*10
     required_cl_free: float | None = None  # byte 53*10?
     required_algicide: int | None = None  # byte 54
-    required_temperature: int | None = None  # byte 55
+    required_water_temperature: int | None = None  # byte 55
 
     start1: time | None = None  # byte 56 & 57
     stop1: time | None = None  # byte 58 & 59

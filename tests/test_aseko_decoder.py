@@ -31,7 +31,7 @@ def _make_base_bytes(size: int = 120) -> bytearray:
     data[28] = WATER_FLOW_TO_PROBES
     data[29] = 0x08  # pump_running
     data[54] = 5  # required_algicide
-    data[55] = 28  # required_temperature
+    data[55] = 28  # required_water_temperature
     data[56] = 8  # start1 hour
     data[57] = 0  # start1 min
     data[58] = 10  # stop1 hour
@@ -104,7 +104,7 @@ def test_decode_home() -> None:
     assert device.backwash_time == time(2, 30)
     assert device.backwash_duration == 20
     assert device.required_algicide == 5
-    assert device.required_temperature == 28
+    assert device.required_water_temperature == 28
     assert device.timestamp is not None
     assert device.timestamp.year == YEAR_OFFSET + 24
     assert device.timestamp.month == 6
