@@ -53,8 +53,23 @@
       "free_chlorine": {
         "name": "Free chlorine"
       },
+      "ph": {
+        "name": "pH"
+      },
       "redox": {
         "name": "Redox potential"
+      },
+      "required_free_chlorine": {
+        "name": "Required free chlorine"
+      },
+      "required_ph": {
+        "name": "Required pH"
+      },
+      "required_redox": {
+        "name": "Required redox potential"
+      },
+      "required_water_temperature": {
+        "name": "Required water temperature"
       },
       "salinity": {
         "name": "Salinity"

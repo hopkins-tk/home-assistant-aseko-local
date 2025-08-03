@@ -62,11 +62,27 @@ SENSORS: list[AsekoSensorEntityDescription] = [
         value_fn=lambda device: device.cl_free,
     ),
     AsekoSensorEntityDescription(
+        key="required_free_chlorine",
+        translation_key="required_free_chlorine",
+        native_unit_of_measurement="mg/l",
+        state_class=SensorStateClass.MEASUREMENT,
+        icon="mdi:pool",
+        value_fn=lambda device: device.required_cl_free,
+    ),
+    AsekoSensorEntityDescription(
         key="ph",
         device_class=SensorDeviceClass.PH,
         state_class=SensorStateClass.MEASUREMENT,
         icon="mdi:pool",
         value_fn=lambda device: device.ph,
+    ),
+    AsekoSensorEntityDescription(
+        key="required_ph",
+        translation_key="required_ph",
+        device_class=SensorDeviceClass.PH,
+        state_class=SensorStateClass.MEASUREMENT,
+        icon="mdi:pool",
+        value_fn=lambda device: device.required_ph,
     ),
     AsekoSensorEntityDescription(
         key="rx",
@@ -75,6 +91,14 @@ SENSORS: list[AsekoSensorEntityDescription] = [
         state_class=SensorStateClass.MEASUREMENT,
         icon="mdi:pool",
         value_fn=lambda device: device.redox,
+    ),
+    AsekoSensorEntityDescription(
+        key="required_rx",
+        translation_key="required_redox",
+        native_unit_of_measurement=UnitOfElectricPotential.MILLIVOLT,
+        state_class=SensorStateClass.MEASUREMENT,
+        icon="mdi:pool",
+        value_fn=lambda device: device.required_redox,
     ),
     AsekoSensorEntityDescription(
         key="salinity",
@@ -92,6 +116,15 @@ SENSORS: list[AsekoSensorEntityDescription] = [
         state_class=SensorStateClass.MEASUREMENT,
         icon="mdi:pool-thermometer",
         value_fn=lambda device: device.water_temperature,
+    ),
+    AsekoSensorEntityDescription(
+        key="required_waterTemp",
+        translation_key="required_water_temperature",
+        device_class=SensorDeviceClass.TEMPERATURE,
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        state_class=SensorStateClass.MEASUREMENT,
+        icon="mdi:pool-thermometer",
+        value_fn=lambda device: device.required_water_temperature,
     ),
 ]
 

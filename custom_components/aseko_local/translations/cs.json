@@ -53,8 +53,23 @@
       "free_chlorine": {
         "name": "Volný chlor"
       },
+      "ph": {
+        "name": "pH"
+      },
       "redox": {
         "name": "Redox potenciál"
+      },
+      "required_free_chlorine": {
+        "name": "Požadovaný volný chlor"
+      },
+      "required_ph": {
+        "name": "Požadovaný pH"
+      },
+      "required_redox": {
+        "name": "Požadovaný redox potenciál"
+      },
+      "required_water_temperature": {
+        "name": "Požadovaná teplota vody"
       },
       "salinity": {
         "name": "Salinita"
