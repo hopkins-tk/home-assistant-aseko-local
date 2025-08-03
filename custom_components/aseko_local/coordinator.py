@@ -19,8 +19,6 @@ _LOGGER = logging.getLogger(__name__)
 class AsekoLocalDataUpdateCoordinator(DataUpdateCoordinator[AsekoData]):
     """Aseko Local coordinator."""
 
-    data: AsekoData | None = None
-
     def __init__(
         self,
         hass: HomeAssistant,
@@ -51,6 +49,10 @@ class AsekoLocalDataUpdateCoordinator(DataUpdateCoordinator[AsekoData]):
             is_new_device = new_data.get(device.serial_number) is None
             new_data.set(device.serial_number, device)
 
+        _LOGGER.debug(
+            "Aseko sensors update for serial number: %s",
+            device.serial_number,
+        )
         self.async_set_updated_data(new_data)
 
         if is_new_device:
