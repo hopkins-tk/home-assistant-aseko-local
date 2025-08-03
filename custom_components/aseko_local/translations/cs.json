@@ -63,7 +63,7 @@
         "name": "Požadovaný volný chlor"
       },
       "required_ph": {
-        "name": "Požadovaný pH"
+        "name": "Požadované pH"
       },
       "required_redox": {
         "name": "Požadovaný redox potenciál"
