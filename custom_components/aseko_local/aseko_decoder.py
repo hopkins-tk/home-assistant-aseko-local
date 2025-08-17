@@ -79,25 +79,44 @@ class AsekoDecoder:
         return probes
 
     @staticmethod
-    def _timestamp(
-        data: bytes,
-    ) -> datetime | None:
-        """Decode datetime from the bynary data."""
-
+    def _timestamp(data: bytes) -> datetime | None:
         if data[6] != UNSPECIFIED_VALUE:
-            return datetime(
-                year=YEAR_OFFSET + data[6],
-                month=data[7],
-                day=data[8],
-                hour=data[9],
-                minute=data[10],
-                second=data[11],
-                tzinfo=homeassistant.util.dt.get_default_time_zone(),
-            )
+            try:
+                year = YEAR_OFFSET + data[6]
+                month = data[7]
+                day = data[8]
+                hour = data[9]
+                minute = data[10]
+                second = data[11]
 
-        return datetime.now(
-            tz=homeassistant.util.dt.get_default_time_zone(),
-        )
+                if not (1 <= month <= 12):
+                    month = 1
+                if not (1 <= day <= 31):
+                    day = 1
+                if not (0 <= hour <= 23):
+                    hour = 0
+                if not (0 <= minute <= 59):
+                    minute = 0
+                if not (0 <= second <= 59):
+                    second = 0
+
+                return datetime(
+                    year=year,
+                    month=month,
+                    day=day,
+                    hour=hour,
+                    minute=minute,
+                    second=second,
+                    tzinfo=homeassistant.util.dt.get_default_time_zone(),
+                )
+            except ValueError as e:
+                _LOGGER.warning(
+                    "Received invalid timestamp (%s) – falling back to now(). Frame: %s",
+                    e,
+                    data.hex(),
+                )
+                return datetime.now(tz=homeassistant.util.dt.get_default_time_zone())
+        return datetime.now(tz=homeassistant.util.dt.get_default_time_zone())
 
     @staticmethod
     def _time(
