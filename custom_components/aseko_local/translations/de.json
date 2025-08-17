@@ -1,0 +1,94 @@
+{
+  "config": {
+    "abort": {
+      "already_configured": "Gerät ist bereits konfiguriert",
+      "reconfigure_successful": "Neukonfiguration erfolgreich"
+    },
+    "error": {
+      "cannot_connect": "Verbindung fehlgeschlagen",
+      "unknown": "Unerwarteter Fehler"
+    },
+    "step": {
+      "user": {
+        "data": {
+          "host": "Binden auf IP-Adresse",
+          "port": "Port"
+        }  
+      },
+      "reconfigure": {
+        "data": {
+          "host": "Binden auf IP-Adresse",
+          "port": "Port"
+        }
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "options_init": {
+        "data": {
+          "proxy_enabled": "Cloud-Weiterleitung aktivieren",
+          "proxy_host": "Cloud-Host",
+          "proxy_port": "Cloud-Port",
+          "enable_raw_logging": "Raw-Log aktivieren"
+        }
+      }
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "electrolyzer_active": {
+        "name": "Elektrolysegerät aktiv"
+      },
+      "pump_running": {
+        "name": "Pumpe läuft"
+      },
+      "water_flow_to_probes": {
+        "name": "Wasserfluss zu Sonden"
+      }
+    },
+    "sensor": {
+      "air_temperature": {
+        "name": "Lufttemperatur"
+      },
+      "electrolyzer_power": {
+        "name": "Leistung des Elektrolysegeräts"
+      },
+      "electrolyzer_direction": {
+        "name": "Richtung des Elektrolysegeräts",
+        "state": {
+          "left": "Links",
+          "right": "Rechts",
+          "waiting": "Warten"
+        }
+      },
+      "free_chlorine": {
+        "name": "Freies Chlor"
+      },
+      "ph": {
+        "name": "pH"
+      },
+      "redox": {
+        "name": "Redoxpotential"
+      },
+      "required_free_chlorine": {
+        "name": "Erforderliches freies Chlor"
+      },
+      "required_ph": {
+        "name": "Erforderlicher pH-Wert"
+      },
+      "required_redox": {
+        "name": "Erforderliches Redoxpotential"
+      },
+      "required_water_temperature": {
+        "name": "Erforderliche Wassertemperatur"
+      },
+      "salinity": {
+        "name": "Salzgehalt"
+      },
+      "water_temperature": {
+        "name": "Wassertemperatur"
+      }
+    }
+  }
+}

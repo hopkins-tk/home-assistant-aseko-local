@@ -23,6 +23,18 @@
       }
     }
   },
+  "options": {
+    "step": {
+      "options_init": {
+        "data": {
+          "proxy_enabled": "Povolit přeposílání přes cloudový proxy server",
+          "proxy_host": "Hostitel cloudového proxy serveru",
+          "proxy_port": "Port cloudového proxy serveru",
+          "enable_raw_logging": "Povolit záznam surových dat"
+        }
+      }
+    }
+  },
   "entity": {
     "binary_sensor": {
       "electrolyzer_active": {

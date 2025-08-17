@@ -23,6 +23,18 @@
       }
     }
   },
+  "options": {
+    "step": {
+      "options_init": {
+        "data": {
+          "proxy_enabled": "Enable cloud proxy forwarding",
+          "proxy_host": "Cloud proxy host",
+          "proxy_port": "Cloud proxy port",
+          "enable_raw_logging": "Enable raw log"
+        }
+      }
+    }
+  },
   "entity": {
     "binary_sensor": {
       "electrolyzer_active": {
