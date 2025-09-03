@@ -2,7 +2,7 @@
   "config": {
     "abort": {
       "already_configured": "Gerät ist bereits konfiguriert",
-      "reconfigure_successful": "Neukonfiguration erfolgreich"
+      "reconfigure_successful": "Neu-Konfiguration erfolgreich"
     },
     "error": {
       "cannot_connect": "Verbindung fehlgeschlagen",
@@ -11,13 +11,14 @@
     "step": {
       "user": {
         "data": {
-          "host": "Binden auf IP-Adresse",
+          "host": "Mit IP-Adresse binden",
           "port": "Port"
-        }  
+        },
+        "description": "Bitte geben Sie Port ein. Die IP-Adresse kann in der Regel auf 0.0.0.0 belassen werden."
       },
       "reconfigure": {
         "data": {
-          "host": "Binden auf IP-Adresse",
+          "host": "Mit IP-Adresse binden",
           "port": "Port"
         }
       }
@@ -30,7 +31,7 @@
           "proxy_enabled": "Cloud-Weiterleitung aktivieren",
           "proxy_host": "Cloud-Host",
           "proxy_port": "Cloud-Port",
-          "enable_raw_logging": "Raw-Log aktivieren"
+          "enable_raw_logging": "Roh-Logging aktivieren"
         }
       }
     }
@@ -38,13 +39,13 @@
   "entity": {
     "binary_sensor": {
       "electrolyzer_active": {
-        "name": "Elektrolysegerät aktiv"
+        "name": "Elektrolyseur aktiv"
       },
       "pump_running": {
         "name": "Pumpe läuft"
       },
       "water_flow_to_probes": {
-        "name": "Wasserfluss zu Sonden"
+        "name": "Wasserfluss zu den Sensoren"
       }
     },
     "sensor": {
@@ -52,42 +53,132 @@
         "name": "Lufttemperatur"
       },
       "electrolyzer_power": {
-        "name": "Leistung des Elektrolysegeräts"
+        "name": "Elektrolyseur-Leistung"
       },
       "electrolyzer_direction": {
-        "name": "Richtung des Elektrolysegeräts",
+        "name": "Elektrolyseur-Richtung",
         "state": {
           "left": "Links",
           "right": "Rechts",
-          "waiting": "Warten"
+          "waiting": "Wartend"
         }
       },
       "free_chlorine": {
         "name": "Freies Chlor"
       },
+      "free_chlorine_mv": {
+        "name": "Freies Chlor in mV"
+      },
       "ph": {
-        "name": "pH"
+        "name": "pH-Wert"
       },
       "redox": {
-        "name": "Redoxpotential"
+        "name": "Redox-Potential"
       },
       "required_free_chlorine": {
-        "name": "Erforderliches freies Chlor"
+        "name": "Benötigtes freies Chlor"
       },
       "required_ph": {
-        "name": "Erforderlicher pH-Wert"
+        "name": "Benötigter pH-Wert"
       },
       "required_redox": {
-        "name": "Erforderliches Redoxpotential"
+        "name": "Benötigtes Redox-Potential"
       },
       "required_water_temperature": {
-        "name": "Erforderliche Wassertemperatur"
+        "name": "Benötigte Wassertemperatur"
       },
       "salinity": {
         "name": "Salzgehalt"
       },
       "water_temperature": {
         "name": "Wassertemperatur"
+      },
+      "active_pump": {
+        "name": "Dosiereinheit läuft für Chemie",
+        "state": {
+          "off": "Keine",
+          "chlor_pure": "Chlor",
+          "ph_minus": "pH-",
+          "ph_plus": "pH+",
+          "floc_plus_c": "Flockungsmittel"
+        }
+      },
+      "flowrate_chlor": {
+        "name": "Durchflussrate Chlor"
+      },
+      "flowrate_ph_minus": {
+        "name": "Durchflussrate pH-"
+      },
+      "flowrate_ph_plus": {
+        "name": "Durchflussrate pH+"
+      },
+      "flowrate_floc": {
+        "name": "Durchflussrate Flockungsmittel"
+      },
+
+      "chlor_consumed": {
+        "name": "Chlor verbraucht (seit Nachfüllung)"
+      },
+      "chlor_total_consumed": {
+        "name": "Chlor verbraucht (gesamt)"
+      },
+      "chlor_remaining": {
+        "name": "Chlor verbleibend"
+      },
+      "ph_minus_consumed": {
+        "name": "pH- verbraucht (seit Nachfüllung)"
+      },
+      "ph_minus_total_consumed": {
+        "name": "pH- verbraucht (gesamt)"
+      },
+      "ph_minus_remaining": {
+        "name": "pH- verbleibend"
+      },
+      "ph_plus_consumed": {
+        "name": "pH+ verbraucht (seit Nachfüllung)"
+      },
+      "ph_plus_total_consumed": {
+        "name": "pH+ verbraucht (gesamt)"
+      },
+      "ph_plus_remaining": {
+        "name": "pH+ verbleibend"
+      },
+      "floc_consumed": {
+        "name": "Flockungsmittel verbraucht (seit Nachfüllung)"
+      },
+      "floc_total_consumed": {
+        "name": "Flockungsmittel verbraucht (gesamt)"
+      },
+      "floc_remaining": {
+        "name": "Flockungsmittel verbleibend"
+      }
+    },
+    "number": {
+      "chlor_last_filled_quantity": {
+        "name": "Letzte Chlor-Nachfüllmenge"
+      },
+      "ph_minus_last_filled_quantity": {
+        "name": "Letzte pH--Nachfüllmenge"
+      },
+      "ph_plus_last_filled_quantity": {
+        "name": "Letzte pH+-Nachfüllmenge"
+      },
+      "floc_last_filled_quantity": {
+        "name": "Letzte Flockungsmittel-Nachfüllmenge"
+      }
+    },
+    "button": {
+      "chlor_refill_reset": {
+        "name": "Chlor nachfüllen"
+      },
+      "ph_minus_refill_reset": {
+        "name": "pH- nachfüllen"
+      },
+      "ph_plus_refill_reset": {
+        "name": "pH+ nachfüllen"
+      },
+      "floc_refill_reset": {
+        "name": "Flockungsmittel nachfüllen"
       }
     }
   }

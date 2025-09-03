@@ -5,19 +5,20 @@
       "reconfigure_successful": "Reconfiguration successful"
     },
     "error": {
-      "cannot_connect": "Failed to connect",
+      "cannot_connect": "Connection failed",
       "unknown": "Unexpected error"
     },
     "step": {
       "user": {
         "data": {
-          "host": "Listen on (IP address)",
+          "host": "Bind to IP address",
           "port": "Port"
-        }
+        },
+        "description": "Please the port number. The IP address can usually be left to 0.0.0.0"
       },
       "reconfigure": {
         "data": {
-          "host": "Listen on (IP address)",
+          "host": "Bind to IP address",
           "port": "Port"
         }
       }
@@ -27,10 +28,10 @@
     "step": {
       "options_init": {
         "data": {
-          "proxy_enabled": "Enable cloud proxy forwarding",
-          "proxy_host": "Cloud proxy host",
-          "proxy_port": "Cloud proxy port",
-          "enable_raw_logging": "Enable raw log"
+          "proxy_enabled": "Enable cloud forwarding",
+          "proxy_host": "Cloud host",
+          "proxy_port": "Cloud port",
+          "enable_raw_logging": "Enable raw logging"
         }
       }
     }
@@ -65,6 +66,9 @@
       "free_chlorine": {
         "name": "Free chlorine"
       },
+      "free_chlorine_mv": {
+        "name": "Free chlorine in mV"
+      },
       "ph": {
         "name": "pH"
       },
@@ -75,7 +79,7 @@
         "name": "Required free chlorine"
       },
       "required_ph": {
-        "name": "Required pH"
+        "name": "Required pH value"
       },
       "required_redox": {
         "name": "Required redox potential"
@@ -88,6 +92,93 @@
       },
       "water_temperature": {
         "name": "Water temperature"
+      },
+      "active_pump": {
+        "name": "Dosing pump running for chemistry",
+        "state": {
+          "off": "None",
+          "chlor_pure": "Chlorine",
+          "ph_minus": "pH-",
+          "ph_plus": "pH+",
+          "floc_plus_c": "Flocculant"
+        }
+      },
+      "flowrate_chlor": {
+        "name": "Flow rate chlorine"
+      },
+      "flowrate_ph_minus": {
+        "name": "Flow rate pH-"
+      },
+      "flowrate_ph_plus": {
+        "name": "Flow rate pH+"
+      },
+      "flowrate_floc": {
+        "name": "Flow rate flocculation"
+      },
+
+      "chlor_consumed": {
+        "name": "Chlorine consumed (since refill)"
+      },
+      "chlor_total_consumed": {
+        "name": "Chlorine consumed (total)"
+      },
+      "chlor_remaining": {
+        "name": "Chlorine remaining"
+      },
+      "ph_minus_consumed": {
+        "name": "pH- consumed (since refill)"
+      },
+      "ph_minus_total_consumed": {
+        "name": "pH- consumed (total)"
+      },
+      "ph_minus_remaining": {
+        "name": "pH- remaining"
+      },
+      "ph_plus_consumed": {
+        "name": "pH+ consumed (since refill)"
+      },
+      "ph_plus_total_consumed": {
+        "name": "pH+ consumed (total)"
+      },
+      "ph_plus_remaining": {
+        "name": "pH+ remaining"
+      },
+      "floc_consumed": {
+        "name": "Flocculant consumed (since refill)"
+      },
+      "floc_total_consumed": {
+        "name": "Flocculant consumed (total)"
+      },
+      "floc_remaining": {
+        "name": "Flocculant remaining"
+      }
+    },
+    "number": {
+      "chlor_last_filled_quantity": {
+        "name": "Chlorine last filled quantity"
+      },
+      "ph_minus_last_filled_quantity": {
+        "name": "pH- last filled quantity"
+      },
+      "ph_plus_last_filled_quantity": {
+        "name": "pH+ last filled quantity"
+      },
+      "floc_last_filled_quantity": {
+        "name": "Flocculant last filled quantity"
+      }
+    },
+    "button": {
+      "chlor_refill_reset": {
+        "name": "Chlorine refill"
+      },
+      "ph_minus_refill_reset": {
+        "name": "pH- refill"
+      },
+      "ph_plus_refill_reset": {
+        "name": "pH+ refill"
+      },
+      "floc_refill_reset": {
+        "name": "Flocculant refill"
       }
     }
   }

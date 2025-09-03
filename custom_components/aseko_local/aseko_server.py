@@ -1,6 +1,4 @@
-"""Server for receiving and parsing Aseko unit data."""
-
-from __future__ import annotations
+"""Robuster Server für Aseko-Geräte mit Forwarder."""
 
 import asyncio
 import logging
@@ -10,13 +8,12 @@ from typing import ClassVar, Optional, Any
 from .aseko_data import AsekoDevice
 from .aseko_decoder import AsekoDecoder
 from .const import DEFAULT_BINDING_ADDRESS, DEFAULT_BINDING_PORT, MESSAGE_SIZE
-from .logging_helper import LoggingHelper  # Neuer zentraler Logger
+from .logging_helper import LoggingHelper
 
 _LOGGER = logging.getLogger(__name__)
 
-
 class AsekoDeviceServer:
-    """Async TCP server for receiving and parsing Aseko unit data."""
+    """Async TCP server für Aseko-Gerätedaten."""
 
     _instances: ClassVar[dict[str, "AsekoDeviceServer"]] = {}
 
@@ -24,148 +21,146 @@ class AsekoDeviceServer:
         self,
         host: str = DEFAULT_BINDING_ADDRESS,
         port: int = DEFAULT_BINDING_PORT,
-        on_data: Callable[[AsekoDevice], Any] | None = None,
+        on_data: Optional[Callable[[AsekoDevice], Any]] = None,
         raw_sink: Optional[Callable[[bytes], Any]] = None,
-        log_helper: Optional[LoggingHelper] = None,  # Neu
+        log_helper: Optional[LoggingHelper] = None,
     ) -> None:
-        """Initialize the server."""
         self.host = host
         self.port = port
-        self.on_data = on_data  # callback with decoded AsekoDevice
-        self._server: asyncio.AbstractServer | None = None
-
-        # Optional raw sink (receives the raw 120-byte frame)
-        self._raw_sink: Optional[Callable[[bytes], Any]] = raw_sink
-
-        # Optional forward callback (e.g. cloud mirror). Receives raw bytes.
+        self.on_data = on_data
+        self._raw_sink = raw_sink
         self._forward_cb: Optional[Callable[[bytes], Any]] = None
-
-        # Zentraler Logger
-        self._log_helper: Optional[LoggingHelper] = log_helper
+        self._log_helper = log_helper
+        self._server: Optional[asyncio.AbstractServer] = None
+        self._clients: set[asyncio.StreamWriter] = set()
 
     async def start(self) -> None:
-        """Start the TCP server."""
         try:
             self._server = await asyncio.start_server(
                 self._handle_client, self.host, self.port
             )
-            _LOGGER.info("AsekoUnitServer started on %s:%d", self.host, self.port)
+            _LOGGER.info("AsekoDeviceServer gestartet auf %s:%d", self.host, self.port)
         except OSError as err:
-            _LOGGER.error("Failed to start AsekoUnitServer: %s", err)
-            message = f"Failed to start server: {err}"
-            raise ServerConnectionError(message) from err
+            _LOGGER.error("Serverstart fehlgeschlagen: %s", err)
+            raise ServerConnectionError(f"Failed to start server: {err}") from err
 
     async def stop(self) -> None:
-        """Stop the TCP server."""
-        if self._server is not None:
+        if self._server:
+            for w in list(self._clients):
+                try:
+                    w.close()
+                    await w.wait_closed()
+                except Exception:
+                    pass
+            self._clients.clear()
             self._server.close()
             await self._server.wait_closed()
             self._server = None
-            _LOGGER.info("AsekoUnitServer stopped")
+            _LOGGER.info("AsekoDeviceServer gestoppt")
 
     @property
     def running(self) -> bool:
         """Check if the server is running."""
         return self._server is not None and self._server.is_serving()
 
-    async def _maybe_await(self, fn_result: Any) -> None:
-        """Await result if it is an awaitable; otherwise do nothing."""
-        if asyncio.iscoroutine(fn_result):
-            await fn_result
+    async def _maybe_await(self, result: Any) -> None:
+        if asyncio.iscoroutine(result):
+            await result
 
     async def _call_raw_sink(self, data: bytes) -> None:
-        """Call raw sink if present (sync or async), swallow errors."""
-        sink = self._raw_sink
-        if sink is None:
-            return
-        try:
-            res = sink(data)
-            if asyncio.iscoroutine(res):
-                await res
-        except Exception:  # pragma: no cover
-            _LOGGER.debug("Raw sink raised an exception.", exc_info=True)
+        if self._raw_sink:
+            try:
+                await self._maybe_await(self._raw_sink(data))
+            except Exception:
+                _LOGGER.debug("Raw sink raised an exception", exc_info=True)
 
     async def _call_forward_cb(self, data: bytes) -> None:
-        """Call forward callback if present (sync or async), swallow errors."""
-        cb = self._forward_cb
-        if cb is None:
-            return
-        try:
-            _LOGGER.debug("Forward callback called with %d bytes", len(data))
-            res = cb(data)
-            if asyncio.iscoroutine(res):
-                await res
-        except Exception:
-            _LOGGER.debug("Forward callback raised an exception.", exc_info=True)
+        if self._forward_cb:
+            try:
+                _LOGGER.debug("Forward callback called with %d bytes", len(data))
+                await self._maybe_await(self._forward_cb(data))
+            except Exception:
+                _LOGGER.debug("Forward callback raised an exception", exc_info=True)
 
     async def _maybe_call_on_data(self, device: AsekoDevice) -> None:
-        """Call on_data if present (sync or async)."""
-        cb = self.on_data
-        if cb is None:
-            return
-        try:
-            res = cb(device)
-            if asyncio.iscoroutine(res):
-                await res
-        except Exception:
-            _LOGGER.debug("on_data callback raised an exception.", exc_info=True)
+        if self.on_data:
+            try:
+                await self._maybe_await(self.on_data(device))
+            except Exception:
+                _LOGGER.debug("on_data callback raised an exception", exc_info=True)
 
     async def _handle_client(
         self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
     ) -> None:
-        """Handle incoming client connection with frame buffering."""
         addr = writer.get_extra_info("peername")
         _LOGGER.debug("Connection from %s", addr)
-
-        buffer = b""
+        self._clients.add(writer)
 
         try:
             while True:
-                chunk = await reader.read(1024)
-                if not chunk:
-                    _LOGGER.debug("Client %s closed connection", addr)
+                try:
+                    # ✅ Read exactly MESSAGE_SIZE bytes per frame
+                    frame = await reader.readexactly(MESSAGE_SIZE)
+
+                    _LOGGER.info(
+                        "Frame received from %s (%d bytes):\n%s",
+                        addr,
+                        len(frame),
+                        frame.hex(" ", 1)  # print as spaced hex string
+                    )
+
+                except asyncio.IncompleteReadError:
+                    _LOGGER.debug("Client %s closed the connection", addr)
                     break
 
-                buffer += chunk
+                # Forward raw data (e.g. for debugging or mirroring)
+                await self._call_raw_sink(frame)
+                await self._call_forward_cb(frame)
 
-                while len(buffer) >= MESSAGE_SIZE:
-                    frame = buffer[:MESSAGE_SIZE]
-                    buffer = buffer[MESSAGE_SIZE:]
+                # Try to decode the frame
+                try:
 
-                    await self._call_raw_sink(frame)
-                    await self._call_forward_cb(frame)
-
-                    try:
-                        device = AsekoDecoder.decode(frame)
-                    except ValueError as e:
+                    # 🔎 Plausibility check: pH values must be between 0 and 14
+                    if not (0 <= (int.from_bytes(frame[14:16], "big") / 100) <= 14):
                         _LOGGER.warning(
-                            "Skipping invalid frame from %s (%s): %s",
-                            addr,
-                            e,
-                            frame.hex(),
+                            "Unreasonable pH value (%s) received from %s → closing connection",
+                            device.ph, addr
                         )
-                        continue
+                        break  # leave loop → connection will be closed
+
+                    if not (6 <= (frame[52] / 10) <= 10):
+                        _LOGGER.warning(
+                            "Unreasonable required pH value (%s) received from %s → closing connection",
+                            device.required_ph, addr
+                        )
+                        break  # leave loop → connection will be closed
+
+                    device = AsekoDecoder.decode(frame, log_helper=self._log_helper)  # Logger temporary only
+
+                except ValueError as e:
+                    _LOGGER.warning("Invalid frame from %s: %s → closing connection", addr, e)
+                    break
+                except Exception:
+                    _LOGGER.exception("Decoding error for data from %s → closing connection", addr)
+                    break
+
+                _LOGGER.debug("Decoded data from %s: %s", addr, device)
+
+                # Optional: log flowrates
+                if self._log_helper:
+                    try:
+                        self._log_helper.log_flowrates("AsekoDeviceServer", device)
                     except Exception:
-                        _LOGGER.exception("Unexpected error decoding frame from %s", addr)
-                        continue
+                        _LOGGER.debug("Flowrate logging failed", exc_info=True)
 
-                    _LOGGER.debug("Received data parsed as %s", device)
-
-                    if self._log_helper is not None:
-                        try:
-                            self._log_helper.log_flowrates("AsekoDeviceServer", device)
-                        except Exception:
-                            _LOGGER.debug("Flowrate logging failed", exc_info=True)
-
-                    await self._maybe_call_on_data(device)
+                # Send decoded data to higher layer
+                await self._maybe_call_on_data(device)
 
         except ConnectionResetError:
-            _LOGGER.debug("Client %s closed connection unexpectedly", addr)
-        except asyncio.IncompleteReadError:
-            _LOGGER.debug("Connection from %s closed", addr)
-        except Exception:
-            _LOGGER.exception("Error while handling client %s", addr)
+            _LOGGER.warning("Client %s reset the connection", addr)
         finally:
+            # Clean up and close connection
+            self._clients.discard(writer)
             try:
                 writer.close()
                 await writer.wait_closed()
@@ -173,66 +168,49 @@ class AsekoDeviceServer:
                 pass
 
 
+    # Forwarder setzen
+    def set_forward_callback(self, callback: Optional[Callable[[bytes], Any]]) -> None:
+        self._forward_cb = callback
+        if callback:
+            _LOGGER.info("Forward callback registriert")
+        else:
+            _LOGGER.info("Forward callback entfernt")
+
     @classmethod
     async def create(
         cls,
         host: str = DEFAULT_BINDING_ADDRESS,
         port: int = DEFAULT_BINDING_PORT,
-        on_data: Callable[[AsekoDevice], Any] | None = None,
+        on_data: Optional[Callable[[AsekoDevice], Any]] = None,
         raw_sink: Optional[Callable[[bytes], Any]] = None,
         log_helper: Optional[LoggingHelper] = None,
     ) -> "AsekoDeviceServer":
-        """Get or create an instance of AsekoUnitServer for the given host and port."""
         key = f"{host}:{port}"
         if key not in cls._instances:
-            cls._instances[key] = AsekoDeviceServer(
-                host, port, on_data, raw_sink, log_helper
-            )
+            cls._instances[key] = AsekoDeviceServer(host, port, on_data, raw_sink, log_helper)
             await cls._instances[key].start()
         else:
-            # Update handlers if instance already exists
-            if raw_sink is not None:
+            if raw_sink:
                 cls._instances[key]._raw_sink = raw_sink
-            if on_data is not None:
+            if on_data:
                 cls._instances[key].on_data = on_data
-            if log_helper is not None:
+            if log_helper:
                 cls._instances[key]._log_helper = log_helper
         return cls._instances[key]
 
     @classmethod
     async def remove(cls, host: str, port: int) -> None:
-        """Remove an instance of AsekoUnitServer for the given host and port."""
         key = f"{host}:{port}"
-        if key in cls._instances and cls._instances[key] is not None:
+        if key in cls._instances:
             await cls._instances[key].stop()
             del cls._instances[key]
 
-    # Public API to set forwarder at runtime
-    def set_forward_callback(self, callback: Optional[Callable[[bytes], Any]]) -> None:
-        """Register or clear the forward callback that receives raw bytes."""
-        self._forward_cb = callback
-        if callback is None:
-            _LOGGER.info("Forward callback cleared.")
-        else:
-            _LOGGER.info("Forward callback registered.")
-
-    # Optional: allow setting/changing the raw sink later
-    def set_raw_sink(self, sink: Optional[Callable[[bytes], Any]]) -> None:
-        """Register or clear the raw sink callback."""
-        self._raw_sink = sink
-        if sink is None:
-            _LOGGER.info("Raw sink cleared.")
-        else:
-            _LOGGER.info("Raw sink registered.")
-
-    def set_log_helper(self, log_helper: Optional[LoggingHelper]) -> None:
-        """Register or clear the log helper instance."""
-        self._log_helper = log_helper
-        if log_helper is None:
-            _LOGGER.info("Log helper cleared.")
-        else:
-            _LOGGER.info("Log helper registered.")
-
+    @classmethod
+    async def remove_all(cls) -> None:
+        """Stop all running servers and free sockets cleanly."""
+        for srv in list(cls._instances.values()):
+            await srv.stop()
+        cls._instances.clear()
 
 class ServerConnectionError(Exception):
-    """Exception class for connection error."""
+    """Exception für Verbindungsfehler."""

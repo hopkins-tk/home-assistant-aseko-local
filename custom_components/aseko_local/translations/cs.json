@@ -2,22 +2,23 @@
   "config": {
     "abort": {
       "already_configured": "Zařízení je již nakonfigurováno",
-      "reconfigure_successful": "Nastavení bylo úspěšně změněno"
+      "reconfigure_successful": "Znovu-nakonfigurováno úspěšně"
     },
     "error": {
-      "cannot_connect": "Nepodařilo se připojit",
+      "cannot_connect": "Připojení selhalo",
       "unknown": "Neočekávaná chyba"
     },
     "step": {
       "user": {
         "data": {
-          "host": "Naslouchat na (IP adrese)",
+          "host": "Přiřadit k IP adrese",
           "port": "Port"
-        }
+        },
+        "description": "Zadejte číslo portu. IP adresa může obvykle zůstat 0.0.0.0"
       },
       "reconfigure": {
         "data": {
-          "host": "Naslouchat na (IP adrese)",
+          "host": "Přiřadit k IP adrese",
           "port": "Port"
         }
       }
@@ -27,10 +28,10 @@
     "step": {
       "options_init": {
         "data": {
-          "proxy_enabled": "Povolit přeposílání přes cloudový proxy server",
-          "proxy_host": "Hostitel cloudového proxy serveru",
-          "proxy_port": "Port cloudového proxy serveru",
-          "enable_raw_logging": "Povolit záznam surových dat"
+          "proxy_enabled": "Povolit přesměrování do cloudu",
+          "proxy_host": "Cloud hostitel",
+          "proxy_port": "Cloud port",
+          "enable_raw_logging": "Povolit surové logování"
         }
       }
     }
@@ -44,7 +45,7 @@
         "name": "Čerpadlo běží"
       },
       "water_flow_to_probes": {
-        "name": "Průtok vody k sondám"
+        "name": "Proud vody k sondám"
       }
     },
     "sensor": {
@@ -57,13 +58,16 @@
       "electrolyzer_direction": {
         "name": "Směr elektrolyzéru",
         "state": {
-          "left": "Levá",
-          "right": "Pravá",
+          "left": "Vlevo",
+          "right": "Vpravo",
           "waiting": "Čekání"
         }
       },
       "free_chlorine": {
         "name": "Volný chlor"
+      },
+      "free_chlorine_mv": {
+        "name": "Volný chlor v mV"
       },
       "ph": {
         "name": "pH"
@@ -75,7 +79,7 @@
         "name": "Požadovaný volný chlor"
       },
       "required_ph": {
-        "name": "Požadované pH"
+        "name": "Požadovaná hodnota pH"
       },
       "required_redox": {
         "name": "Požadovaný redox potenciál"
@@ -88,6 +92,93 @@
       },
       "water_temperature": {
         "name": "Teplota vody"
+      },
+      "active_pump": {
+        "name": "Dávkovací čerpadlo běží (chemie)",
+        "state": {
+          "off": "Žádné",
+          "chlor_pure": "Chlor",
+          "ph_minus": "pH-",
+          "ph_plus": "pH+",
+          "floc_plus_c": "Koagulant"
+        }
+      },
+      "flowrate_chlor": {
+        "name": "Průtok chloru"
+      },
+      "flowrate_ph_minus": {
+        "name": "Průtok pH-"
+      },
+      "flowrate_ph_plus": {
+        "name": "Průtok pH+"
+      },
+      "flowrate_floc": {
+        "name": "Průtok koagulantu"
+      },
+
+      "chlor_consumed": {
+        "name": "Spotřeba chloru (od doplnění)"
+      },
+      "chlor_total_consumed": {
+        "name": "Spotřeba chloru (celkem)"
+      },
+      "chlor_remaining": {
+        "name": "Zbývající chlor"
+      },
+      "ph_minus_consumed": {
+        "name": "Spotřeba pH- (od doplnění)"
+      },
+      "ph_minus_total_consumed": {
+        "name": "Spotřeba pH- (celkem)"
+      },
+      "ph_minus_remaining": {
+        "name": "Zbývající pH-"
+      },
+      "ph_plus_consumed": {
+        "name": "Spotřeba pH+ (od doplnění)"
+      },
+      "ph_plus_total_consumed": {
+        "name": "Spotřeba pH+ (celkem)"
+      },
+      "ph_plus_remaining": {
+        "name": "Zbývající pH+"
+      },
+      "floc_consumed": {
+        "name": "Spotřeba koagulantu (od doplnění)"
+      },
+      "floc_total_consumed": {
+        "name": "Spotřeba koagulantu (celkem)"
+      },
+      "floc_remaining": {
+        "name": "Zbývající koagulant"
+      }
+    },
+    "number": {
+      "chlor_last_filled_quantity": {
+        "name": "Poslední doplněné množství chloru"
+      },
+      "ph_minus_last_filled_quantity": {
+        "name": "Poslední doplněné množství pH-"
+      },
+      "ph_plus_last_filled_quantity": {
+        "name": "Poslední doplněné množství pH+"
+      },
+      "floc_last_filled_quantity": {
+        "name": "Poslední doplněné množství koagulantu"
+      }
+    },
+    "button": {
+      "chlor_refill_reset": {
+        "name": "Doplnění chloru"
+      },
+      "ph_minus_refill_reset": {
+        "name": "Doplnění pH-"
+      },
+      "ph_plus_refill_reset": {
+        "name": "Doplnění pH+"
+      },
+      "floc_refill_reset": {
+        "name": "Doplnění koagulantu"
       }
     }
   }

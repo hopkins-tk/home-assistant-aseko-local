@@ -53,15 +53,15 @@ class LoggingHelper:
         if fh:
             fh.write(
                 f"{datetime.datetime.now().isoformat()} [{source}] "
-                f"FlowRates: ChlorPure={device.flow_rates.chlor_pure}, "
+                f"FlowRates: ChlorPure={device.flow_rates.chlor}, "
                 f"pHMinus={device.flow_rates.ph_minus}, "
                 f"pHPlus={device.flow_rates.ph_plus}, "
-                f"FlocPlusC={device.flow_rates.floc_plus_c}\n"
+                f"FlocPlusC={device.flow_rates.floc}\n"
             )
             fh.flush()
 
-    def log_info(self, source: str, message: str):
-        if not self.raw_log_enabled:
+    def log_info(self, source: str, message: str, log: bool = False):
+        if not self.raw_log_enabled and not log:
             return
         fh = self._open_file("info.log", "a")
         if fh:

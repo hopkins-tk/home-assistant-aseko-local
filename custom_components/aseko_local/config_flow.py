@@ -96,6 +96,8 @@ class AsekoLocalConfigFlow(ConfigFlow, domain=DOMAIN):
                 _LOGGER.exception("Unexpected exception")
                 errors["base"] = "unknown"
             else:
+                # 🛑 Server hart stoppen, bevor neu geladen wird
+                await AsekoDeviceServer.remove_all()
                 return self.async_update_reload_and_abort(
                     config_entry,
                     title=info["title"],
@@ -136,33 +138,45 @@ class AsekoLocalOptionsFlowHandler(OptionsFlow):
     """Handle Aseko Local options."""
 
     def __init__(self, config_entry):
-        self.config_entry = config_entry
+        self._entry_id = config_entry.entry_id
 
     async def async_step_init(self, user_input=None):
         return await self.async_step_options_init(user_input)
 
     async def async_step_options_init(self, user_input=None):
         errors = {}
+        config_entry = self.hass.config_entries.async_get_entry(self._entry_id)
+        
         if user_input is not None:
-            return self.async_create_entry(title="", data=user_input)
+            # 🛑 Server hart stoppen, bevor neu geladen wird
+            await AsekoDeviceServer.remove_all()
+
+            # save the options
+            entry = self.async_create_entry(title="", data=user_input)
+
+            # Reload integration to apply new options
+            self.hass.async_create_task(
+                self.hass.config_entries.async_reload(config_entry.entry_id)
+            )
+            return entry
 
         options_schema = vol.Schema(
             {
                 vol.Optional(
                     CONF_PROXY_ENABLED,
-                    default=self.config_entry.options.get(CONF_PROXY_ENABLED, False),
+                    default=config_entry.options.get(CONF_PROXY_ENABLED, False),
                 ): bool,
                 vol.Optional(
                     CONF_PROXY_HOST,
-                    default=self.config_entry.options.get(CONF_PROXY_HOST, DEFAULT_PROXY_HOST),
+                    default=config_entry.options.get(CONF_PROXY_HOST, DEFAULT_PROXY_HOST),
                 ): str,
                 vol.Optional(
                     CONF_PROXY_PORT,
-                    default=self.config_entry.options.get(CONF_PROXY_PORT, DEFAULT_PROXY_PORT),
+                    default=config_entry.options.get(CONF_PROXY_PORT, DEFAULT_PROXY_PORT),
                 ): int,
                 vol.Optional(
                     CONF_ENABLE_RAW_LOGGING,
-                    default=self.config_entry.options.get(CONF_ENABLE_RAW_LOGGING, False),
+                    default=config_entry.options.get(CONF_ENABLE_RAW_LOGGING, False),
                 ): bool,
             }
         )

@@ -2,15 +2,17 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from typing import Optional
 
 from .logging_helper import LoggingHelper
 
+_LOGGER = logging.getLogger(__name__)
 
 class AsekoCloudMirror:
     """Asynchronous TCP forwarder to Aseko Cloud with optional logging via LoggingHelper.
     - Non-blocking: frames are queued and sent by a worker task.
-    - Resilient: reconnects on errors with backoff.
+    - Resilient: reconnects on errors with backoff and also on a fixed interval.
     """
 
     def __init__(
@@ -19,6 +21,7 @@ class AsekoCloudMirror:
         cloud_port: int,
         logger: Optional[logging.Logger] = None,
         log_helper: Optional[LoggingHelper] = None,
+        reconnect_interval: int = 900,  # force reconnect every hour
     ) -> None:
         self._host = cloud_host
         self._port = int(cloud_port)
@@ -27,8 +30,10 @@ class AsekoCloudMirror:
         self._task: Optional[asyncio.Task] = None
         self._writer: Optional[asyncio.StreamWriter] = None
         self._connected_event = asyncio.Event()
+        self._last_connect: float = 0.0
+        self._reconnect_interval = reconnect_interval
 
-        # Zentraler Logger (HEX/BIN/Info)
+        # Central logging helper (hex/bin/info)
         self._log_helper = log_helper
 
     async def start(self) -> None:
@@ -63,15 +68,15 @@ class AsekoCloudMirror:
             try:
                 self._queue.put_nowait(bytes(frame))
             except Exception:
-                self._logger.debug("Mirror queue overflow; frame dropped.")
+                _LOGGER.debug("Mirror queue overflow; frame dropped.")
 
-        # Optional: Logging via zentralem Helper
+        # Optional: log via helper
         if self._log_helper:
             try:
                 self._log_helper.log_hex_frame(frame)
                 self._log_helper.log_bin_frame(frame)
             except Exception:
-                self._logger.debug("Failed to log frame in mirror.", exc_info=True)
+                _LOGGER.debug("Failed to log frame in mirror.", exc_info=True)
 
     async def _worker(self) -> None:
         """Connection loop with reconnect/backoff and queue consumption."""
@@ -83,30 +88,44 @@ class AsekoCloudMirror:
                     try:
                         reader, writer = await asyncio.open_connection(self._host, self._port)
                         self._writer = writer
+                        self._last_connect = time.time()
+
                         self._connected_event.set()
                         backoff = 1.0
-                        self._logger.debug("Mirror connected to %s:%s", self._host, self._port)
+                        _LOGGER.debug("Mirror connected to %s:%s", self._host, self._port)
                         if self._log_helper:
                             self._log_helper.log_info(
                                 "mirror", f"Connected to {self._host}:{self._port}"
                             )
                     except Exception as e:
-                        self._logger.debug("Mirror connect failed: %s", e)
+                        _LOGGER.debug("Mirror connect failed: %s", e)
                         if self._log_helper:
-                            self._log_helper.log_info(
-                                "mirror", f"Connect failed: {e}"
-                            )
+                            self._log_helper.log_info("mirror", f"Connect failed: {e}")
                         await asyncio.sleep(min(backoff, 10.0))
                         backoff = min(backoff * 2.0, 10.0)
                         continue
+
+                # Check reconnect interval
+                if time.time() - self._last_connect > self._reconnect_interval:
+                    _LOGGER.debug(
+                        "Mirror reconnect interval reached (%ds), reconnecting...",
+                        self._reconnect_interval,
+                    )
+                    await self._close_writer()
+                    continue  # next loop will reconnect
 
                 # Get next frame to send
                 frame = await self._queue.get()
                 try:
                     self._writer.write(frame)
+                    _LOGGER.debug(
+                        "Frame to cloud sent (%d Bytes):\n%s",
+                        len(frame),
+                        frame.hex(" ", 1),
+                    )
                     await self._writer.drain()
                 except Exception as e:
-                    self._logger.debug("Mirror write failed: %s", e)
+                    _LOGGER.debug("Mirror write failed: %s", e)
                     if self._log_helper:
                         self._log_helper.log_info("mirror", f"Write failed: {e}")
                     await self._close_writer()
@@ -120,7 +139,7 @@ class AsekoCloudMirror:
             except asyncio.CancelledError:
                 break
             except Exception:
-                self._logger.debug("Mirror worker loop error.", exc_info=True)
+                _LOGGER.debug("Mirror worker loop error.", exc_info=True)
                 await asyncio.sleep(0.1)
 
     async def _close_writer(self) -> None:
