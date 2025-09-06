@@ -55,7 +55,7 @@ def test_decode_redox() -> None:
     """Test decoding of Redox probe data."""
 
     data = _make_base_bytes()
-    data[4] = 0x02  # Redox probe
+    data[4] = 0x0A  # Redox probe
     data[18:20] = (550).to_bytes(2, "big")  # Redox
     data[53] = 65  # required Redox
 
@@ -68,7 +68,7 @@ def test_decode_clf() -> None:
     """Test decoding of CL free probe data."""
 
     data = _make_base_bytes()
-    data[4] = 0x01  # CL probe
+    data[4] = 0x09  # CL probe
     data[16:18] = (50).to_bytes(2, "big")  # CL free
     data[53] = 9  # required CL free
 
@@ -81,6 +81,7 @@ def test_decode_home() -> None:
     """Test decoding of HOME device data."""
 
     data = _make_base_bytes()
+    data[4] = 0x05
     data[14:16] = (720).to_bytes(2, "big")  # ph
     data[52] = 72  # required_ph
 
@@ -118,6 +119,7 @@ def test_decode_electrolyzer_data() -> None:
     """Test decoding of electrolyzer data with right direction."""
 
     data = _make_base_bytes()
+    data[4] = 0x0E  # SALT with REDOX probe
     data[20] = 32  # salinity = 3.2
     data[21] = 80  # electrolyzer_power
     data[29] = ELECTROLYZER_RUNNING  # electrolyzer_active
@@ -137,6 +139,7 @@ def test_decode_electrolyzer_data_left_direction() -> None:
     """Test decoding of electrolyzer data with left direction."""
 
     data = _make_base_bytes()
+    data[4] = 0x0E  # SALT with REDOX probe
     data[20] = 32
     data[21] = 80
     data[29] = ELECTROLYZER_RUNNING_LEFT
@@ -149,6 +152,7 @@ def test_decode_electrolyzer_data_waiting_direction() -> None:
     """Test decoding of electrolyzer data with waiting direction."""
 
     data = _make_base_bytes()
+    data[4] = 0x0E  # SALT with REDOX probe
     data[20] = 32
     data[21] = 80
     data[29] = 0  # neither running nor left
@@ -161,7 +165,7 @@ def test_decode_profi() -> None:
     """Test decoding of PROFI device data."""
 
     data = _make_base_bytes()
-    data[4] = 0x00  # Redox & CLF probe
+    data[4] = 0x08  # PROFI with Redox & CLF probe
     data[16:18] = (100).to_bytes(2, "big")
     data[18:20] = (200).to_bytes(2, "big")
     data[14:16] = (800).to_bytes(2, "big")
@@ -182,6 +186,7 @@ def test_decode_net() -> None:
     """Test decoding of NET device data."""
 
     data = _make_base_bytes(111)
+    data[4] = 0x09  # NET device
     data[6] = 0xFF  # year
     data[7] = 0xFF  # month
     data[8] = 0xFF  # day

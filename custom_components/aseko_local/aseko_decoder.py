@@ -19,6 +19,10 @@ from .const import (
     PROBE_REDOX_MISSING,
     PROBE_SANOSIL_MISSING,
     PUMP_RUNNING,
+    UNIT_TYPE_HOME,
+    UNIT_TYPE_NET,
+    UNIT_TYPE_PROFI,
+    UNIT_TYPE_SALT,
     UNSPECIFIED_VALUE,
     WATER_FLOW_TO_PROBES,
     YEAR_OFFSET,
@@ -36,22 +40,21 @@ class AsekoDecoder:
     ) -> AsekoDeviceType:
         """Determine the unit type from the binary data."""
 
-        if data[6] != UNSPECIFIED_VALUE:
-            probe_info = AsekoDecoder._available_probes(data)
+        if data[4] == UNIT_TYPE_PROFI:
+            return AsekoDeviceType.PROFI
 
-            if AsekoProbeType.REDOX in probe_info and AsekoProbeType.CLF in probe_info:
-                return AsekoDeviceType.PROFI
+        if (data[4] & UNIT_TYPE_SALT) == UNIT_TYPE_SALT:
+            return AsekoDeviceType.SALT
 
-            if (
-                (data[20] or data[21])
-                and AsekoProbeType.SANOSIL not in probe_info
-                and AsekoProbeType.DOSE not in probe_info
-            ):
-                return AsekoDeviceType.SALT
-
+        if bool(data[4] & UNIT_TYPE_HOME):
             return AsekoDeviceType.HOME
 
-        return AsekoDeviceType.NET
+        if bool(data[4] & UNIT_TYPE_NET):
+            return AsekoDeviceType.NET
+
+        error = f"Unknown unit type: {data[4]}"
+        _LOGGER.warning(error)
+        raise ValueError(error)
 
     @staticmethod
     def _available_probes(
@@ -84,19 +87,14 @@ class AsekoDecoder:
     ) -> datetime | None:
         """Decode datetime from the bynary data."""
 
-        if data[6] != UNSPECIFIED_VALUE:
-            return datetime(
-                year=YEAR_OFFSET + data[6],
-                month=data[7],
-                day=data[8],
-                hour=data[9],
-                minute=data[10],
-                second=data[11],
-                tzinfo=homeassistant.util.dt.get_default_time_zone(),
-            )
-
-        return datetime.now(
-            tz=homeassistant.util.dt.get_default_time_zone(),
+        return datetime(
+            year=YEAR_OFFSET + data[6],
+            month=data[7],
+            day=data[8],
+            hour=data[9],
+            minute=data[10],
+            second=data[11],
+            tzinfo=homeassistant.util.dt.get_default_time_zone(),
         )
 
     @staticmethod
@@ -169,11 +167,23 @@ class AsekoDecoder:
 
         unit_type = AsekoDecoder._unit_type(data)
         probes = AsekoDecoder._available_probes(data)
+        try:
+            timestamp = (
+                AsekoDecoder._timestamp(data)
+                if unit_type != AsekoDeviceType.NET
+                else datetime.now(tz=homeassistant.util.dt.get_default_time_zone())
+            )
+        except ValueError:
+            _LOGGER.warning(
+                "Invalid timestamp in the data: %s, using current timestamp instead",
+                data[6:12],
+            )
+            timestamp = datetime.now(tz=homeassistant.util.dt.get_default_time_zone())
 
         device = AsekoDevice(
             serial_number=int.from_bytes(data[0:4], "big"),
             type=unit_type,
-            timestamp=AsekoDecoder._timestamp(data),
+            timestamp=timestamp,
             water_temperature=int.from_bytes(data[25:27], "big") / 10,
             water_flow_to_probes=(data[28] == WATER_FLOW_TO_PROBES),
             pump_running=bool(data[29] & PUMP_RUNNING),
