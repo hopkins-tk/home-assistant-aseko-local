@@ -2,6 +2,8 @@
 
 from datetime import time
 
+import pytest
+
 from custom_components.aseko_local.aseko_data import (
     AsekoDeviceType,
     AsekoElectrolyzerDirection,
@@ -198,6 +200,21 @@ def test_decode_net() -> None:
     assert device.type == AsekoDeviceType.NET
 
 
+def test_decode_corrupted_timestamp() -> None:
+    """Test decoding data with corrupted timestamp should fallback to server timestamp."""
+
+    data = bytearray.fromhex(
+        "0691ffff0d0105ffffffffff000002d002bfffff02bfff01bc00ffffaa0000080000000000ff0173"
+        "0691ffff0d0305ffffffffff484608ffffffffffffffffff02d100ffffffffffffffffffffffff97"
+        "0691ffff0d0205ffffffffff0007003cffff003cffff010181ff012c0102581e28ffffffff0048cd"
+    )
+
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.type == AsekoDeviceType.SALT
+    assert device.timestamp is not None
+    assert device.timestamp.year != 2005
+
+
 def test_decode_net_120_bytes() -> None:
     """Test decoding of NET device data with 120 bytes."""
 
@@ -209,6 +226,23 @@ def test_decode_net_120_bytes() -> None:
 
     device = AsekoDecoder.decode(bytes(data))
     assert device.type == AsekoDeviceType.NET
+    assert device.timestamp is not None
+
+
+def test_decode_unknown_unit_type() -> None:
+    """Test decoding of data for unknown unit type."""
+
+    data = bytearray.fromhex(
+        "0690ffff0001ffffffffffff0000027300caffff0140ff0c3c0120ffaa000d340000000000ff007f"
+        "0690ffff0003ffffffffffff480608ffffffffffffffffff02720128ffffffffffffffffffffffe5"
+        "0690ffff0002ffffffffffff0026003cffff003cffff010183ff012c0502581e28ffffffff0047a2"
+    )
+
+    try:
+        AsekoDecoder.decode(bytes(data))
+        pytest.fail("Expected ValueError for unknown unit type")
+    except ValueError:
+        pass
 
 
 def test_decode_issue_17() -> None:
