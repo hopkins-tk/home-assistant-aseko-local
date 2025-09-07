@@ -2,6 +2,8 @@
 
 from datetime import time
 
+import pytest
+
 from custom_components.aseko_local.aseko_data import (
     AsekoDeviceType,
     AsekoElectrolyzerDirection,
@@ -55,7 +57,7 @@ def test_decode_redox() -> None:
     """Test decoding of Redox probe data."""
 
     data = _make_base_bytes()
-    data[4] = 0x02  # Redox probe
+    data[4] = 0x0A  # NET with Redox probe
     data[18:20] = (550).to_bytes(2, "big")  # Redox
     data[53] = 65  # required Redox
 
@@ -68,7 +70,7 @@ def test_decode_clf() -> None:
     """Test decoding of CL free probe data."""
 
     data = _make_base_bytes()
-    data[4] = 0x01  # CL probe
+    data[4] = 0x09  # NET with CL probe
     data[16:18] = (50).to_bytes(2, "big")  # CL free
     data[53] = 9  # required CL free
 
@@ -81,6 +83,7 @@ def test_decode_home() -> None:
     """Test decoding of HOME device data."""
 
     data = _make_base_bytes()
+    data[4] = 0x05  # HOME with CL probe
     data[14:16] = (720).to_bytes(2, "big")  # ph
     data[52] = 72  # required_ph
 
@@ -118,6 +121,7 @@ def test_decode_electrolyzer_data() -> None:
     """Test decoding of electrolyzer data with right direction."""
 
     data = _make_base_bytes()
+    data[4] = 0x0E  # SALT with REDOX probe
     data[20] = 32  # salinity = 3.2
     data[21] = 80  # electrolyzer_power
     data[29] = ELECTROLYZER_RUNNING  # electrolyzer_active
@@ -137,6 +141,7 @@ def test_decode_electrolyzer_data_left_direction() -> None:
     """Test decoding of electrolyzer data with left direction."""
 
     data = _make_base_bytes()
+    data[4] = 0x0E  # SALT with REDOX probe
     data[20] = 32
     data[21] = 80
     data[29] = ELECTROLYZER_RUNNING_LEFT
@@ -149,6 +154,7 @@ def test_decode_electrolyzer_data_waiting_direction() -> None:
     """Test decoding of electrolyzer data with waiting direction."""
 
     data = _make_base_bytes()
+    data[4] = 0x0E  # SALT with REDOX probe
     data[20] = 32
     data[21] = 80
     data[29] = 0  # neither running nor left
@@ -161,7 +167,7 @@ def test_decode_profi() -> None:
     """Test decoding of PROFI device data."""
 
     data = _make_base_bytes()
-    data[4] = 0x00  # Redox & CLF probe
+    data[4] = 0x08  # PROFI with Redox & CLF probe
     data[16:18] = (100).to_bytes(2, "big")
     data[18:20] = (200).to_bytes(2, "big")
     data[14:16] = (800).to_bytes(2, "big")
@@ -182,6 +188,7 @@ def test_decode_net() -> None:
     """Test decoding of NET device data."""
 
     data = _make_base_bytes(111)
+    data[4] = 0x09  # NET device
     data[6] = 0xFF  # year
     data[7] = 0xFF  # month
     data[8] = 0xFF  # day
@@ -191,6 +198,21 @@ def test_decode_net() -> None:
 
     device = AsekoDecoder.decode(bytes(data))
     assert device.type == AsekoDeviceType.NET
+
+
+def test_decode_corrupted_timestamp() -> None:
+    """Test decoding data with corrupted timestamp should fallback to server timestamp."""
+
+    data = bytearray.fromhex(
+        "0691ffff0d0105ffffffffff000002d002bfffff02bfff01bc00ffffaa0000080000000000ff0173"
+        "0691ffff0d0305ffffffffff484608ffffffffffffffffff02d100ffffffffffffffffffffffff97"
+        "0691ffff0d0205ffffffffff0007003cffff003cffff010181ff012c0102581e28ffffffff0048cd"
+    )
+
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.type == AsekoDeviceType.SALT
+    assert device.timestamp is not None
+    assert device.timestamp.year != 2005
 
 
 def test_decode_net_120_bytes() -> None:
@@ -204,6 +226,23 @@ def test_decode_net_120_bytes() -> None:
 
     device = AsekoDecoder.decode(bytes(data))
     assert device.type == AsekoDeviceType.NET
+    assert device.timestamp is not None
+
+
+def test_decode_unknown_unit_type() -> None:
+    """Test decoding of data for unknown unit type."""
+
+    data = bytearray.fromhex(
+        "0690ffff0001ffffffffffff0000027300caffff0140ff0c3c0120ffaa000d340000000000ff007f"
+        "0690ffff0003ffffffffffff480608ffffffffffffffffff02720128ffffffffffffffffffffffe5"
+        "0690ffff0002ffffffffffff0026003cffff003cffff010183ff012c0502581e28ffffffff0047a2"
+    )
+
+    try:
+        AsekoDecoder.decode(bytes(data))
+        pytest.fail("Expected ValueError for unknown unit type")
+    except ValueError:
+        pass
 
 
 def test_decode_issue_17() -> None:
