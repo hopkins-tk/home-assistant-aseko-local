@@ -57,7 +57,7 @@ def test_decode_redox() -> None:
     """Test decoding of Redox probe data."""
 
     data = _make_base_bytes()
-    data[4] = 0x0A  # Redox probe
+    data[4] = 0x0A  # NET with Redox probe
     data[18:20] = (550).to_bytes(2, "big")  # Redox
     data[53] = 65  # required Redox
 
@@ -70,7 +70,7 @@ def test_decode_clf() -> None:
     """Test decoding of CL free probe data."""
 
     data = _make_base_bytes()
-    data[4] = 0x09  # CL probe
+    data[4] = 0x09  # NET with CL probe
     data[16:18] = (50).to_bytes(2, "big")  # CL free
     data[53] = 9  # required CL free
 
@@ -83,7 +83,7 @@ def test_decode_home() -> None:
     """Test decoding of HOME device data."""
 
     data = _make_base_bytes()
-    data[4] = 0x05
+    data[4] = 0x05  # HOME with CL probe
     data[14:16] = (720).to_bytes(2, "big")  # ph
     data[52] = 72  # required_ph
 
