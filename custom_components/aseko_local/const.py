@@ -12,8 +12,8 @@ DEFAULT_BINDING_ADDRESS = "0.0.0.0"  # noqa: S104
 DEFAULT_BINDING_PORT = 47524
 
 # Proxy defaults
-DEFAULT_PROXY_HOST = "pool.aseko.com"
-DEFAULT_PROXY_PORT = 47524
+DEFAULT_FORWARDER_HOST = "pool.aseko.com"
+DEFAULT_FORWARDER_PORT = 47524
 
 # Year offset and message sizes
 YEAR_OFFSET = 2000
@@ -35,11 +35,11 @@ PROBE_SANOSIL_MISSING = 0x08  # OXY Pure
 UNSPECIFIED_VALUE = 0xFF
 
 # Config / option keys
-CONF_PROXY_ENABLED = "proxy_enabled"
-CONF_PROXY_HOST = "proxy_host"
-CONF_PROXY_PORT = "proxy_port"
-CONF_RAW_LOG = "raw_log"
 CONF_ENABLE_RAW_LOGGING = "enable_raw_logging"
+CONF_FORWARDER_ENABLED = "forwarder_enabled"
+CONF_FORWARDER_HOST = "forwarder_host"
+CONF_FORWARDER_PORT = "forwarder_port"
+
 
 # Default log directory
 DEFAULT_LOG_DIR = "aseko_logs"

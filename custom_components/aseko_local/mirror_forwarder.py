@@ -9,6 +9,7 @@ from .logging_helper import LoggingHelper
 
 _LOGGER = logging.getLogger(__name__)
 
+
 class AsekoCloudMirror:
     """Asynchronous TCP forwarder to Aseko Cloud with optional logging via LoggingHelper.
     - Non-blocking: frames are queued and sent by a worker task.
@@ -73,34 +74,33 @@ class AsekoCloudMirror:
         # Optional: log via helper
         if self._log_helper:
             try:
-                self._log_helper.log_hex_frame(frame)
-                self._log_helper.log_bin_frame(frame)
+                await self._log_helper.log_hex_frame(frame)
+                await self._log_helper.log_bin_frame(frame)
             except Exception:
                 _LOGGER.debug("Failed to log frame in mirror.", exc_info=True)
 
     async def _worker(self) -> None:
-        """Connection loop with reconnect/backoff and queue consumption."""
+        """Loop connection with reconnect/backoff and queue consumption."""
+
         backoff = 1.0
         while True:
             try:
                 # Ensure connection
                 if self._writer is None:
                     try:
-                        reader, writer = await asyncio.open_connection(self._host, self._port)
+                        reader, writer = await asyncio.open_connection(
+                            self._host, self._port
+                        )
                         self._writer = writer
                         self._last_connect = time.time()
 
                         self._connected_event.set()
                         backoff = 1.0
-                        _LOGGER.debug("Mirror connected to %s:%s", self._host, self._port)
-                        if self._log_helper:
-                            self._log_helper.log_info(
-                                "mirror", f"Connected to {self._host}:{self._port}"
-                            )
+                        _LOGGER.debug(
+                            "Mirror connected to %s:%s", self._host, self._port
+                        )
                     except Exception as e:
                         _LOGGER.debug("Mirror connect failed: %s", e)
-                        if self._log_helper:
-                            self._log_helper.log_info("mirror", f"Connect failed: {e}")
                         await asyncio.sleep(min(backoff, 10.0))
                         backoff = min(backoff * 2.0, 10.0)
                         continue
@@ -126,8 +126,6 @@ class AsekoCloudMirror:
                     await self._writer.drain()
                 except Exception as e:
                     _LOGGER.debug("Mirror write failed: %s", e)
-                    if self._log_helper:
-                        self._log_helper.log_info("mirror", f"Write failed: {e}")
                     await self._close_writer()
                     # requeue the frame to try again
                     try:
@@ -155,5 +153,4 @@ class AsekoCloudMirror:
             finally:
                 self._writer = None
                 self._connected_event.clear()
-                if self._log_helper:
-                    self._log_helper.log_info("mirror", "Disconnected")
+                _LOGGER.debug("Mirror connection closed.")

@@ -28,9 +28,9 @@
     "step": {
       "options_init": {
         "data": {
-          "proxy_enabled": "Povolit přesměrování do cloudu",
-          "proxy_host": "Cloud hostitel",
-          "proxy_port": "Cloud port",
+          "forwarder_enabled": "Povolit přeposílání",
+          "forwarder_host": "Cílová adresa",
+          "forwarder_port": "Cílový port",
           "enable_raw_logging": "Povolit surové logování"
         }
       }
@@ -58,8 +58,8 @@
       "electrolyzer_direction": {
         "name": "Směr elektrolyzéru",
         "state": {
-          "left": "Vlevo",
-          "right": "Vpravo",
+          "left": "Levá",
+          "right": "Pravá",
           "waiting": "Čekání"
         }
       },
@@ -164,7 +164,7 @@
         "name": "Poslední doplněné množství pH+"
       },
       "floc_last_filled_quantity": {
-        "name": "Poslední doplněné množství koagulantu"
+        "name": "Poslední doplněné množství flokulantu"
       }
     },
     "button": {
@@ -178,7 +178,7 @@
         "name": "Doplnění pH+"
       },
       "floc_refill_reset": {
-        "name": "Doplnění koagulantu"
+        "name": "Doplnění flokulantu"
       }
     }
   }

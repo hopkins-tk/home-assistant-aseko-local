@@ -110,7 +110,7 @@ SENSORS: list[AsekoSensorEntityDescription] = [
         value_fn=lambda device: device.required_ph,
     ),
     AsekoSensorEntityDescription(
-        key="redox",
+        key="rx",
         translation_key="redox",
         native_unit_of_measurement=UnitOfElectricPotential.MILLIVOLT,
         state_class=SensorStateClass.MEASUREMENT,
@@ -118,7 +118,7 @@ SENSORS: list[AsekoSensorEntityDescription] = [
         value_fn=lambda device: device.redox,
     ),
     AsekoSensorEntityDescription(
-        key="required_redox",
+        key="required_rx",
         translation_key="required_redox",
         native_unit_of_measurement=UnitOfElectricPotential.MILLIVOLT,
         state_class=SensorStateClass.MEASUREMENT,
@@ -134,7 +134,7 @@ SENSORS: list[AsekoSensorEntityDescription] = [
         value_fn=lambda device: device.salinity,
     ),
     AsekoSensorEntityDescription(
-        key="water_temp",
+        key="waterTemp",
         translation_key="water_temperature",
         device_class=SensorDeviceClass.TEMPERATURE,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
@@ -143,7 +143,7 @@ SENSORS: list[AsekoSensorEntityDescription] = [
         value_fn=lambda device: device.water_temperature,
     ),
     AsekoSensorEntityDescription(
-        key="required_water_temp",
+        key="required_waterTemp",
         translation_key="required_water_temperature",
         device_class=SensorDeviceClass.TEMPERATURE,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
@@ -268,8 +268,6 @@ async def async_setup_entry(
                         "   - Always inactive sensor: %s (unique_id=%s, value=%s)",
                         tr_key, ent.unique_id, val,
                     )
-
-
 
                 if val is None:
                     reasonInactive = "optional"

@@ -12,6 +12,7 @@ from .logging_helper import LoggingHelper
 
 _LOGGER = logging.getLogger(__name__)
 
+
 class AsekoDeviceServer:
     """Async TCP server für Aseko-Gerätedaten."""
 
@@ -35,6 +36,8 @@ class AsekoDeviceServer:
         self._clients: set[asyncio.StreamWriter] = set()
 
     async def start(self) -> None:
+        """Start of the TCP server."""
+
         try:
             self._server = await asyncio.start_server(
                 self._handle_client, self.host, self.port
@@ -45,6 +48,8 @@ class AsekoDeviceServer:
             raise ServerConnectionError(f"Failed to start server: {err}") from err
 
     async def stop(self) -> None:
+        """Stop the TCP server and disconnect all clients."""
+
         if self._server:
             for w in list(self._clients):
                 try:
@@ -106,7 +111,7 @@ class AsekoDeviceServer:
                         "Frame received from %s (%d bytes):\n%s",
                         addr,
                         len(frame),
-                        frame.hex(" ", 1)  # print as spaced hex string
+                        frame.hex(" ", 1),  # print as spaced hex string
                     )
 
                 except asyncio.IncompleteReadError:
@@ -119,29 +124,41 @@ class AsekoDeviceServer:
 
                 # Try to decode the frame
                 try:
-
-                    # 🔎 Plausibility check: pH values must be between 0 and 14
-                    if not (0 <= (int.from_bytes(frame[14:16], "big") / 100) <= 14):
+                    # 🔎 Plausibility check before decoding: pH values must be between 0 and 14
+                    # Sometimes after server start we get garbage data (shifted bytes) that
+                    # opens a new incorrect new device in Home Assistant. The device type
+                    # is shown as SALT and any serial number. Such records are never resynched.
+                    # To avoid this, we check the pH values here. If they are out of range,
+                    # the package is ignored and the connection is reopened.
+                    ph_value = int.from_bytes(frame[14:16], "big") / 100
+                    if not (0 <= ph_value <= 14):
                         _LOGGER.warning(
                             "Unreasonable pH value (%s) received from %s → closing connection",
-                            device.ph, addr
+                            ph_value,
+                            addr,
                         )
                         break  # leave loop → connection will be closed
 
-                    if not (6 <= (frame[52] / 10) <= 10):
+                    required_ph = frame[52] / 10
+                    if not (6 <= required_ph <= 10):
                         _LOGGER.warning(
                             "Unreasonable required pH value (%s) received from %s → closing connection",
-                            device.required_ph, addr
+                            required_ph,
+                            addr,
                         )
                         break  # leave loop → connection will be closed
 
-                    device = AsekoDecoder.decode(frame, log_helper=self._log_helper)  # Logger temporary only
+                    device = AsekoDecoder.decode(frame)  # Logger temporary only
 
                 except ValueError as e:
-                    _LOGGER.warning("Invalid frame from %s: %s → closing connection", addr, e)
+                    _LOGGER.warning(
+                        "Invalid frame from %s: %s → closing connection", addr, e
+                    )
                     break
                 except Exception:
-                    _LOGGER.exception("Decoding error for data from %s → closing connection", addr)
+                    _LOGGER.exception(
+                        "Decoding error for data from %s → closing connection", addr
+                    )
                     break
 
                 _LOGGER.debug("Decoded data from %s: %s", addr, device)
@@ -149,7 +166,9 @@ class AsekoDeviceServer:
                 # Optional: log flowrates
                 if self._log_helper:
                     try:
-                        self._log_helper.log_flowrates("AsekoDeviceServer", device)
+                        await self._log_helper.log_flowrates(
+                            "AsekoDeviceServer", device
+                        )
                     except Exception:
                         _LOGGER.debug("Flowrate logging failed", exc_info=True)
 
@@ -166,7 +185,6 @@ class AsekoDeviceServer:
                 await writer.wait_closed()
             except Exception:
                 pass
-
 
     # Forwarder setzen
     def set_forward_callback(self, callback: Optional[Callable[[bytes], Any]]) -> None:
@@ -187,7 +205,9 @@ class AsekoDeviceServer:
     ) -> "AsekoDeviceServer":
         key = f"{host}:{port}"
         if key not in cls._instances:
-            cls._instances[key] = AsekoDeviceServer(host, port, on_data, raw_sink, log_helper)
+            cls._instances[key] = AsekoDeviceServer(
+                host, port, on_data, raw_sink, log_helper
+            )
             await cls._instances[key].start()
         else:
             if raw_sink:
@@ -211,6 +231,7 @@ class AsekoDeviceServer:
         for srv in list(cls._instances.values()):
             await srv.stop()
         cls._instances.clear()
+
 
 class ServerConnectionError(Exception):
     """Exception für Verbindungsfehler."""

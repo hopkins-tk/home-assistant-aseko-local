@@ -14,7 +14,7 @@ def get_optional_inactive_entities(device: AsekoDevice) -> tuple[set[str], set[s
     if device.device_type == AsekoDeviceType.SALT:
         optional_inactive = {
             "free_chlorine", "required_free_chlorine", "cl_free_mv",
-            "redox", "required_redox"
+            "rx", "required_rx"
         }
         always_inactive = {
             "pump_running", "active_pump", "flowrate_chlor", "flowrate_ph_minus"  # Example: always disabled for SALT
@@ -23,7 +23,7 @@ def get_optional_inactive_entities(device: AsekoDevice) -> tuple[set[str], set[s
     elif device.device_type == AsekoDeviceType.NET:
         optional_inactive = {
             "free_chlorine", "required_free_chlorine", "cl_free_mv",
-            "redox", "required_redox"
+            "rx", "required_rx"
         }
         always_inactive = {
             "pump_running", "active_pump", "flowrate_chlor", "flowrate_ph_minus"  # Example: always disabled for SALT
@@ -33,7 +33,7 @@ def get_optional_inactive_entities(device: AsekoDevice) -> tuple[set[str], set[s
         optional_inactive = {
             # Depending on the actual installation: could have Redox OR CLF
             "free_chlorine", "required_free_chlorine", "cl_free_mv",
-            "redox", "required_redox", "flowrate_floc"
+            "rx", "required_rx", "flowrate_floc"
         }
         always_inactive = {
             "pump_running", "active_pump", "flowrate_chlor", "flowrate_ph_minus", "flowrate_floc"  # Example: always disabled for SALT
@@ -43,7 +43,7 @@ def get_optional_inactive_entities(device: AsekoDevice) -> tuple[set[str], set[s
         optional_inactive = {
             # PROFI can have both; if not present, they are created disabled
             "free_chlorine", "required_free_chlorine", "cl_free_mv",
-            "redox", "required_redox", "flowrate_floc", "flowrate_ph_plus",
+            "rx", "required_rx", "flowrate_floc", "flowrate_ph_plus",
         }
         always_inactive = {
             "pump_running", "active_pump", "flowrate_chlor", "flowrate_ph_minus", "flowrate_ph_plus", "flowrate_floc"  # Example: always disabled for SALT

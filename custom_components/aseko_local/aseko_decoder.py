@@ -2,7 +2,8 @@ import logging
 from datetime import datetime, time
 from enum import IntEnum
 import homeassistant.util
-#temporary
+
+# temporary
 from .logging_helper import LoggingHelper
 
 
@@ -11,7 +12,7 @@ from .aseko_data import (
     AsekoDeviceType,
     AsekoElectrolyzerDirection,
     AsekoProbeType,
-    AsekoPumpType
+    AsekoPumpType,
 )
 from .const import (
     ELECTROLYZER_RUNNING,
@@ -57,13 +58,9 @@ class AsekoDecoder:
 
         return value
 
-
     @staticmethod
     def _unit_type(data: bytes) -> AsekoDeviceType | None:
         """Determine the Aseko device type. Returns None until a reliable detection is possible."""
-
-        # Debug raw data for decision-making
-        AsekoDecoder._debug_unit_type_data(data)
 
         # 1. Serial number must be valid (first 4 bytes, big endian)
         serial = int.from_bytes(data[0:4], "big")
@@ -85,18 +82,15 @@ class AsekoDecoder:
 
         # 4. SALT only if data[20]/data[21] have valid values
         if (
-            AsekoDecoder._normalize_value(data[20]) is not None
-            or AsekoDecoder._normalize_value(data[21]) is not None
+            (data[20] or data[21])
+            and AsekoProbeType.SANOSIL not in probe_info
+            and AsekoProbeType.DOSE not in probe_info
         ):
-            if (
-                AsekoProbeType.SANOSIL not in probe_info
-                and AsekoProbeType.DOSE not in probe_info
-            ):
-                _LOGGER.debug(
-                    "Unit type detected: SALT (valid values in data[20]/[21], probes=%s)",
-                    probe_info,
-                )
-                return AsekoDeviceType.SALT
+            _LOGGER.debug(
+                "Unit type detected: SALT (valid values in data[20]/[21], probes=%s)",
+                probe_info,
+            )
+            return AsekoDeviceType.SALT
 
         # 5. HOME as fallback if probes exist
         if probe_info:
@@ -155,7 +149,6 @@ class AsekoDecoder:
             )
             return datetime.now(tz=tz)
 
-
     @staticmethod
     def _time(data: bytes) -> time | None:
         if data[0] == UNSPECIFIED_VALUE:
@@ -172,11 +165,8 @@ class AsekoDecoder:
         try:
             return time(hour=hour, minute=minute)
         except ValueError as e:
-            _LOGGER.warning(
-                "Invalid time in frame (%s) – data=%s", e, data.hex()
-            )
+            _LOGGER.warning("Invalid time in frame (%s) – data=%s", e, data.hex())
             return None
-
 
     @staticmethod
     def _electrolyzer_direction(data: bytes) -> AsekoElectrolyzerDirection | None:
@@ -222,89 +212,15 @@ class AsekoDecoder:
         unit.flowrate_ph_minus = _normalize(data[99])
         unit.flowrate_floc = _normalize(data[101])
 
-    #temp for searching consumption data
     @staticmethod
-    def _fill_consumption_data(unit: AsekoDevice, data: bytes, log_helper: LoggingHelper) -> None:
-        """Extrahiert Tages- und Wochenverbräuche für AquaNET/AquaPro als 16-bit Werte (mL)."""
-
-        def read16(offset: int) -> int | None:
-            val = int.from_bytes(data[offset:offset+2], "big")
-            if val == 0xFFFF:
-                return 0
-            return val
-
-        # Tagesverbrauch (16-bit) → Liter
-        unit.daily_consumption_chlor = read16(74) / 1000.0
-        unit.daily_consumption_ph_minus = read16(78) / 1000.0
-        unit.daily_consumption_ph_plus = read16(82) / 1000.0
-        unit.daily_consumption_floc = read16(86) / 1000.0
-        unit.daily_consumption_algicide = read16(90) / 1000.0
-
-        # Wochenverbrauch (16-bit) → Liter
-        unit.weekly_consumption_chlor = read16(76) / 1000.0
-        unit.weekly_consumption_ph_minus = read16(80) / 1000.0
-        unit.weekly_consumption_ph_plus = read16(84) / 1000.0
-        unit.weekly_consumption_floc = read16(88) / 1000.0
-        unit.weekly_consumption_algicide = read16(92) / 1000.0
-
-        _LOGGER.debug(
-            "Tagesverbrauch (L): Chlor=%.3f, pH-Minus=%.3f, pH-Plus=%.3f, Floc=%.3f, Alg=%.3f",
-            unit.daily_consumption_chlor,
-            unit.daily_consumption_ph_minus,
-            unit.daily_consumption_ph_plus,
-            unit.daily_consumption_floc,
-            unit.daily_consumption_algicide
-        )
-
-        _LOGGER.debug(
-            "Wochenverbrauch (L): Chlor=%.3f, pH-Minus=%.3f, pH-Plus=%.3f, Floc=%.3f, Alg=%.3f",
-            unit.weekly_consumption_chlor,
-            unit.weekly_consumption_ph_minus,
-            unit.weekly_consumption_ph_plus,
-            unit.weekly_consumption_floc,
-            unit.weekly_consumption_algicide
-        )
-        message = (
-            f"Tagesverbrauch (L): "
-            f"Chlor={unit.daily_consumption_chlor:.3f}, "
-            f"pH-Minus={unit.daily_consumption_ph_minus:.3f}, "
-            f"pH-Plus={unit.daily_consumption_ph_plus:.3f}, "
-            f"Floc={unit.daily_consumption_floc:.3f}, "
-            f"Alg={unit.daily_consumption_algicide:.3f}"
-        )
-        log_helper.log_info(source="AsekoDecoder._fill_consumption_data", message=message, log=True)
-
-        message = (
-            f"Wochenverbrauch (L): "
-            f"Chlor={unit.weekly_consumption_chlor:.3f}, "
-            f"pH-Minus={unit.weekly_consumption_ph_minus:.3f}, "
-            f"pH-Plus={unit.weekly_consumption_ph_plus:.3f}, "
-            f"Floc={unit.weekly_consumption_floc:.3f}, "
-            f"Alg={unit.weekly_consumption_algicide:.3f}"
-        )
-        log_helper.log_info(source="AsekoDecoder._fill_consumption_data", message=message, log=True)
-
-        log_helper.log_info(
-            source="AsekoDecoder._fill_consumption_data_raw",
-            message=(
-                f"RAW: Chlor={read16(74)}, "
-                f"pH-Minus={read16(76)}, "
-                f"pH-Plus={read16(78)}, "
-                f"Floc={read16(80)}, "
-                f"Alg={read16(82)}"
-            ),
-            log=True,
-        )
-
-    @staticmethod
-    def decode(data: bytes, log_helper: LoggingHelper) -> AsekoDevice:
+    def decode(data: bytes) -> AsekoDevice:
         unit_type = AsekoDecoder._unit_type(data)
         probes = AsekoDecoder._available_probes(data)
         normalize = AsekoDecoder._normalize_value
 
         ts = AsekoDecoder._timestamp(data)
         _LOGGER.debug("Decoded timestamp = %s (raw: %s)", ts, data[6:12].hex())
-        
+
         # Pumpe
         pump_code = int(data[29])
         active_pump = (
@@ -331,8 +247,8 @@ class AsekoDecoder:
             backwash_time=AsekoDecoder._time(data[69:71]),
             backwash_duration=data[71] * 10,
             pool_volume=int.from_bytes(data[92:94], "big"),
-            #max_filling_time=int.from_bytes(data[94:96], "big"),
-            delay_after_startup= normalize(data[114]),
+            max_filling_time=int.from_bytes(data[94:96], "big"),
+            delay_after_startup=int.from_bytes(data[74:76], "big"),
             delay_after_dose=int.from_bytes(data[106:108], "big"),
         )
 
@@ -346,24 +262,6 @@ class AsekoDecoder:
             AsekoDecoder._fill_salt_unit_data(device, data)
 
         AsekoDecoder._fill_flowrate_data(device, data)
-        
+
         return device
 
-    @staticmethod
-    def _debug_unit_type_data(data: bytes) -> None:
-        """Debug helper: log all relevant values for unit type detection."""
-
-        serial = int.from_bytes(data[0:4], "big")
-        byte6 = data[6]
-        byte20 = data[20]
-        byte21 = data[21]
-        probes = AsekoDecoder._available_probes(data)
-
-        _LOGGER.debug(
-            "Unit type debug: serial=%s, byte[6]=0x%02X, byte[20]=%s, byte[21]=%s, probes=%s",
-            serial,
-            byte6,
-            byte20,
-            byte21,
-            probes,
-        )

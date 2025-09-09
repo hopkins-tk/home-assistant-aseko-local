@@ -37,6 +37,7 @@ class AsekoElectrolyzerDirection(Enum):
 
 class AsekoPumpType(IntEnum):
     """Enumeration of chemical pump types from byte 29."""
+
     OFF = 0
     CHLOR = 0x48
     PH_MINUS = 0x88
@@ -98,7 +99,6 @@ class AsekoDevice:
     air_temperature: float | None = None
     delay_after_dose: int | None = None  # byte 107 & 108 ? (seconds)
     delay_after_startup: int | None = None  # byte 74 & 75 (seconds)
-
 
     def online(self) -> bool:
         """Check if the device is online."""

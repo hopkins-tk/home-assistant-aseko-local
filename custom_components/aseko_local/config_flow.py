@@ -14,11 +14,11 @@ from .const import (
     DOMAIN,
     DEFAULT_BINDING_ADDRESS,
     DEFAULT_BINDING_PORT,
-    DEFAULT_PROXY_HOST,
-    DEFAULT_PROXY_PORT,
-    CONF_PROXY_ENABLED,
-    CONF_PROXY_HOST,
-    CONF_PROXY_PORT,
+    DEFAULT_FORWARDER_HOST,
+    DEFAULT_FORWARDER_PORT,
+    CONF_FORWARDER_ENABLED,
+    CONF_FORWARDER_HOST,
+    CONF_FORWARDER_PORT,
     CONF_ENABLE_RAW_LOGGING,
 )
 from .aseko_server import AsekoDeviceServer, ServerConnectionError
@@ -163,16 +163,16 @@ class AsekoLocalOptionsFlowHandler(OptionsFlow):
         options_schema = vol.Schema(
             {
                 vol.Optional(
-                    CONF_PROXY_ENABLED,
-                    default=config_entry.options.get(CONF_PROXY_ENABLED, False),
+                    CONF_FORWARDER_ENABLED,
+                    default=config_entry.options.get(CONF_FORWARDER_ENABLED, False),
                 ): bool,
                 vol.Optional(
-                    CONF_PROXY_HOST,
-                    default=config_entry.options.get(CONF_PROXY_HOST, DEFAULT_PROXY_HOST),
+                    CONF_FORWARDER_HOST,
+                    default=config_entry.options.get(CONF_FORWARDER_HOST, DEFAULT_FORWARDER_HOST),
                 ): str,
                 vol.Optional(
-                    CONF_PROXY_PORT,
-                    default=config_entry.options.get(CONF_PROXY_PORT, DEFAULT_PROXY_PORT),
+                    CONF_FORWARDER_PORT,
+                    default=config_entry.options.get(CONF_FORWARDER_PORT, DEFAULT_FORWARDER_PORT),
                 ): int,
                 vol.Optional(
                     CONF_ENABLE_RAW_LOGGING,
