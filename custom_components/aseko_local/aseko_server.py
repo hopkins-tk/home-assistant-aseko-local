@@ -8,7 +8,6 @@ from typing import ClassVar, Optional, Any
 from .aseko_data import AsekoDevice
 from .aseko_decoder import AsekoDecoder
 from .const import DEFAULT_BINDING_ADDRESS, DEFAULT_BINDING_PORT, MESSAGE_SIZE
-from .logging_helper import LoggingHelper
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -24,14 +23,12 @@ class AsekoDeviceServer:
         port: int = DEFAULT_BINDING_PORT,
         on_data: Optional[Callable[[AsekoDevice], Any]] = None,
         raw_sink: Optional[Callable[[bytes], Any]] = None,
-        log_helper: Optional[LoggingHelper] = None,
     ) -> None:
         self.host = host
         self.port = port
         self.on_data = on_data
         self._raw_sink = raw_sink
         self._forward_cb: Optional[Callable[[bytes], Any]] = None
-        self._log_helper = log_helper
         self._server: Optional[asyncio.AbstractServer] = None
         self._clients: set[asyncio.StreamWriter] = set()
 
@@ -125,11 +122,6 @@ class AsekoDeviceServer:
                 # Try to decode the frame
                 try:
                     # 🔎 Plausibility check before decoding: pH values must be between 0 and 14
-                    # Sometimes after server start we get garbage data (shifted bytes) that
-                    # opens a new incorrect new device in Home Assistant. The device type
-                    # is shown as SALT and any serial number. Such records are never resynched.
-                    # To avoid this, we check the pH values here. If they are out of range,
-                    # the package is ignored and the connection is reopened.
                     ph_value = int.from_bytes(frame[14:16], "big") / 100
                     if not (0 <= ph_value <= 14):
                         _LOGGER.warning(
@@ -148,7 +140,7 @@ class AsekoDeviceServer:
                         )
                         break  # leave loop → connection will be closed
 
-                    device = AsekoDecoder.decode(frame)  # Logger temporary only
+                    device = AsekoDecoder.decode(frame)
 
                 except ValueError as e:
                     _LOGGER.warning(
@@ -163,14 +155,7 @@ class AsekoDeviceServer:
 
                 _LOGGER.debug("Decoded data from %s: %s", addr, device)
 
-                # Optional: log flowrates
-                if self._log_helper:
-                    try:
-                        await self._log_helper.log_flowrates(
-                            "AsekoDeviceServer", device
-                        )
-                    except Exception:
-                        _LOGGER.debug("Flowrate logging failed", exc_info=True)
+                # Entfernt: log_helper/flowrate logging
 
                 # Send decoded data to higher layer
                 await self._maybe_call_on_data(device)
@@ -201,21 +186,16 @@ class AsekoDeviceServer:
         port: int = DEFAULT_BINDING_PORT,
         on_data: Optional[Callable[[AsekoDevice], Any]] = None,
         raw_sink: Optional[Callable[[bytes], Any]] = None,
-        log_helper: Optional[LoggingHelper] = None,
     ) -> "AsekoDeviceServer":
         key = f"{host}:{port}"
         if key not in cls._instances:
-            cls._instances[key] = AsekoDeviceServer(
-                host, port, on_data, raw_sink, log_helper
-            )
+            cls._instances[key] = AsekoDeviceServer(host, port, on_data, raw_sink)
             await cls._instances[key].start()
         else:
             if raw_sink:
                 cls._instances[key]._raw_sink = raw_sink
             if on_data:
                 cls._instances[key].on_data = on_data
-            if log_helper:
-                cls._instances[key]._log_helper = log_helper
         return cls._instances[key]
 
     @classmethod

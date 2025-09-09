@@ -3,9 +3,6 @@ from datetime import datetime, time
 from enum import IntEnum
 import homeassistant.util
 
-# temporary
-from .logging_helper import LoggingHelper
-
 
 from .aseko_data import (
     AsekoDevice,
@@ -264,4 +261,3 @@ class AsekoDecoder:
         AsekoDecoder._fill_flowrate_data(device, data)
 
         return device
-

@@ -29,13 +29,11 @@ from .const import (
     CONF_ENABLE_RAW_LOGGING,
     DEFAULT_LOG_DIR,
 )
-from .logging_helper import LoggingHelper
 
 _LOGGER = logging.getLogger(__name__)
 
 PLATFORMS: list[Platform] = [Platform.BINARY_SENSOR, Platform.SENSOR]
 
-_LOG_HELPERS: dict[str, LoggingHelper] = {}
 _MIRRORS: dict[str, AsekoCloudMirror] = {}
 _SERVERS: dict[str, AsekoDeviceServer] = {}
 
@@ -88,25 +86,9 @@ async def async_setup_entry(
         mirror=None,
         server=None,
     )
-    log_dir_path = Path(hass.config.path(DEFAULT_LOG_DIR))
-    log_helper = LoggingHelper(
-        hass,
-        log_dir=str(log_dir_path),
-        raw_log_enabled=config_entry.options.get(CONF_ENABLE_RAW_LOGGING, False),
-    )
 
     # Optional: Raw-Sink (single line log for appending the log file)
     raw_sink = None
-    if config_entry.options.get(CONF_ENABLE_RAW_LOGGING, False):
-
-        async def _raw_logger(frame_bytes: bytes) -> None:
-            try:
-                await log_helper.log_raw_packet("__init__", frame_bytes)
-            except Exception as e:
-                _LOGGER.warning("Failed to write raw frame: %s", e)
-
-        raw_sink = _raw_logger
-        _LOGGER.info("Raw frame logging enabled; writing to %s", log_dir_path)
 
     # start Server
     server = await AsekoDeviceServer.create(
@@ -114,7 +96,6 @@ async def async_setup_entry(
         port=config_entry.data[CONF_PORT],
         on_data=coordinator.devices_update_callback,
         raw_sink=raw_sink,
-        log_helper=log_helper,
     )
 
     if not server.running:
@@ -127,10 +108,7 @@ async def async_setup_entry(
         forwarder_port = config_entry.options.get(CONF_FORWARDER_PORT)
         if forwarder_host and forwarder_port:
             mirror_instance = AsekoCloudMirror(
-                cloud_host=forwarder_host,
-                cloud_port=int(forwarder_port),
-                log_helper=log_helper,
-                logger=_LOGGER,
+                cloud_host=forwarder_host, cloud_port=int(forwarder_port)
             )
             await mirror_instance.start()
             server.set_forward_callback(mirror_instance.enqueue)
@@ -167,11 +145,6 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 await entry.runtime_data.server.stop()
             if entry.runtime_data.mirror:
                 await entry.runtime_data.mirror.stop()
-
-        # Close log_helper
-        log_helper = _LOG_HELPERS.pop(entry.entry_id, None)
-        if log_helper:
-            await log_helper.async_close()
 
         # Remove runtime_data to avoid stale references
         domain_data = hass.data.get(DOMAIN)

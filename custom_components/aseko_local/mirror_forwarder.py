@@ -5,13 +5,11 @@ import logging
 import time
 from typing import Optional
 
-from .logging_helper import LoggingHelper
-
 _LOGGER = logging.getLogger(__name__)
 
 
 class AsekoCloudMirror:
-    """Asynchronous TCP forwarder to Aseko Cloud with optional logging via LoggingHelper.
+    """Asynchronous TCP forwarder to Aseko Cloud.
     - Non-blocking: frames are queued and sent by a worker task.
     - Resilient: reconnects on errors with backoff and also on a fixed interval.
     """
@@ -20,22 +18,16 @@ class AsekoCloudMirror:
         self,
         cloud_host: str,
         cloud_port: int,
-        logger: Optional[logging.Logger] = None,
-        log_helper: Optional[LoggingHelper] = None,
         reconnect_interval: int = 900,  # force reconnect every hour
     ) -> None:
         self._host = cloud_host
         self._port = int(cloud_port)
-        self._logger = logger or logging.getLogger(__name__)
         self._queue: "asyncio.Queue[bytes]" = asyncio.Queue(maxsize=1000)
         self._task: Optional[asyncio.Task] = None
         self._writer: Optional[asyncio.StreamWriter] = None
         self._connected_event = asyncio.Event()
         self._last_connect: float = 0.0
         self._reconnect_interval = reconnect_interval
-
-        # Central logging helper (hex/bin/info)
-        self._log_helper = log_helper
 
     async def start(self) -> None:
         """Start worker task."""
@@ -47,10 +39,7 @@ class AsekoCloudMirror:
         """Stop worker task and close connection."""
         if self._task:
             self._task.cancel()
-            try:
-                await self._task
-            except asyncio.CancelledError:
-                pass
+            await self._task
             self._task = None
         await self._close_writer()
 
@@ -64,20 +53,12 @@ class AsekoCloudMirror:
             # Drop oldest to keep stream moving
             try:
                 _ = self._queue.get_nowait()
-            except Exception:
+            except asyncio.QueueEmpty:
                 pass
             try:
                 self._queue.put_nowait(bytes(frame))
             except Exception:
                 _LOGGER.debug("Mirror queue overflow; frame dropped.")
-
-        # Optional: log via helper
-        if self._log_helper:
-            try:
-                await self._log_helper.log_hex_frame(frame)
-                await self._log_helper.log_bin_frame(frame)
-            except Exception:
-                _LOGGER.debug("Failed to log frame in mirror.", exc_info=True)
 
     async def _worker(self) -> None:
         """Loop connection with reconnect/backoff and queue consumption."""

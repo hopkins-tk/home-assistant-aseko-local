@@ -39,7 +39,3 @@ CONF_ENABLE_RAW_LOGGING = "enable_raw_logging"
 CONF_FORWARDER_ENABLED = "forwarder_enabled"
 CONF_FORWARDER_HOST = "forwarder_host"
 CONF_FORWARDER_PORT = "forwarder_port"
-
-
-# Default log directory
-DEFAULT_LOG_DIR = "aseko_logs"
