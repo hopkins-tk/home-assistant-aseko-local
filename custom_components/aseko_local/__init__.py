@@ -26,8 +26,6 @@ from .const import (
     CONF_FORWARDER_HOST,
     CONF_FORWARDER_PORT,
     CONF_FORWARDER_ENABLED,
-    CONF_ENABLE_RAW_LOGGING,
-    DEFAULT_LOG_DIR,
 )
 
 _LOGGER = logging.getLogger(__name__)

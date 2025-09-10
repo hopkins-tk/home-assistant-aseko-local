@@ -46,9 +46,13 @@ def _make_base_bytes(size: int = 120) -> bytearray:
     data[69] = 2  # backwash_time hour
     data[70] = 30  # backwash_time min
     data[71] = 2  # backwash_duration (20)
-    data[92:94] = (5000).to_bytes(2, "big")  # pool_volume
-    data[94:96] = (60).to_bytes(2, "big")  # max_filling_time
     data[74:76] = (120).to_bytes(2, "big")  # delay_after_startup
+    data[92:94] = (5000).to_bytes(2, "big")  # pool_volume
+    data[95] = 10  # flowrate_chlor
+    data[94:96] = (60).to_bytes(2, "big")  # max_filling_time
+    data[97] = 20  # flowrate_ph_plus
+    data[99] = 255  # flowrate_ph_minus (not measured)
+    data[101] = 40  # flowrate_floc
     data[106:108] = (30).to_bytes(2, "big")  # delay_after_dose
     return data
 
@@ -85,10 +89,6 @@ def test_flowrates() -> None:
     """Test decoding of flowrate data."""
 
     data = _make_base_bytes()
-    data[95] = 10  # flowrate_chlor
-    data[97] = 20  # flowrate_ph_plus
-    data[99] = 255  # flowrate_ph_minus (not measured)
-    data[101] = 40  # flowrate_floc
 
     device = AsekoDecoder.decode(bytes(data))
     assert device.flowrate_chlor == 10
