@@ -59,11 +59,8 @@ You need to re-configure your Aseko unit to send data to your Home Assistant ins
 
 If you want to keep sending the data to Aseko Cloud, you had to use a TCP proxy (like Goduuplicator) before release 1.2.0. The installation of such a TCP proxy with package copying is tricky, especially the stream to Aseko Local was always interrupted after some seconds. Further goduplicator hasn't been updated for 5 years.
 
-Sinc release 1.2.0 Aseko Local has a built in proxy to forward the raw data received from Aseko Device to Aseko Cloud (pool.aseko.com:47524 = original address). Open Aseko Local integration, klick on settings (see image) and enable cloud proxy.
+Since release 1.3.0 Aseko Local has a built in proxy to forward the raw data received from Aseko Device to Aseko Cloud (pool.aseko.com:47524 = original address). Open Aseko Local integration, klick on settings (see image) and enable cloud proxy.
 
 ![Aseko Local options](images/aseko-options.png)
 
-### Optional: Raw data logger
-
-In some cases a developper has to debug received raw data. With enabled raw data logger in options dialog a "aseko_log" folder will be created in HA config folder. A binary and hex file with timestamped records are created.
 

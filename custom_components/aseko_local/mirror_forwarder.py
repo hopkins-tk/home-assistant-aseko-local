@@ -34,6 +34,7 @@ class AsekoCloudMirror:
         if self._task is not None:
             return
         self._task = asyncio.create_task(self._worker(), name="AsekoCloudMirrorWorker")
+        _LOGGER.debug("Mirror worker started.")
 
     async def stop(self) -> None:
         """Stop worker task and close connection."""
@@ -42,6 +43,7 @@ class AsekoCloudMirror:
             await self._task
             self._task = None
         await self._close_writer()
+        _LOGGER.debug("Mirror worker stopped.")
 
     async def enqueue(self, frame: bytes) -> None:
         """Queue one raw Aquanet frame (120 bytes). Non-blocking for the caller."""
