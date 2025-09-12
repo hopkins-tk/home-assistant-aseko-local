@@ -1,6 +1,7 @@
 import logging
 from datetime import datetime, time
 from enum import IntEnum
+from sys import exception
 import homeassistant.util
 
 
@@ -19,6 +20,10 @@ from .const import (
     PROBE_REDOX_MISSING,
     PROBE_SANOSIL_MISSING,
     PUMP_RUNNING,
+    UNIT_TYPE_HOME,
+    UNIT_TYPE_NET,
+    UNIT_TYPE_PROFI,
+    UNIT_TYPE_SALT,
     UNSPECIFIED_VALUE,
     WATER_FLOW_TO_PROBES,
     YEAR_OFFSET,
@@ -33,7 +38,6 @@ class AsekoDecoder:
     @staticmethod
     def _normalize_value(value: int | str | None) -> int | str | None:
         """Normalize raw values to None if they are unspecified/invalid.
-
         Rules:
         - None stays None
         - Integer 255 (0xFF) → None
@@ -41,6 +45,7 @@ class AsekoDecoder:
         - String "255" → None
         - Otherwise: return value unchanged
         """
+
         if value is None:
             return None
 
@@ -59,56 +64,79 @@ class AsekoDecoder:
     def _unit_type(data: bytes) -> AsekoDeviceType | None:
         """Determine the Aseko device type. Returns None until a reliable detection is possible."""
 
-        # 1. Serial number must be valid (first 4 bytes, big endian)
-        serial = int.from_bytes(data[0:4], "big")
-        if not serial or serial in (0, UNSPECIFIED_VALUE, 0xFFFFFFFF):
-            _LOGGER.debug("Unit type detection skipped: invalid serial (%s)", serial)
-            return None
-
-        # 2. NET devices always report byte[6] = 0xFF
-        if data[6] == UNSPECIFIED_VALUE:
-            _LOGGER.debug("Unit type detected: NET (byte[6] = 0xFF)")
-            return AsekoDeviceType.NET
-
-        # 3. Check available probes
-        probe_info = AsekoDecoder._available_probes(data)
-
-        if AsekoProbeType.REDOX in probe_info and AsekoProbeType.CLF in probe_info:
-            _LOGGER.debug("Unit type detected: PROFI (probes include REDOX and CLF)")
+        if data[4] == UNIT_TYPE_PROFI:
             return AsekoDeviceType.PROFI
 
-        # 4. SALT only if data[20]/data[21] have valid values
-        if (
-            (data[20] or data[21])
-            and AsekoProbeType.SANOSIL not in probe_info
-            and AsekoProbeType.DOSE not in probe_info
-        ):
-            _LOGGER.debug(
-                "Unit type detected: SALT (valid values in data[20]/[21], probes=%s)",
-                probe_info,
-            )
+        if (data[4] & UNIT_TYPE_SALT) == UNIT_TYPE_SALT:
             return AsekoDeviceType.SALT
 
-        # 5. HOME as fallback if probes exist
-        if probe_info:
-            _LOGGER.debug("Unit type detected: HOME (fallback, probes=%s)", probe_info)
+        if bool(data[4] & UNIT_TYPE_HOME):
             return AsekoDeviceType.HOME
 
-        # 6. Nothing clear yet → wait for more data
-        _LOGGER.debug("Unit type not yet determined, waiting for more data...")
-        return None
+        if bool(data[4] & UNIT_TYPE_NET):
+            return AsekoDeviceType.NET
+
+        error = f"Unknown unit type: {data[4]}"
+        _LOGGER.warning(error)
+        raise ValueError(error)
+
+        # # 1. Serial number must be valid (first 4 bytes, big endian)
+        # serial = int.from_bytes(data[0:4], "big")
+        # if not serial or serial in (0, UNSPECIFIED_VALUE, 0xFFFFFFFF):
+        #     _LOGGER.debug("Unit type detection skipped: invalid serial (%s)", serial)
+        #     return None
+
+        # # 2. NET devices always report byte[6] = 0xFF
+        # if data[6] == UNSPECIFIED_VALUE:
+        #     _LOGGER.debug("Unit type detected: NET (byte[6] = 0xFF)")
+        #     return AsekoDeviceType.NET
+
+        # # 3. Check available probes
+        # probe_info = AsekoDecoder._available_probes(data)
+
+        # if AsekoProbeType.REDOX in probe_info and AsekoProbeType.CLF in probe_info:
+        #     _LOGGER.debug("Unit type detected: PROFI (probes include REDOX and CLF)")
+        #     return AsekoDeviceType.PROFI
+
+        # # 4. SALT only if data[20]/data[21] have valid values
+        # if (
+        #     (data[20] or data[21])
+        #     and AsekoProbeType.SANOSIL not in probe_info
+        #     and AsekoProbeType.DOSE not in probe_info
+        # ):
+        #     _LOGGER.debug(
+        #         "Unit type detected: SALT (valid values in data[20]/[21], probes=%s)",
+        #         probe_info,
+        #     )
+        #     return AsekoDeviceType.SALT
+
+        # # 5. HOME as fallback if probes exist
+        # if probe_info:
+        #     _LOGGER.debug("Unit type detected: HOME (fallback, probes=%s)", probe_info)
+        #     return AsekoDeviceType.HOME
+
+        # # 6. Nothing clear yet → wait for more data
+        # _LOGGER.debug("Unit type not yet determined, waiting for more data...")
+        # return None
 
     @staticmethod
     def _available_probes(data: bytes) -> set[AsekoProbeType]:
+        """Determine types of probes installed from the binary data."""
+
         probe_info = data[4]
-        probes = {AsekoProbeType.PH}
+
+        probes = set()
+        probes.add(AsekoProbeType.PH)
 
         if not bool(probe_info & PROBE_REDOX_MISSING):
             probes.add(AsekoProbeType.REDOX)
+
         if not bool(probe_info & PROBE_CLF_MISSING):
             probes.add(AsekoProbeType.CLF)
+
         if not bool(probe_info & PROBE_SANOSIL_MISSING):
             probes.add(AsekoProbeType.SANOSIL)
+
         if not bool(probe_info & PROBE_DOSE_MISSING):
             probes.add(AsekoProbeType.DOSE)
 
@@ -116,17 +144,40 @@ class AsekoDecoder:
 
     @staticmethod
     def _timestamp(data: bytes) -> datetime | None:
-        tz = homeassistant.util.dt.get_default_time_zone()
+        """Extract timestamp from data and validates timestamp."""
 
-        if len(data) < 12 or data[6] == UNSPECIFIED_VALUE:
-            return datetime.now(tz=tz)
+        if (
+            len(data) < 12
+            or data[6] == UNSPECIFIED_VALUE
+            or data[7] == UNSPECIFIED_VALUE
+            or data[8] == UNSPECIFIED_VALUE
+            or data[9] == UNSPECIFIED_VALUE
+            or data[10] == UNSPECIFIED_VALUE
+            or data[11] == UNSPECIFIED_VALUE
+        ):
+            return datetime.now(tz=homeassistant.util.dt.get_default_time_zone())
 
         try:
             year = YEAR_OFFSET + data[6]
+
+            if data[7] > 12 or data[7] < 1:
+                raise ValueError("Invalid month")
             month = min(max(data[7], 1), 12)
+
+            if data[8] > 31 or data[8] < 1:
+                raise ValueError("Invalid day")
             day = min(max(data[8], 1), 31)
+
+            if data[9] > 23 or data[9] < 0:
+                raise ValueError("Invalid hour")
             hour = min(max(data[9], 0), 23)
+
+            if data[10] > 59 or data[10] < 0:
+                raise ValueError("Invalid minute")
             minute = min(max(data[10], 0), 59)
+
+            if data[11] > 59 or data[11] < 0:
+                raise ValueError("Invalid second")
             second = min(max(data[11], 0), 59)
 
             return datetime(
@@ -136,15 +187,16 @@ class AsekoDecoder:
                 hour=hour,
                 minute=minute,
                 second=second,
-                tzinfo=tz,
+                tzinfo=homeassistant.util.dt.get_default_time_zone(),
             )
+
         except ValueError as e:
             _LOGGER.warning(
                 "Received invalid timestamp (%s) – falling back to now(). Frame: %s",
                 e,
                 data.hex(),
             )
-            return datetime.now(tz=tz)
+            return datetime.now(tz=homeassistant.util.dt.get_default_time_zone())
 
     @staticmethod
     def _time(data: bytes) -> time | None:
@@ -222,7 +274,7 @@ class AsekoDecoder:
         ts = AsekoDecoder._timestamp(data)
         _LOGGER.debug("Decoded timestamp = %s (raw: %s)", ts, data[6:12].hex())
 
-        # Pumpe
+        # Pump type running (byte 29)
         pump_code = int(data[29])
         active_pump = (
             AsekoPumpType(pump_code)
