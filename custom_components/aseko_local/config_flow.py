@@ -1,4 +1,5 @@
 """Config flow for Aseko Local integration."""
+
 from __future__ import annotations
 
 import logging
@@ -19,7 +20,7 @@ from .const import (
     CONF_FORWARDER_ENABLED,
     CONF_FORWARDER_HOST,
     CONF_FORWARDER_PORT,
-    CONF_ENABLE_RAW_LOGGING,
+    #    CONF_ENABLE_RAW_LOGGING,
 )
 from .aseko_server import AsekoDeviceServer, ServerConnectionError
 
@@ -146,7 +147,7 @@ class AsekoLocalOptionsFlowHandler(OptionsFlow):
     async def async_step_options_init(self, user_input=None):
         errors = {}
         config_entry = self.hass.config_entries.async_get_entry(self._entry_id)
-        
+
         if user_input is not None:
             # 🛑 Server hart stoppen, bevor neu geladen wird
             await AsekoDeviceServer.remove_all()
@@ -168,16 +169,20 @@ class AsekoLocalOptionsFlowHandler(OptionsFlow):
                 ): bool,
                 vol.Optional(
                     CONF_FORWARDER_HOST,
-                    default=config_entry.options.get(CONF_FORWARDER_HOST, DEFAULT_FORWARDER_HOST),
+                    default=config_entry.options.get(
+                        CONF_FORWARDER_HOST, DEFAULT_FORWARDER_HOST
+                    ),
                 ): str,
                 vol.Optional(
                     CONF_FORWARDER_PORT,
-                    default=config_entry.options.get(CONF_FORWARDER_PORT, DEFAULT_FORWARDER_PORT),
+                    default=config_entry.options.get(
+                        CONF_FORWARDER_PORT, DEFAULT_FORWARDER_PORT
+                    ),
                 ): int,
-                vol.Optional(
-                    CONF_ENABLE_RAW_LOGGING,
-                    default=config_entry.options.get(CONF_ENABLE_RAW_LOGGING, False),
-                ): bool,
+                # vol.Optional(
+                #     CONF_ENABLE_RAW_LOGGING,
+                #     default=config_entry.options.get(CONF_ENABLE_RAW_LOGGING, False),
+                # ): bool,
             }
         )
 
