@@ -1,6 +1,7 @@
 """Test the Aseko Decoder."""
 
 from datetime import time
+from tkinter import NO
 
 from custom_components.aseko_local.aseko_data import (
     AsekoDeviceType,
@@ -91,7 +92,7 @@ def test_flowrates() -> None:
     data = _make_base_bytes()
 
     device = AsekoDecoder.decode(bytes(data))
-    assert device.flowrate_chlor == 10
+    assert device.flowrate_chlor == 60
     assert device.flowrate_ph_plus == 20
     assert device.flowrate_ph_minus is None
     assert device.flowrate_floc == 40
@@ -183,7 +184,7 @@ def test_decode_profi() -> None:
     data = _make_base_bytes()
     data[4] = 0x00  # Redox & CLF probe
     data[16:18] = (100).to_bytes(2, "big")
-    data[18:20] = (200).to_bytes(2, "big")
+    data[18:20] = (650).to_bytes(2, "big")
     data[14:16] = (800).to_bytes(2, "big")
     data[52] = 80
     data[53] = 20
@@ -191,10 +192,12 @@ def test_decode_profi() -> None:
     device = AsekoDecoder.decode(bytes(data))
     assert device.device_type == AsekoDeviceType.PROFI
     assert device.ph == 8.0
-    assert device.redox == 200
+    assert device.redox == 650
     assert device.cl_free == 1.0
     assert device.required_ph == 8.0
-    assert device.required_redox == 200
+    assert (
+        device.required_redox is None
+    )  # PROFI has no required redox instead required_cl_free is existing
     assert device.required_cl_free == 2.0
 
 

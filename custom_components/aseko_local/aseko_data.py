@@ -43,6 +43,8 @@ class AsekoPumpType(IntEnum):
     PH_MINUS = 0x88
     PH_PLUS = -1  # unknown yet
     FLOC = 0x28
+    ELECTROLYZER_RUNNING = 0x10
+    ELECTROLYZER_RUNNING_LEFT = 0x50
 
 
 @dataclass

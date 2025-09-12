@@ -44,6 +44,7 @@ class AsekoConsumptionSensorEntityDescription(SensorEntityDescription):
 
 SENSORS: list[AsekoSensorEntityDescription] = [
     AsekoSensorEntityDescription(
+        # Air temperature is missing in decoder, no idea which byte is
         key="airTemp",
         translation_key="air_temperature",
         device_class=SensorDeviceClass.TEMPERATURE,
@@ -88,7 +89,7 @@ SENSORS: list[AsekoSensorEntityDescription] = [
         value_fn=lambda device: device.required_cl_free,
     ),
     AsekoSensorEntityDescription(
-        key="cl_free_mv",
+        key="free_chlorine_mv",
         translation_key="free_chlorine_mv",
         native_unit_of_measurement=UnitOfElectricPotential.MILLIVOLT,
         state_class=SensorStateClass.MEASUREMENT,

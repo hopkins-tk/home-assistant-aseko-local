@@ -1,19 +1,24 @@
 import pytest
-from unittest.mock import AsyncMock
+from unittest.mock import MagicMock
+
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.helpers.entity import Entity
 
 from custom_components.aseko_local.sensor import (
     async_setup_entry,
     AsekoLocalSensorEntity,
-    SENSORS,
 )
-from custom_components.aseko_local.aseko_data import AsekoDevice
+from custom_components.aseko_local.aseko_decoder import AsekoDecoder
+
+from custom_components.aseko_local.const import WATER_FLOW_TO_PROBES
+from custom_components.aseko_local.aseko_data import AsekoDeviceType
 
 
 # Helper function to create a base bytearray for a device
-def _make_base_bytes() -> bytearray:
-    """Create a base bytearray for test data with default values."""
+def _make_salt_redox_bytes() -> bytearray:
+    """Create a base bytearray with almost all possible entities."""
 
-    data = bytearray(120)
+    data = bytearray([0xFF] * 120)
     data[0:4] = (1234).to_bytes(4, "big")  # serial_number
     data[4] = 0x0E  # SALT with REDOX probe
     data[6] = 24  # year (2024)
@@ -23,14 +28,121 @@ def _make_base_bytes() -> bytearray:
     data[10] = 34  # minute
     data[11] = 56  # second
     data[14:16] = (700).to_bytes(2, "big")  # pH = 7.00
-    data[16:18] = (650).to_bytes(2, "big")  # redox = 650 mV
-    data[18:20] = (200).to_bytes(2, "big")  # chlorine = 2.00 mg/L
+    data[16:18] = (680).to_bytes(2, "big")  # Redox = 650 mv
     data[20] = 32  # salinity = 3.2
     data[21] = 80  # electrolyzer_power
     data[25:27] = (245).to_bytes(2, "big")  # water_temperature = 24.5
     data[28] = WATER_FLOW_TO_PROBES
+    data[29] = 0x10  # Electrolyzer on
+    data[52] = 70  # required_ph = 7.0
+    data[53] = 65  # required_redox = 650
+    data[54] = 5  # required_algicide
+    data[55] = 28  # required_water_temperature
+    data[56] = 8  # start1 hour
+    data[57] = 0  # start1 min
+    data[58] = 10  # stop1 hour
+    data[59] = 0  # stop1 min
+    data[60] = 14  # start2 hour
+    data[61] = 0  # start2 min
+    data[62] = 16  # stop2 hour
+    data[63] = 0  # stop2 min
+    data[68] = 3  # backwash_every_n_days
+    data[69] = 2  # backwash_time hour
+    data[70] = 30  # backwash_time min
+    data[71] = 2  # backwash_duration (20)
+    data[74:76] = (120).to_bytes(2, "big")  # delay_after_startup
+    data[92:94] = (5000).to_bytes(2, "big")  # pool_volume
+    data[95] = 255  # flowrate_chlor
+    data[94:96] = (60).to_bytes(2, "big")  # max_filling_time
+    data[97] = 255  # flowrate_ph_plus
+    data[99] = 60  # flowrate_ph_minus (not measured)
+    data[101] = 70  # flowrate_floc
+    data[106:108] = (30).to_bytes(2, "big")  # delay_after_dose
+    return data
+
+
+def _make_salt_clf_bytes() -> bytearray:
+    """Create a base bytearray with almost all possible entities."""
+
+    data = bytearray([0xFF] * 120)
+    data[0:4] = (1234).to_bytes(4, "big")  # serial_number
+    data[4] = 0x0D  # SALT with CLF probe
+    data[6] = 24  # year (2024)
+    data[7] = 6  # month
+    data[8] = 15  # day
+    data[9] = 12  # hour
+    data[10] = 34  # minute
+    data[11] = 56  # second
+    data[14:16] = (700).to_bytes(2, "big")  # pH = 7.00
+    data[16:18] = (100).to_bytes(2, "big")  # CL free = 1.00 mg/L
+    data[20] = 32  # salinity = 3.2
+    data[21] = 80  # electrolyzer_power
+    data[25:27] = (245).to_bytes(2, "big")  # water_temperature = 24.5
+    data[28] = WATER_FLOW_TO_PROBES
+    data[29] = 0x50  # pump_running + Electrolyzer LEFT
+    data[52] = 70  # required_ph = 7.0
+    data[53] = 30  # required_cl = 3.0
+    data[54] = 5  # required_algicide
+    data[55] = 28  # required_water_temperature
+    data[56] = 8  # start1 hour
+    data[57] = 0  # start1 min
+    data[58] = 10  # stop1 hour
+    data[59] = 0  # stop1 min
+    data[60] = 14  # start2 hour
+    data[61] = 0  # start2 min
+    data[62] = 16  # stop2 hour
+    data[63] = 0  # stop2 min
+    data[68] = 3  # backwash_every_n_days
+    data[69] = 2  # backwash_time hour
+    data[70] = 30  # backwash_time min
+    data[71] = 2  # backwash_duration (20)
+    data[74:76] = (120).to_bytes(2, "big")  # delay_after_startup
+    data[92:94] = (5000).to_bytes(2, "big")  # pool_volume
+    data[95] = 255  # flowrate_chlor
+    data[94:96] = (60).to_bytes(2, "big")  # max_filling_time
+    data[97] = 20  # flowrate_ph_plus
+    data[99] = 255  # flowrate_ph_minus (not measured)
+    data[101] = 255  # flowrate_floc
+    data[106:108] = (30).to_bytes(2, "big")  # delay_after_dose
+    return data
+
+
+def _make_net_clf_bytes() -> bytearray:
+    """Create a base bytearray for test data with default values for Aseko NET with CLF and PH."""
+    """with CL free and cl free mV and PH no redox"""
+
+    data = bytearray.fromhex(
+        "069187240901ffffffffffff000402d10024ffff0026ff00050147ff000001e90000000000ff0017"
+        "069187240903ffffffffffff470a08ffffffffffffffffff028a0147ffffffffffffffffffffff1f"
+        "069187240902ffffffffffff0001003cffff003cffff010383ff00781e02581e28ffffffff0049a9"
+    )
+    return data
+
+
+def _make_profi_cl_redox_bytes() -> bytearray:
+    """Create a base bytearray for Aseko Profi with CL and REDOX probe."""
+
+    data = bytearray([0xFF] * 120)
+    data[0:4] = (1234).to_bytes(4, "big")  # serial_number
+    data[4] = 0x0C  # PROFI with CL and REDOX probe
+    data[6] = 24  # year (2024)
+    data[7] = 6  # month
+    data[8] = 15  # day
+    data[9] = 12  # hour
+    data[10] = 34  # minute
+    data[11] = 56  # second
+    data[14:16] = (700).to_bytes(2, "big")  # pH = 7.00
+    data[16:18] = (100).to_bytes(2, "big")  # Redox
+    data[18:20] = (650).to_bytes(
+        2, "big"
+    )  # Redox = 650 mv if Byte 18 and 19 are UNSPECIFIED
+    data[18] = 255
+    data[19] = 255
+    data[25:27] = (245).to_bytes(2, "big")  # water_temperature = 24.5
+    data[28] = WATER_FLOW_TO_PROBES
     data[29] = 0x08  # pump_running
     data[52] = 70  # required_ph = 7.0
+    data[53] = 30  # required_cl = 3.0
     data[54] = 5  # required_algicide
     data[55] = 28  # required_water_temperature
     data[56] = 8  # start1 hour
@@ -57,41 +169,194 @@ def _make_base_bytes() -> bytearray:
 
 
 @pytest.mark.asyncio
-async def test_async_setup_entry_adds_entities(hass):
+async def test_async_setup_salt_redox(hass) -> None:
     """Test that async_setup_entry adds sensor entities for available sensors."""
 
-    # Create a dummy device from base bytes
-    class DummyDevice(AsekoDevice):
-        def __init__(self):
-            # You may need to adjust this depending on your AsekoDevice implementation
-            super().__init__(raw=_make_base_bytes())
-            # self.serial_number = "12345678"
-            # self.air_temperature = 25
-            # self.ph = 7.2
+    # Use the decoder to create a valid device
+    raw_bytes = _make_salt_redox_bytes()
+    device = AsekoDecoder.decode(raw_bytes)
 
-    # Mock coordinator with one device
     class DummyCoordinator:
         def get_devices(self):
-            return [DummyDevice()]
+            return [device]
 
-    # Mock config entry with runtime_data
-    class DummyConfigEntry:
-        runtime_data = type("RuntimeData", (), {"coordinator": DummyCoordinator()})
+    # Create a MagicMock for ConfigEntry with runtime_data attribute
+    dummy_entry = MagicMock(spec=ConfigEntry)
+    dummy_entry.runtime_data = type(
+        "RuntimeData", (), {"coordinator": DummyCoordinator()}
+    )
 
-    # Collect added entities
     added_entities = []
 
-    async def mock_add_entities(entities):
-        added_entities.extend(entities)
+    # Correct callback signature for async_add_entities
+    def mock_add_entities(
+        new_entities, update_before_add=False, *, config_subentry_id=None
+    ):
+        added_entities.extend(new_entities)
 
-    # Call the setup function
-    await async_setup_entry(hass, DummyConfigEntry(), mock_add_entities)
+    await async_setup_entry(hass, dummy_entry, mock_add_entities)
 
-    # Check that at least one sensor entity was added
+    print(device.device_type)
+    print(device.electrolyzer_power)
+
+    for entity in added_entities:
+        name = getattr(entity.entity_description, "key", "unknown")
+        value = entity.native_value
+        status = "enabled" if getattr(entity, "enabled", True) else "disabled"
+        print(f"Sensor: {name}, Status: {status}, Value: {value}")
+
+    assert device.device_type == AsekoDeviceType.SALT
     assert any(isinstance(e, AsekoLocalSensorEntity) for e in added_entities)
-    # Check that the entity has the expected serial number
     assert any(
-        getattr(e.device, "serial_number", None) == "1234" for e in added_entities
+        getattr(e.device, "serial_number", None) == device.serial_number
+        for e in added_entities
     )
-    # Optionally, check that a pH sensor entity is present
-    assert any(e.entity_description.key == "ph" for e in added_entities)
+    assert len(added_entities) == 13  # 1 sensors should be added for
+    assert any(
+        getattr(e.entity_description, "key", None) != "free_chlorine"
+        for e in added_entities
+    )
+    assert any(
+        getattr(e.entity_description, "key", None) != "free_chlorine_mv"
+        for e in added_entities
+    )
+    assert any(
+        getattr(e.entity_description, "key", None) != "required_free_chlorine"
+        for e in added_entities
+    )
+    assert any(
+        getattr(e.entity_description, "key", None) == "rx" for e in added_entities
+    )
+    assert any(
+        getattr(e.entity_description, "key", None) == "required_rx"
+        for e in added_entities
+    )
+
+
+@pytest.mark.asyncio
+async def test_async_setup_salt_clf(hass) -> None:
+    """Test that async_setup_entry adds sensor entities for available sensors."""
+
+    # Use the decoder to create a valid device
+    raw_bytes = _make_salt_clf_bytes()
+    device = AsekoDecoder.decode(raw_bytes)
+
+    class DummyCoordinator:
+        def get_devices(self):
+            return [device]
+
+    # Create a MagicMock for ConfigEntry with runtime_data attribute
+    dummy_entry = MagicMock(spec=ConfigEntry)
+    dummy_entry.runtime_data = type(
+        "RuntimeData", (), {"coordinator": DummyCoordinator()}
+    )
+
+    added_entities = []
+
+    # Correct callback signature for async_add_entities
+    def mock_add_entities(
+        new_entities, update_before_add=False, *, config_subentry_id=None
+    ):
+        added_entities.extend(new_entities)
+
+    await async_setup_entry(hass, dummy_entry, mock_add_entities)
+
+    print(device.device_type)
+    print(device.electrolyzer_power)
+
+    for entity in added_entities:
+        name = getattr(entity.entity_description, "key", "unknown")
+        value = entity.native_value
+        status = "enabled" if getattr(entity, "enabled", True) else "disabled"
+        print(f"Sensor: {name}, Status: {status}, Value: {value}")
+
+    assert device.device_type == AsekoDeviceType.SALT
+    assert any(isinstance(e, AsekoLocalSensorEntity) for e in added_entities)
+    assert any(
+        getattr(e.device, "serial_number", None) == device.serial_number
+        for e in added_entities
+    )
+    assert len(added_entities) == 13  # 1 sensors should be added for
+    assert any(
+        getattr(e.entity_description, "key", None) == "free_chlorine"
+        for e in added_entities
+    )
+    assert any(
+        getattr(e.entity_description, "key", None) == "free_chlorine_mv"
+        for e in added_entities
+    )
+    assert any(
+        getattr(e.entity_description, "key", None) == "required_free_chlorine"
+        for e in added_entities
+    )
+    assert any(
+        getattr(e.entity_description, "key", None) != "rx" for e in added_entities
+    )
+    assert any(
+        getattr(e.entity_description, "key", None) != "required_rx"
+        for e in added_entities
+    )
+
+
+@pytest.mark.asyncio
+async def test_async_setup_net_clf(hass) -> None:
+    """Test that async_setup_entry adds sensor entities for available sensors."""
+
+    # Use the decoder to create a valid device
+    raw_bytes = _make_net_clf_bytes()
+    device = AsekoDecoder.decode(raw_bytes)
+
+    class DummyCoordinator:
+        def get_devices(self):
+            return [device]
+
+    # Create a MagicMock for ConfigEntry with runtime_data attribute
+    dummy_entry = MagicMock(spec=ConfigEntry)
+    dummy_entry.runtime_data = type(
+        "RuntimeData", (), {"coordinator": DummyCoordinator()}
+    )
+
+    added_entities = []
+
+    # Correct callback signature for async_add_entities
+    def mock_add_entities(
+        new_entities, update_before_add=False, *, config_subentry_id=None
+    ):
+        added_entities.extend(new_entities)
+
+    await async_setup_entry(hass, dummy_entry, mock_add_entities)
+
+    print(device.device_type)
+
+    for entity in added_entities:
+        name = getattr(entity.entity_description, "key", "unknown")
+        value = entity.native_value
+        status = "enabled" if getattr(entity, "enabled", True) else "disabled"
+        print(f"Sensor: {name}, Status: {status}, Value: {value}")
+
+    assert device.device_type == AsekoDeviceType.NET
+    assert any(isinstance(e, AsekoLocalSensorEntity) for e in added_entities)
+    assert any(
+        getattr(e.device, "serial_number", None) == device.serial_number
+        for e in added_entities
+    )
+    assert len(added_entities) == 9  # 9 sensors should be added for
+    assert any(
+        getattr(e.entity_description, "key", None) == "free_chlorine"
+        for e in added_entities
+    )
+    assert any(
+        getattr(e.entity_description, "key", None) == "free_chlorine_mv"
+        for e in added_entities
+    )
+    assert any(
+        getattr(e.entity_description, "key", None) == "required_free_chlorine"
+        for e in added_entities
+    )
+    assert any(
+        getattr(e.entity_description, "key", None) != "rx" for e in added_entities
+    )
+    assert any(
+        getattr(e.entity_description, "key", None) != "required_rx"
+        for e in added_entities
+    )

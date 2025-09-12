@@ -184,7 +184,11 @@ class AsekoDecoder:
             unit.redox = int.from_bytes(data[16:18], "big")
         else:
             unit.redox = int.from_bytes(data[18:20], "big")
-        unit.required_redox = data[53] * 10
+
+        if unit.device_type != AsekoDeviceType.PROFI:
+            unit.required_redox = data[53] * 10
+        else:
+            unit.required_redox = None
 
     @staticmethod
     def _fill_clf_data(unit: AsekoDevice, data: bytes) -> None:
@@ -255,7 +259,7 @@ class AsekoDecoder:
             AsekoDecoder._fill_redox_data(device, data)
         if AsekoProbeType.CLF in probes:
             AsekoDecoder._fill_clf_data(device, data)
-        if unit_type in (AsekoDeviceType.SALT, AsekoDeviceType.PROFI):
+        if unit_type == AsekoDeviceType.SALT:
             AsekoDecoder._fill_salt_unit_data(device, data)
 
         AsekoDecoder._fill_flowrate_data(device, data)
