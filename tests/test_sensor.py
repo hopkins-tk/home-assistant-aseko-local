@@ -162,7 +162,7 @@ def _make_profi_clf_redox_bytes() -> bytearray:
 
     data = bytearray([0xFF] * 120)
     data[0:4] = (1234).to_bytes(4, "big")  # serial_number
-    data[4] = 0x0C  # PROFI with CL and REDOX probe
+    data[4] = 0x08  # PROFI with CL and REDOX probe
     data[6] = 24  # year (2024)
     data[7] = 6  # month
     data[8] = 15  # day
