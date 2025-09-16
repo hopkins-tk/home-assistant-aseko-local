@@ -157,18 +157,21 @@ if __name__ == "__main__":
         sys.exit(1)
 
     # find hex dump position in parameters
-    if len(sys.argv[1]) / 2 == 120:
-        data = bytearray.fromhex(sys.argv[1])
+    if len(sys.argv[1]) / 2 >= 120:
+        hex_string = sys.argv[1].replace(" ", "")
+        data = bytearray.fromhex(hex_string)
         hex_pos = 1
-    elif len(sys.argv[2]) / 2 == 120:
-        data = bytearray.fromhex(sys.argv[2])
+    elif len(sys.argv[2]) / 2 >= 120:
+        hex_string = sys.argv[2].replace(" ", "")
+        data = bytearray.fromhex(hex_string)
         hex_pos = 2
-    elif len(sys.argv) > 3 and len(sys.argv[3]) / 2 == 120:
-        data = bytearray.fromhex(sys.argv[3])
+    elif len(sys.argv) > 3 and len(sys.argv[3]) / 2 >= 120:
+        hex_string = sys.argv[3].replace(" ", "")
+        data = bytearray.fromhex(hex_string)
         hex_pos = 3
     else:
         print(f"Invalid HEX dump. More or less 120 Bytes. ({len(hex_dump) / 2} bytes)")
-        print("Usage: python3 hex_dump.py <function> <hexstring> [byte_index]")
+        print("Usage: python3 hex_tools.py <function> <hexstring> [byte_index]")
         print("Functions: --table, --tablewrite, --byteinfo, --generateTest")
         sys.exit(1)
 
@@ -201,15 +204,18 @@ if __name__ == "__main__":
             print(f"\nHex table written to {md_path}")
         elif funct == "--byteinfo":
             if len(sys.argv) != 3 and index_pos is None:
-                print("Usage: python3 hex_dump.py --byteinfo <hexstring> <byte_index>")
+                print("Usage: python3 hex_tools.py --byteinfo <hexstring> <byte_index>")
                 sys.exit(1)
             print_byte_info(data, byte_index)
         elif funct == "--generateTest":
             generate_bytearray(data)
+        elif funct == "--hex":
+            print(len(hex_string) / 2)
+            print(hex_string)
         elif funct == "--help":
             print("Available functions: --table, --tablewrite, --byteinfo")
             print("Functions: --table, --tablewrite, --byteinfo, --generateTest")
         else:
-            print("Usage: python3 hex_dump.py <function> <hexstring> [byte_index]")
+            print("Usage: python3 hex_tools.py <function> <hexstring> [byte_index]")
             print("Functions: --table, --tablewrite, --byteinfo, --generateTest")
             sys.exit(1)
