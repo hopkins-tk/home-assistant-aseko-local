@@ -80,45 +80,6 @@ class AsekoDecoder:
         _LOGGER.warning(error)
         raise ValueError(error)
 
-        # # 1. Serial number must be valid (first 4 bytes, big endian)
-        # serial = int.from_bytes(data[0:4], "big")
-        # if not serial or serial in (0, UNSPECIFIED_VALUE, 0xFFFFFFFF):
-        #     _LOGGER.debug("Unit type detection skipped: invalid serial (%s)", serial)
-        #     return None
-
-        # # 2. NET devices always report byte[6] = 0xFF
-        # if data[6] == UNSPECIFIED_VALUE:
-        #     _LOGGER.debug("Unit type detected: NET (byte[6] = 0xFF)")
-        #     return AsekoDeviceType.NET
-
-        # # 3. Check available probes
-        # probe_info = AsekoDecoder._available_probes(data)
-
-        # if AsekoProbeType.REDOX in probe_info and AsekoProbeType.CLF in probe_info:
-        #     _LOGGER.debug("Unit type detected: PROFI (probes include REDOX and CLF)")
-        #     return AsekoDeviceType.PROFI
-
-        # # 4. SALT only if data[20]/data[21] have valid values
-        # if (
-        #     (data[20] or data[21])
-        #     and AsekoProbeType.SANOSIL not in probe_info
-        #     and AsekoProbeType.DOSE not in probe_info
-        # ):
-        #     _LOGGER.debug(
-        #         "Unit type detected: SALT (valid values in data[20]/[21], probes=%s)",
-        #         probe_info,
-        #     )
-        #     return AsekoDeviceType.SALT
-
-        # # 5. HOME as fallback if probes exist
-        # if probe_info:
-        #     _LOGGER.debug("Unit type detected: HOME (fallback, probes=%s)", probe_info)
-        #     return AsekoDeviceType.HOME
-
-        # # 6. Nothing clear yet → wait for more data
-        # _LOGGER.debug("Unit type not yet determined, waiting for more data...")
-        # return None
-
     @staticmethod
     def _available_probes(data: bytes) -> set[AsekoProbeType]:
         """Determine types of probes installed from the binary data."""
@@ -269,7 +230,6 @@ class AsekoDecoder:
     def decode(data: bytes) -> AsekoDevice:
         unit_type = AsekoDecoder._unit_type(data)
         probes = AsekoDecoder._available_probes(data)
-        normalize = AsekoDecoder._normalize_value
 
         ts = AsekoDecoder._timestamp(data)
         _LOGGER.debug("Decoded timestamp = %s (raw: %s)", ts, data[6:12].hex())
@@ -290,15 +250,15 @@ class AsekoDecoder:
             water_flow_to_probes=(data[28] == WATER_FLOW_TO_PROBES),
             pump_running=bool(data[29] & PUMP_RUNNING),
             active_pump=active_pump,
-            required_algicide=data[54],
-            required_water_temperature=normalize(data[55]),
+            required_algicide=AsekoDecoder._available_probes(data[54]),
+            required_water_temperature=AsekoDecoder._available_probes(data[55]),
             start1=AsekoDecoder._time(data[56:58]),
             stop1=AsekoDecoder._time(data[58:60]),
             start2=AsekoDecoder._time(data[60:62]),
             stop2=AsekoDecoder._time(data[62:64]),
-            backwash_every_n_days=data[68],
+            backwash_every_n_days=AsekoDecoder._available_probes(data[68]),
             backwash_time=AsekoDecoder._time(data[69:71]),
-            backwash_duration=data[71] * 10,
+            backwash_duration=data[71] * 10 if data[71] != UNSPECIFIED_VALUE else None,
             pool_volume=int.from_bytes(data[92:94], "big"),
             max_filling_time=int.from_bytes(data[94:96], "big"),
             delay_after_startup=int.from_bytes(data[74:76], "big"),

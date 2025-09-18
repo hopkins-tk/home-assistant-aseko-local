@@ -18,7 +18,7 @@ class AsekoCloudMirror:
         self,
         cloud_host: str,
         cloud_port: int,
-        reconnect_interval: int = 900,  # force reconnect every hour
+        reconnect_interval: int = 900,  # force reconnect 15 minutes
     ) -> None:
         self._host = cloud_host
         self._port = int(cloud_port)
@@ -60,7 +60,7 @@ class AsekoCloudMirror:
             try:
                 self._queue.put_nowait(bytes(frame))
             except Exception:
-                _LOGGER.debug("Mirror queue overflow; frame dropped.")
+                _LOGGER.error("Mirror queue overflow; frame dropped.")
 
     async def _worker(self) -> None:
         """Loop connection with reconnect/backoff and queue consumption."""
@@ -83,7 +83,7 @@ class AsekoCloudMirror:
                             "Mirror connected to %s:%s", self._host, self._port
                         )
                     except Exception as e:
-                        _LOGGER.debug("Mirror connect failed: %s", e)
+                        _LOGGER.error("Mirror connect failed: %s", e)
                         await asyncio.sleep(min(backoff, 10.0))
                         backoff = min(backoff * 2.0, 10.0)
                         continue
@@ -108,7 +108,7 @@ class AsekoCloudMirror:
                     )
                     await self._writer.drain()
                 except Exception as e:
-                    _LOGGER.debug("Mirror write failed: %s", e)
+                    _LOGGER.error("Mirror write failed: %s", e)
                     await self._close_writer()
                     # requeue the frame to try again
                     try:
@@ -120,7 +120,7 @@ class AsekoCloudMirror:
             except asyncio.CancelledError:
                 break
             except Exception:
-                _LOGGER.debug("Mirror worker loop error.", exc_info=True)
+                _LOGGER.error("Mirror worker loop error.", exc_info=True)
                 await asyncio.sleep(0.1)
 
     async def _close_writer(self) -> None:

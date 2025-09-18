@@ -78,7 +78,7 @@ class AsekoLocalDataUpdateCoordinator(DataUpdateCoordinator[AsekoData]):
                 list(new_data.devices.keys()),
             )
         else:
-            _LOGGER.warning("❌ Received device without serial_number, not stored!")
+            _LOGGER.error("❌ Received device without serial_number, not stored!")
             return  # abort, nothing to propagate
 
         # Use device timestamp if available (converted to UTC), else fallback to utcnow

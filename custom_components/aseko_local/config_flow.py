@@ -20,7 +20,6 @@ from .const import (
     CONF_FORWARDER_ENABLED,
     CONF_FORWARDER_HOST,
     CONF_FORWARDER_PORT,
-    #    CONF_ENABLE_RAW_LOGGING,
 )
 from .aseko_server import AsekoDeviceServer, ServerConnectionError
 

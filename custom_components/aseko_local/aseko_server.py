@@ -1,4 +1,4 @@
-"""Robuster Server für Aseko-Geräte mit Forwarder."""
+"""robust server for Aseko devices with forwarder."""
 
 import asyncio
 import logging
@@ -13,7 +13,7 @@ _LOGGER = logging.getLogger(__name__)
 
 
 class AsekoDeviceServer:
-    """Async TCP server für Aseko-Gerätedaten."""
+    """Async TCP server for receiving and parsing Aseko unit data."""
 
     _instances: ClassVar[dict[str, "AsekoDeviceServer"]] = {}
 
@@ -39,9 +39,9 @@ class AsekoDeviceServer:
             self._server = await asyncio.start_server(
                 self._handle_client, self.host, self.port
             )
-            _LOGGER.info("AsekoDeviceServer gestartet auf %s:%d", self.host, self.port)
+            _LOGGER.debug("AsekoDeviceServer startet on %s:%d", self.host, self.port)
         except OSError as err:
-            _LOGGER.error("Serverstart fehlgeschlagen: %s", err)
+            _LOGGER.error("AsekoDeviceServer start failed: %s", err)
             raise ServerConnectionError(f"Failed to start server: {err}") from err
 
     async def stop(self) -> None:
@@ -58,7 +58,7 @@ class AsekoDeviceServer:
             self._server.close()
             await self._server.wait_closed()
             self._server = None
-            _LOGGER.info("AsekoDeviceServer gestoppt")
+            _LOGGER.debug("AsekoDeviceServer stopped on %s:%d", self.host, self.port)
 
     @property
     def running(self) -> bool:
@@ -104,7 +104,7 @@ class AsekoDeviceServer:
                     # ✅ Read exactly MESSAGE_SIZE bytes per frame
                     frame = await reader.readexactly(MESSAGE_SIZE)
 
-                    _LOGGER.info(
+                    _LOGGER.debug(
                         "Frame received from %s (%d bytes):\n%s",
                         addr,
                         len(frame),
@@ -124,7 +124,7 @@ class AsekoDeviceServer:
                     # 🔎 Plausibility check before decoding: pH values must be between 0 and 14
                     ph_value = int.from_bytes(frame[14:16], "big") / 100
                     if not (0 <= ph_value <= 14):
-                        _LOGGER.warning(
+                        _LOGGER.error(
                             "Unreasonable pH value (%s) received from %s → closing connection",
                             ph_value,
                             addr,
@@ -133,7 +133,7 @@ class AsekoDeviceServer:
 
                     required_ph = frame[52] / 10
                     if not (6 <= required_ph <= 10):
-                        _LOGGER.warning(
+                        _LOGGER.error(
                             "Unreasonable required pH value (%s) received from %s → closing connection",
                             required_ph,
                             addr,
@@ -143,25 +143,24 @@ class AsekoDeviceServer:
                     device = AsekoDecoder.decode(frame)
 
                 except ValueError as e:
-                    _LOGGER.warning(
+                    _LOGGER.error(
                         "Invalid frame from %s: %s → closing connection", addr, e
                     )
                     break
+
                 except Exception:
-                    _LOGGER.exception(
+                    _LOGGER.error(
                         "Decoding error for data from %s → closing connection", addr
                     )
                     break
 
                 _LOGGER.debug("Decoded data from %s: %s", addr, device)
 
-                # Entfernt: log_helper/flowrate logging
-
                 # Send decoded data to higher layer
                 await self._maybe_call_on_data(device)
 
         except ConnectionResetError:
-            _LOGGER.warning("Client %s reset the connection", addr)
+            _LOGGER.debug("Client %s resets the connection", addr)
         finally:
             # Clean up and close connection
             self._clients.discard(writer)
@@ -175,9 +174,9 @@ class AsekoDeviceServer:
     def set_forward_callback(self, callback: Optional[Callable[[bytes], Any]]) -> None:
         self._forward_cb = callback
         if callback:
-            _LOGGER.info("Forward callback registriert")
+            _LOGGER.debug("Forward callback registered")
         else:
-            _LOGGER.info("Forward callback entfernt")
+            _LOGGER.debug("Forward callback removed")
 
     @classmethod
     async def create(
@@ -214,4 +213,4 @@ class AsekoDeviceServer:
 
 
 class ServerConnectionError(Exception):
-    """Exception für Verbindungsfehler."""
+    """Exception for connection error."""
