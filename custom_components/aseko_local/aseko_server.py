@@ -74,7 +74,7 @@ class AsekoDeviceServer:
             try:
                 await self._maybe_await(self._raw_sink(data))
             except Exception:
-                _LOGGER.debug("Raw sink raised an exception", exc_info=True)
+                _LOGGER.error("Raw sink raised an exception", exc_info=True)
 
     async def _call_forward_cb(self, data: bytes) -> None:
         if self._forward_cb:
@@ -82,14 +82,14 @@ class AsekoDeviceServer:
                 _LOGGER.debug("Forward callback called with %d bytes", len(data))
                 await self._maybe_await(self._forward_cb(data))
             except Exception:
-                _LOGGER.debug("Forward callback raised an exception", exc_info=True)
+                _LOGGER.error("Forward callback raised an exception", exc_info=True)
 
     async def _maybe_call_on_data(self, device: AsekoDevice) -> None:
         if self.on_data:
             try:
                 await self._maybe_await(self.on_data(device))
             except Exception:
-                _LOGGER.debug("on_data callback raised an exception", exc_info=True)
+                _LOGGER.error("on_data callback raised an exception", exc_info=True)
 
     async def _handle_client(
         self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
@@ -112,7 +112,7 @@ class AsekoDeviceServer:
                     )
 
                 except asyncio.IncompleteReadError:
-                    _LOGGER.debug("Client %s closed the connection", addr)
+                    _LOGGER.error("Client %s closed the connection", addr)
                     break
 
                 # Forward raw data (e.g. for debugging or mirroring)
@@ -160,7 +160,7 @@ class AsekoDeviceServer:
                 await self._maybe_call_on_data(device)
 
         except ConnectionResetError:
-            _LOGGER.debug("Client %s resets the connection", addr)
+            _LOGGER.error("Client %s resets the connection", addr)
         finally:
             # Clean up and close connection
             self._clients.discard(writer)

@@ -114,7 +114,6 @@ async def test_options_flow(
         CONF_FORWARDER_ENABLED: True,
         CONF_FORWARDER_HOST: DEFAULT_FORWARDER_HOST,
         CONF_FORWARDER_PORT: DEFAULT_FORWARDER_PORT,
-        CONF_ENABLE_RAW_LOGGING: True,
     }
 
     with patch(
