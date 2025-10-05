@@ -12,13 +12,13 @@ from homeassistant.components.sensor import (
     SensorEntityDescription,
     SensorStateClass,
 )
-from homeassistant.const import UnitOfElectricPotential, UnitOfTemperature, UnitOfVolume
+from homeassistant.const import UnitOfElectricPotential, UnitOfTemperature
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.typing import StateType
 
 from . import AsekoLocalConfigEntry
-from .aseko_data import AsekoDevice, AsekoElectrolyzerDirection, AsekoPumpType
+from .aseko_data import AsekoDevice, AsekoElectrolyzerDirection
 from .entity import AsekoLocalEntity
 
 _LOGGER = logging.getLogger(__name__)
@@ -31,6 +31,7 @@ class AsekoSensorEntityDescription(SensorEntityDescription):
     """Describes a regular Aseko device sensor entity."""
 
     value_fn: Callable[[AsekoDevice], StateType]
+    enabled: bool = True
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -95,6 +96,8 @@ SENSORS: list[AsekoSensorEntityDescription] = [
         state_class=SensorStateClass.MEASUREMENT,
         icon="mdi:pool",
         value_fn=lambda device: device.cl_free_mv,
+        entity_registry_enabled_default=False,
+        entity_registry_visible_default=False,
     ),
     AsekoSensorEntityDescription(
         key="ph",
@@ -155,14 +158,20 @@ SENSORS: list[AsekoSensorEntityDescription] = [
         value_fn=lambda device: device.required_water_temperature,
     ),
     AsekoSensorEntityDescription(
-        key="active_pump",
-        translation_key="active_pump",
-        device_class=SensorDeviceClass.ENUM,
-        options=[c.name.lower() for c in AsekoPumpType],
-        icon="mdi:pump",
-        value_fn=lambda device: (
-            device.active_pump.name.lower() if device.active_pump else "off"
-        ),
+        key="required_algicide",
+        translation_key="required_algicide",
+        native_unit_of_measurement="ml/m³/day",
+        state_class=SensorStateClass.MEASUREMENT,
+        icon="mdi:pool",
+        value_fn=lambda device: device.required_algicide,
+    ),
+    AsekoSensorEntityDescription(
+        key="required_floc",
+        translation_key="required_floc",
+        native_unit_of_measurement="ml/h",
+        state_class=SensorStateClass.MEASUREMENT,
+        icon="mdi:pool",
+        value_fn=lambda device: device.required_floc,
     ),
     AsekoSensorEntityDescription(
         key="flowrate_chlor",
@@ -171,6 +180,7 @@ SENSORS: list[AsekoSensorEntityDescription] = [
         state_class=SensorStateClass.MEASUREMENT,
         icon="mdi:water-pump",
         value_fn=lambda device: device.flowrate_chlor,
+        entity_registry_visible_default=False,
     ),
     AsekoSensorEntityDescription(
         key="flowrate_ph_minus",
@@ -179,6 +189,7 @@ SENSORS: list[AsekoSensorEntityDescription] = [
         state_class=SensorStateClass.MEASUREMENT,
         icon="mdi:water-pump",
         value_fn=lambda device: device.flowrate_ph_minus,
+        entity_registry_visible_default=False,
     ),
     AsekoSensorEntityDescription(
         key="flowrate_ph_plus",
@@ -187,6 +198,16 @@ SENSORS: list[AsekoSensorEntityDescription] = [
         state_class=SensorStateClass.MEASUREMENT,
         icon="mdi:water-pump",
         value_fn=lambda device: device.flowrate_ph_plus,
+        entity_registry_visible_default=False,
+    ),
+    AsekoSensorEntityDescription(
+        key="flowrate_algicide",
+        translation_key="flowrate_algicide",
+        native_unit_of_measurement="ml/min",
+        state_class=SensorStateClass.MEASUREMENT,
+        icon="mdi:water-pump",
+        value_fn=lambda device: device.flowrate_algicide,
+        entity_registry_visible_default=False,
     ),
     AsekoSensorEntityDescription(
         key="flowrate_floc",
@@ -195,6 +216,7 @@ SENSORS: list[AsekoSensorEntityDescription] = [
         state_class=SensorStateClass.MEASUREMENT,
         icon="mdi:water-pump",
         value_fn=lambda device: device.flowrate_floc,
+        entity_registry_visible_default=False,
     ),
 ]
 
@@ -224,7 +246,7 @@ async def async_setup_entry(
             device.serial_number,
         )
 
-        for description in SENSORS:
+        for description in filter(lambda d: d.enabled, SENSORS):
             key = description.key
             val = description.value_fn(device)
 

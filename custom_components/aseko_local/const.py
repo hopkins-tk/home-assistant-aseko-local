@@ -1,7 +1,3 @@
-from homeassistant.const import UnitOfVolume
-from .aseko_data import AsekoPumpType
-
-
 """Constants for Aseko Local integration."""
 
 DOMAIN = "aseko_local"
@@ -22,9 +18,7 @@ MAX_CLF_LIMIT = 100
 
 # Bit masks
 WATER_FLOW_TO_PROBES = 0xAA
-ELECTROLYZER_RUNNING = 0x10
-ELECTROLYZER_RUNNING_LEFT = 0x50
-PUMP_RUNNING = 0x08
+ALGICIDE_CONFIGURED = 0x80
 
 # Probe missing flags
 PROBE_REDOX_MISSING = 0x01

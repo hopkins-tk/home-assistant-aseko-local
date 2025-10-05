@@ -28,10 +28,9 @@
     "step": {
       "options_init": {
         "data": {
-          "proxy_enabled": "Enable cloud forwarding",
-          "proxy_host": "Cloud host",
-          "proxy_port": "Cloud port",
-          "enable_raw_logging": "Enable raw logging"
+          "forwarder_enabled": "Enable forwarding",
+          "forwarder_host": "Forward to host",
+          "forwarder_port": "Forward to port"
         }
       }
     }
@@ -41,8 +40,23 @@
       "electrolyzer_active": {
         "name": "Electrolyzer active"
       },
-      "pump_running": {
-        "name": "Pump running"
+      "filtration_pump_running": {
+        "name": "Filtration pump running"
+      },
+      "cl_pump_running": {
+        "name": "Chlorine dosing pump running"
+      },
+      "ph_minus_pump_running": {
+        "name": "pH- dosing pump running"
+      },
+      "ph_plus_pump_running": {
+        "name": "pH+ dosing pump running"
+      },
+      "algicide_pump_running": {
+        "name": "Algicide dosing pump running"
+      },
+      "floc_pump_running": {
+        "name": "Flocculant dosing pump running"
       },
       "water_flow_to_probes": {
         "name": "Water flow to probes"
@@ -66,9 +80,6 @@
       "free_chlorine": {
         "name": "Free chlorine"
       },
-      "free_chlorine_mv": {
-        "name": "Free chlorine in mV"
-      },
       "ph": {
         "name": "pH"
       },
@@ -87,21 +98,17 @@
       "required_water_temperature": {
         "name": "Required water temperature"
       },
+      "required_algicide": {
+        "name": "Required algicide dose"
+      },
+      "required_floc": {
+        "name": "Required flocculant dose"
+      },
       "salinity": {
         "name": "Salinity"
       },
       "water_temperature": {
         "name": "Water temperature"
-      },
-      "active_pump": {
-        "name": "Dosing pump running for chemistry",
-        "state": {
-          "off": "None",
-          "chlor_pure": "Chlorine",
-          "ph_minus": "pH-",
-          "ph_plus": "pH+",
-          "floc_plus_c": "Flocculant"
-        }
       },
       "flowrate_chlor": {
         "name": "Flow rate chlorine"
@@ -112,10 +119,12 @@
       "flowrate_ph_plus": {
         "name": "Flow rate pH+"
       },
-      "flowrate_floc": {
-        "name": "Flow rate flocculation"
+      "flowrate_algicide": {
+        "name": "Flow rate algicide"
       },
-
+      "flowrate_floc": {
+        "name": "Flow rate flocculant"
+      },
       "chlor_consumed": {
         "name": "Chlorine consumed (since refill)"
       },
@@ -143,6 +152,15 @@
       "ph_plus_remaining": {
         "name": "pH+ remaining"
       },
+      "algicide_consumed": {
+        "name": "Algicide consumed (since refill)"
+      },
+      "algicide_total_consumed": {
+        "name": "Algicide consumed (total)"
+      },
+      "algicide_remaining": {
+        "name": "Algicide remaining"
+      },
       "floc_consumed": {
         "name": "Flocculant consumed (since refill)"
       },
@@ -163,6 +181,9 @@
       "ph_plus_last_filled_quantity": {
         "name": "pH+ last filled quantity"
       },
+      "algicide_last_filled_quantity": {
+        "name": "Algicide last filled quantity"
+      },
       "floc_last_filled_quantity": {
         "name": "Flocculant last filled quantity"
       }
@@ -176,6 +197,9 @@
       },
       "ph_plus_refill_reset": {
         "name": "pH+ refill"
+      },
+      "algicide_refill_reset": {
+        "name": "Algicide refill"
       },
       "floc_refill_reset": {
         "name": "Flocculant refill"

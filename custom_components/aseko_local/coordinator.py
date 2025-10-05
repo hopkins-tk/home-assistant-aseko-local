@@ -81,13 +81,6 @@ class AsekoLocalDataUpdateCoordinator(DataUpdateCoordinator[AsekoData]):
             _LOGGER.error("❌ Received device without serial_number, not stored!")
             return  # abort, nothing to propagate
 
-        # Use device timestamp if available (converted to UTC), else fallback to utcnow
-        now = (
-            dt_util.as_utc(device.timestamp)
-            if getattr(device, "timestamp", None)
-            else dt_util.utcnow()
-        )
-
         devices = new_data.get_all() or []
         _LOGGER.debug("📊 Currently %s devices in new_data", len(devices))
 

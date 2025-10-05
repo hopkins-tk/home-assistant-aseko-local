@@ -4,6 +4,10 @@ from unittest.mock import MagicMock
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.entity import Entity
 
+from custom_components.aseko_local.binary_sensor import (
+    async_setup_entry as binary_async_setup_entry,
+    AsekoLocalBinarySensorEntity,
+)
 from custom_components.aseko_local.sensor import (
     async_setup_entry,
     AsekoLocalSensorEntity,
@@ -79,7 +83,7 @@ def _make_salt_clf_bytes() -> bytearray:
     data[21] = 80  # electrolyzer_power
     data[25:27] = (245).to_bytes(2, "big")  # water_temperature = 24.5
     data[28] = WATER_FLOW_TO_PROBES
-    data[29] = 0x50  # pump_running + Electrolyzer LEFT
+    data[29] = 0x50  # filtration_pump_running + Electrolyzer LEFT
     data[52] = 70  # required_ph = 7.0
     data[53] = 30  # required_cl = 3.0
     data[54] = 5  # required_algicide
@@ -175,7 +179,7 @@ def _make_profi_clf_redox_bytes() -> bytearray:
     # are not UNSPECIFIED
     data[25:27] = (245).to_bytes(2, "big")  # water_temperature = 24.5
     data[28] = WATER_FLOW_TO_PROBES
-    data[29] = 0x08  # pump_running
+    data[29] = 0x08  # filtration_pump_running
     data[52] = 70  # required_ph = 7.0
     data[53] = 30  # required_cl = 3.0
     data[54] = 5  # required_algicide
@@ -230,23 +234,40 @@ async def test_async_setup_salt_redox(hass) -> None:
         added_entities.extend(new_entities)
 
     await async_setup_entry(hass, dummy_entry, mock_add_entities)
+    await binary_async_setup_entry(hass, dummy_entry, mock_add_entities)
 
     print(device.device_type)
-    print(device.electrolyzer_power)
 
     for entity in added_entities:
         name = getattr(entity.entity_description, "key", "unknown")
-        value = entity.native_value
+        value = (
+            entity.is_on
+            if isinstance(entity, AsekoLocalBinarySensorEntity)
+            else entity.native_value
+        )
         status = "enabled" if getattr(entity, "enabled", True) else "disabled"
         print(f"Sensor: {name}, Status: {status}, Value: {value}")
 
     assert device.device_type == AsekoDeviceType.SALT
     assert any(isinstance(e, AsekoLocalSensorEntity) for e in added_entities)
+    assert any(isinstance(e, AsekoLocalBinarySensorEntity) for e in added_entities)
     assert any(
         getattr(e.device, "serial_number", None) == device.serial_number
         for e in added_entities
     )
-    assert len(added_entities) == 13  # 1 sensors should be added for
+    assert len(added_entities) == 16  # 1 sensors should be added for
+    assert any(
+        getattr(e.entity_description, "key", None) != "water_flow_to_probes"
+        for e in added_entities
+    )
+    assert any(
+        getattr(e.entity_description, "key", None) != "electrolyzer_active"
+        for e in added_entities
+    )
+    assert any(
+        getattr(e.entity_description, "key", None) != "pump_running"
+        for e in added_entities
+    )
     assert any(
         getattr(e.entity_description, "key", None) != "free_chlorine"
         for e in added_entities
@@ -266,6 +287,10 @@ async def test_async_setup_salt_redox(hass) -> None:
         getattr(e.entity_description, "key", None) == "required_rx"
         for e in added_entities
     )
+    assert any(
+        getattr(e.entity_description, "key", None) == "required_algicide"
+        for e in added_entities
+    )
 
 
 @pytest.mark.asyncio
@@ -279,6 +304,9 @@ async def test_async_setup_salt_clf(hass) -> None:
     class DummyCoordinator:
         def get_devices(self):
             return [device]
+
+        def last_update_success(self):
+            return True
 
     # Create a MagicMock for ConfigEntry with runtime_data attribute
     dummy_entry = MagicMock(spec=ConfigEntry)
@@ -295,29 +323,45 @@ async def test_async_setup_salt_clf(hass) -> None:
         added_entities.extend(new_entities)
 
     await async_setup_entry(hass, dummy_entry, mock_add_entities)
+    await binary_async_setup_entry(hass, dummy_entry, mock_add_entities)
 
     print(device.device_type)
-    print(device.electrolyzer_power)
 
     for entity in added_entities:
         name = getattr(entity.entity_description, "key", "unknown")
-        value = entity.native_value
+        value = (
+            entity.is_on
+            if isinstance(entity, AsekoLocalBinarySensorEntity)
+            else entity.native_value
+        )
+        available = entity.available
         status = "enabled" if getattr(entity, "enabled", True) else "disabled"
-        print(f"Sensor: {name}, Status: {status}, Value: {value}")
+        print(
+            f"Sensor: {name}, Available: {available}, Status: {status}, Value: {value}"
+        )
 
     assert device.device_type == AsekoDeviceType.SALT
     assert any(isinstance(e, AsekoLocalSensorEntity) for e in added_entities)
+    assert any(isinstance(e, AsekoLocalBinarySensorEntity) for e in added_entities)
     assert any(
         getattr(e.device, "serial_number", None) == device.serial_number
         for e in added_entities
     )
-    assert len(added_entities) == 13  # 1 sensors should be added for
+    assert len(added_entities) == 16  # 1 sensors should be added for
     assert any(
-        getattr(e.entity_description, "key", None) == "free_chlorine"
+        getattr(e.entity_description, "key", None) != "water_flow_to_probes"
         for e in added_entities
     )
     assert any(
-        getattr(e.entity_description, "key", None) == "free_chlorine_mv"
+        getattr(e.entity_description, "key", None) != "electrolyzer_active"
+        for e in added_entities
+    )
+    assert any(
+        getattr(e.entity_description, "key", None) != "pump_running"
+        for e in added_entities
+    )
+    assert any(
+        getattr(e.entity_description, "key", None) == "free_chlorine"
         for e in added_entities
     )
     assert any(
@@ -329,6 +373,10 @@ async def test_async_setup_salt_clf(hass) -> None:
     )
     assert any(
         getattr(e.entity_description, "key", None) != "required_rx"
+        for e in added_entities
+    )
+    assert any(
+        getattr(e.entity_description, "key", None) == "required_algicide"
         for e in added_entities
     )
 
@@ -360,22 +408,28 @@ async def test_async_setup_net_clf(hass) -> None:
         added_entities.extend(new_entities)
 
     await async_setup_entry(hass, dummy_entry, mock_add_entities)
+    await binary_async_setup_entry(hass, dummy_entry, mock_add_entities)
 
     print(device.device_type)
 
     for entity in added_entities:
         name = getattr(entity.entity_description, "key", "unknown")
-        value = entity.native_value
+        value = (
+            entity.is_on
+            if isinstance(entity, AsekoLocalBinarySensorEntity)
+            else entity.native_value
+        )
         status = "enabled" if getattr(entity, "enabled", True) else "disabled"
         print(f"Sensor: {name}, Status: {status}, Value: {value}")
 
     assert device.device_type == AsekoDeviceType.NET
     assert any(isinstance(e, AsekoLocalSensorEntity) for e in added_entities)
+    assert any(isinstance(e, AsekoLocalBinarySensorEntity) for e in added_entities)
     assert any(
         getattr(e.device, "serial_number", None) == device.serial_number
         for e in added_entities
     )
-    assert len(added_entities) == 9  # 9 sensors should be added for
+    assert len(added_entities) == 13  # 1 sensors should be added for
     assert any(
         getattr(e.entity_description, "key", None) == "free_chlorine"
         for e in added_entities
@@ -393,6 +447,10 @@ async def test_async_setup_net_clf(hass) -> None:
     )
     assert any(
         getattr(e.entity_description, "key", None) != "required_rx"
+        for e in added_entities
+    )
+    assert any(
+        getattr(e.entity_description, "key", None) == "required_algicide"
         for e in added_entities
     )
 
@@ -424,22 +482,28 @@ async def test_async_setup_profi_clf_redox(hass) -> None:
         added_entities.extend(new_entities)
 
     await async_setup_entry(hass, dummy_entry, mock_add_entities)
+    await binary_async_setup_entry(hass, dummy_entry, mock_add_entities)
 
     print(device.device_type)
 
     for entity in added_entities:
         name = getattr(entity.entity_description, "key", "unknown")
-        value = entity.native_value
+        value = (
+            entity.is_on
+            if isinstance(entity, AsekoLocalBinarySensorEntity)
+            else entity.native_value
+        )
         status = "enabled" if getattr(entity, "enabled", True) else "disabled"
         print(f"Sensor: {name}, Status: {status}, Value: {value}")
 
     assert device.device_type == AsekoDeviceType.PROFI
     assert any(isinstance(e, AsekoLocalSensorEntity) for e in added_entities)
+    assert any(isinstance(e, AsekoLocalBinarySensorEntity) for e in added_entities)
     assert any(
         getattr(e.device, "serial_number", None) == device.serial_number
         for e in added_entities
     )
-    assert len(added_entities) == 11  # 11 sensors should be added for
+    assert len(added_entities) == 16  # 1 sensors should be added for
     assert any(
         getattr(e.entity_description, "key", None) == "free_chlorine"
         for e in added_entities
@@ -457,5 +521,9 @@ async def test_async_setup_profi_clf_redox(hass) -> None:
     )
     assert any(
         getattr(e.entity_description, "key", None) != "required_rx"
+        for e in added_entities
+    )
+    assert any(
+        getattr(e.entity_description, "key", None) == "required_algicide"
         for e in added_entities
     )

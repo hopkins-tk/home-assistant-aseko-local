@@ -35,15 +35,17 @@ class AsekoElectrolyzerDirection(Enum):
     WAITING = "waiting"
 
 
-class AsekoPumpType(IntEnum):
-    """Enumeration of chemical pump types from byte 29."""
+class AsekoConsumableType(IntEnum):
+    """Enumeration of consumable types from byte 29."""
 
-    OFF = 0
-    CHLOR = 0x48
-    PH_MINUS = 0x88
-    PH_PLUS = -1  # unknown yet
-    FLOC = 0x28
+    FILTRATION = 0x08
+    CL = 0x40  # uncertain - PROFI seems to can have CL & electrolyzer at the same time
+    PH_MINUS = 0x80
+    PH_PLUS = 0x00  # unknown yet (0x04 / 0x02 / 0x01 ?), except PROFI unit can't have both ph+ and ph-
+    ALICIDE = 0x20
+    FLOCCULANT = 0x20  # uncertain - HOME seems to have both algicide and flocculant at the same time
     ELECTROLYZER_RUNNING = 0x10
+    ELECTROLYZER_RUNNING_RIGHT = 0x10
     ELECTROLYZER_RUNNING_LEFT = 0x50
 
 
@@ -52,12 +54,14 @@ class AsekoDevice:
     """Holds data received from Aseko device."""
 
     device_type: AsekoDeviceType | None = None  # byte 4-7?
+    configuration: set[AsekoProbeType] = field(default_factory=set)
 
     serial_number: int | None = None  # byte 0 - 4
     timestamp: datetime | None = None  # byte 6 - 11
     ph: float | None = None  # byte 14 & 15
     cl_free: float | None = None  # byte 16 & 17
-    redox: int | None = None  # byte 18 & 19
+    cl_free_mv: int | None = None  # for NET - free chlorine millivolts (byte 20 & 21)
+    redox: int | None = None  # byte 16 & 17 or 18 & 19
     salinity: float | None = None  # byte 20
     electrolyzer_power: int | None = None  # byte 21
     electrolyzer_active: bool | None = None  # byte 29 (4-th bit)
@@ -66,24 +70,32 @@ class AsekoDevice:
     )
     water_temperature: float | None = None  # byte 25 & 26
     water_flow_to_probes: bool | None = None  # byte 28 == aah
-    pump_running: bool | None = None  # byte 29 (3-rd bit)
-
-    # NEW: active pump type from byte 29
-    active_pump: AsekoPumpType | None = None
-
-    # NEW: free chlorine millivolts (byte 20 & 21)
-    cl_free_mv: int | None = None
+    filtration_pump_running: bool | None = None  # byte 29 (3-rd bit)
+    cl_pump_running: bool | None = None  # byte 29 (6-th bit)
+    ph_minus_pump_running: bool | None = None  # byte 29 (7-th bit)
+    ph_plus_pump_running: bool | None = (
+        None  # byte 29 (unknown - 7-th bit for all except PROFI?)
+    )
+    algicide_pump_running: bool | None = None  # byte 29 (5-th bit)
+    floc_pump_running: bool | None = None  # byte 29 (5-th bit)
 
     # NEW: flow rates (bytes 95, 97, 99, 101)
     flowrate_chlor: int | None = None
     flowrate_ph_minus: int | None = None
     flowrate_ph_plus: int | None = None
+
+    # algicide/Floculant based on the byte 37 mask 0x80
+    flowrate_algicide: int | None = None
     flowrate_floc: int | None = None
 
     required_ph: float | None = None  # byte 52/10
     required_redox: int | None = None  # byte 53*10
     required_cl_free: float | None = None  # byte 53*10?
+
+    # algicide/Floculant based on the byte 37 mask 0x80
     required_algicide: int | None = None  # byte 54
+    required_floc: int | None = None  # byte 54
+
     required_water_temperature: int | None = None  # byte 55
 
     start1: time | None = None  # byte 56 & 57

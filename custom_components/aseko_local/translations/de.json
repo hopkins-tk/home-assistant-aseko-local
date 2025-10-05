@@ -28,10 +28,9 @@
     "step": {
       "options_init": {
         "data": {
-          "proxy_enabled": "Cloud-Weiterleitung aktivieren",
-          "proxy_host": "Cloud-Host",
-          "proxy_port": "Cloud-Port",
-          "enable_raw_logging": "Roh-Logging aktivieren"
+          "forwarder_enabled": "Cloud-Weiterleitung aktivieren",
+          "forwarder_host": "Cloud-Host",
+          "forwarder_port": "Cloud-Port"
         }
       }
     }
@@ -41,8 +40,23 @@
       "electrolyzer_active": {
         "name": "Elektrolyseur aktiv"
       },
-      "pump_running": {
-        "name": "Pumpe läuft"
+      "filtration_pump_running": {
+        "name": "Filtrationspumpe läuft"
+      },
+      "cl_pump_running": {
+        "name": "Chlor-Dosierpumpe läuft"
+      },
+      "ph_minus_pump_running": {
+        "name": "pH--Dosierpumpe läuft"
+      },
+      "ph_plus_pump_running": {
+        "name": "pH+-Dosierpumpe läuft"
+      },
+      "algicide_pump_running": {
+        "name": "Algizid-Dosierpumpe läuft"
+      },
+      "floc_pump_running": {
+        "name": "Flockungsmittel-Dosierpumpe läuft"
       },
       "water_flow_to_probes": {
         "name": "Wasserfluss zu den Sensoren"
@@ -66,9 +80,6 @@
       "free_chlorine": {
         "name": "Freies Chlor"
       },
-      "free_chlorine_mv": {
-        "name": "Freies Chlor in mV"
-      },
       "ph": {
         "name": "pH-Wert"
       },
@@ -87,21 +98,17 @@
       "required_water_temperature": {
         "name": "Benötigte Wassertemperatur"
       },
+      "required_algicide": {
+        "name": "Benötigte Dosis Algizid"
+      },
+      "required_floc": {
+        "name": "Benötigte Dosis Flockungsmittel"
+      },
       "salinity": {
         "name": "Salzgehalt"
       },
       "water_temperature": {
         "name": "Wassertemperatur"
-      },
-      "active_pump": {
-        "name": "Dosiereinheit läuft für Chemie",
-        "state": {
-          "off": "Keine",
-          "chlor_pure": "Chlor",
-          "ph_minus": "pH-",
-          "ph_plus": "pH+",
-          "floc_plus_c": "Flockungsmittel"
-        }
       },
       "flowrate_chlor": {
         "name": "Durchflussrate Chlor"
@@ -112,10 +119,12 @@
       "flowrate_ph_plus": {
         "name": "Durchflussrate pH+"
       },
+      "flowrate_algicide": {
+        "name": "Durchflussrate Algizid"
+      },
       "flowrate_floc": {
         "name": "Durchflussrate Flockungsmittel"
       },
-
       "chlor_consumed": {
         "name": "Chlor verbraucht (seit Nachfüllung)"
       },
@@ -143,6 +152,15 @@
       "ph_plus_remaining": {
         "name": "pH+ verbleibend"
       },
+      "algicide_consumed": {
+        "name": "Algizid verbraucht (seit Nachfüllung)"
+      },
+      "algicide_total_consumed": {
+        "name": "Algizid verbraucht (gesamt)"
+      },
+      "algicide_remaining": {
+        "name": "Algizid verbleibend"
+      },
       "floc_consumed": {
         "name": "Flockungsmittel verbraucht (seit Nachfüllung)"
       },
@@ -163,6 +181,9 @@
       "ph_plus_last_filled_quantity": {
         "name": "Letzte pH+-Nachfüllmenge"
       },
+      "algicide_last_filled_quantity": {
+        "name": "Letzte Algizid-Nachfüllmenge"
+      },
       "floc_last_filled_quantity": {
         "name": "Letzte Flockungsmittel-Nachfüllmenge"
       }
@@ -176,6 +197,9 @@
       },
       "ph_plus_refill_reset": {
         "name": "pH+ nachfüllen"
+      },
+      "algicide_refill_reset": {
+        "name": "Algizid nachfüllen"
       },
       "floc_refill_reset": {
         "name": "Flockungsmittel nachfüllen"

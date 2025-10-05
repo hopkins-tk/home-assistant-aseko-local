@@ -2,24 +2,24 @@
   "config": {
     "abort": {
       "already_configured": "Zařízení je již nakonfigurováno",
-      "reconfigure_successful": "Znovu-nakonfigurováno úspěšně"
+      "reconfigure_successful": "Nastavení bylo úspěšně aktualizováno"
     },
     "error": {
-      "cannot_connect": "Připojení selhalo",
+      "cannot_connect": "Připojení se nezdařilo",
       "unknown": "Neočekávaná chyba"
     },
     "step": {
       "user": {
         "data": {
-          "host": "Přiřadit k IP adrese",
-          "port": "Port"
+          "host": "Poslouchat na adrese",
+          "port": "Poslouchat na portu"
         },
         "description": "Zadejte číslo portu. IP adresa může obvykle zůstat 0.0.0.0"
       },
       "reconfigure": {
         "data": {
-          "host": "Přiřadit k IP adrese",
-          "port": "Port"
+          "host": "Poslouchat na adrese",
+          "port": "Poslouchat na portu"
         }
       }
     }
@@ -30,8 +30,7 @@
         "data": {
           "forwarder_enabled": "Povolit přeposílání",
           "forwarder_host": "Cílová adresa",
-          "forwarder_port": "Cílový port",
-          "enable_raw_logging": "Povolit surové logování"
+          "forwarder_port": "Cílový port"
         }
       }
     }
@@ -41,11 +40,26 @@
       "electrolyzer_active": {
         "name": "Elektrolyzér aktivní"
       },
-      "pump_running": {
-        "name": "Čerpadlo běží"
+      "filtration_pump_running": {
+        "name": "Filtrační čerpadlo běží"
+      },
+      "cl_pump_running": {
+        "name": "Dávkovácí čerpadlo chloru běží"
+      },
+      "ph_minus_pump_running": {
+        "name": "Dávkovácí čerpadlo pH- běží"
+      },
+      "ph_plus_pump_running": {
+        "name": "Dávkovácí čerpadlo pH+ běží"
+      },
+      "algicide_pump_running": {
+        "name": "Dávkovácí čerpadlo algicidu běží"
+      },
+      "floc_pump_running": {
+        "name": "Dávkovácí čerpadlo flokulantu běží"
       },
       "water_flow_to_probes": {
-        "name": "Proud vody k sondám"
+        "name": "Průtok vody k sondám"
       }
     },
     "sensor": {
@@ -66,9 +80,6 @@
       "free_chlorine": {
         "name": "Volný chlor"
       },
-      "free_chlorine_mv": {
-        "name": "Volný chlor v mV"
-      },
       "ph": {
         "name": "pH"
       },
@@ -87,21 +98,17 @@
       "required_water_temperature": {
         "name": "Požadovaná teplota vody"
       },
+      "required_algicide": {
+        "name": "Požadovaná dávka algicidu"
+      },
+      "required_floc": {
+        "name": "Požadovaná dávka flokulantu"
+      },
       "salinity": {
         "name": "Salinita"
       },
       "water_temperature": {
         "name": "Teplota vody"
-      },
-      "active_pump": {
-        "name": "Dávkovací čerpadlo běží (chemie)",
-        "state": {
-          "off": "Žádné",
-          "chlor_pure": "Chlor",
-          "ph_minus": "pH-",
-          "ph_plus": "pH+",
-          "floc_plus_c": "Koagulant"
-        }
       },
       "flowrate_chlor": {
         "name": "Průtok chloru"
@@ -112,10 +119,12 @@
       "flowrate_ph_plus": {
         "name": "Průtok pH+"
       },
-      "flowrate_floc": {
-        "name": "Průtok koagulantu"
+      "flowrate_algicide": {
+        "name": "Průtok algicidu"
       },
-
+      "flowrate_floc": {
+        "name": "Průtok flokulantu"
+      },
       "chlor_consumed": {
         "name": "Spotřeba chloru (od doplnění)"
       },
@@ -143,14 +152,23 @@
       "ph_plus_remaining": {
         "name": "Zbývající pH+"
       },
+      "algicide_consumed": {
+        "name": "Spotřeba algicidu (od doplnění)"
+      },
+      "algicide_total_consumed": {
+        "name": "Spotřeba algicidu (celkem)"
+      },
+      "algicide_remaining": {
+        "name": "Zbývající algicid"
+      },
       "floc_consumed": {
-        "name": "Spotřeba koagulantu (od doplnění)"
+        "name": "Spotřeba flokulantu (od doplnění)"
       },
       "floc_total_consumed": {
-        "name": "Spotřeba koagulantu (celkem)"
+        "name": "Spotřeba flokulantu (celkem)"
       },
       "floc_remaining": {
-        "name": "Zbývající koagulant"
+        "name": "Zbývající flokulant"
       }
     },
     "number": {
@@ -162,6 +180,9 @@
       },
       "ph_plus_last_filled_quantity": {
         "name": "Poslední doplněné množství pH+"
+      },
+      "algicide_last_filled_quantity": {
+        "name": "Poslední doplněné množství algicidu"
       },
       "floc_last_filled_quantity": {
         "name": "Poslední doplněné množství flokulantu"
@@ -176,6 +197,9 @@
       },
       "ph_plus_refill_reset": {
         "name": "Doplnění pH+"
+      },
+      "algicide_refill_reset": {
+        "name": "Doplnění algicidu"
       },
       "floc_refill_reset": {
         "name": "Doplnění flokulantu"

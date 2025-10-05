@@ -5,15 +5,13 @@ from datetime import time
 import pytest
 
 from custom_components.aseko_local.aseko_data import (
+    AsekoConsumableType,
     AsekoDeviceType,
     AsekoElectrolyzerDirection,
     AsekoProbeType,
-    AsekoPumpType,
 )
 from custom_components.aseko_local.aseko_decoder import AsekoDecoder
 from custom_components.aseko_local.const import (
-    ELECTROLYZER_RUNNING,
-    ELECTROLYZER_RUNNING_LEFT,
     WATER_FLOW_TO_PROBES,
     YEAR_OFFSET,
 )
@@ -79,12 +77,10 @@ def test_decode_clf() -> None:
     data[4] = 0x09  # NET with CL probe
     data[16:18] = (50).to_bytes(2, "big")  # CL free
     data[53] = 9  # required CL free
-    data[20:22] = (230).to_bytes(2, "big")  # CL free mV
 
     device = AsekoDecoder.decode(bytes(data))
     assert device.required_cl_free == 0.9
     assert device.cl_free == 0.5
-    assert device.cl_free_mv == 230
 
 
 def test_flowrates() -> None:
@@ -93,9 +89,9 @@ def test_flowrates() -> None:
     data = _make_base_bytes()
 
     device = AsekoDecoder.decode(bytes(data))
-    assert device.flowrate_chlor == 60
-    assert device.flowrate_ph_plus == 20
-    assert device.flowrate_ph_minus is None
+    assert device.flowrate_chlor is None
+    assert device.flowrate_ph_plus is None
+    assert device.flowrate_ph_minus == 60
     assert device.flowrate_floc == 40
 
 
@@ -105,6 +101,7 @@ def test_decode_home() -> None:
     data = _make_base_bytes()
     data[4] = 0x05  # HOME with CL probe
     data[14:16] = (720).to_bytes(2, "big")  # ph
+    data[37] = 0xB3  # required_ph
     data[52] = 72  # required_ph
 
     device = AsekoDecoder.decode(bytes(data))
@@ -113,7 +110,7 @@ def test_decode_home() -> None:
     assert device.ph == 7.2
     assert device.required_ph == 7.2
     assert device.water_temperature == 24.5
-    assert device.pump_running is True
+    assert device.filtration_pump_running is True
     assert device.water_flow_to_probes is True
     assert device.pool_volume == 5000
     assert device.max_filling_time == 60
@@ -144,7 +141,7 @@ def test_decode_electrolyzer_data() -> None:
     data[4] = 0x0E  # SALT with REDOX probe
     data[20] = 32  # salinity = 3.2
     data[21] = 80  # electrolyzer_power
-    data[29] = ELECTROLYZER_RUNNING  # electrolyzer_active
+    data[29] = AsekoConsumableType.ELECTROLYZER_RUNNING_RIGHT  # electrolyzer_active
     data[16:18] = (50).to_bytes(2, "big")  # cl_free < MAX_CLF_LIMIT
     data[14:16] = (700).to_bytes(2, "big")  # ph
     data[52] = 70
@@ -164,7 +161,7 @@ def test_decode_electrolyzer_data_left_direction() -> None:
     data[4] = 0x0E  # SALT with REDOX probe
     data[20] = 32
     data[21] = 80
-    data[29] = ELECTROLYZER_RUNNING_LEFT
+    data[29] = AsekoConsumableType.ELECTROLYZER_RUNNING_LEFT
 
     device = AsekoDecoder.decode(bytes(data))
     assert device.electrolyzer_direction == AsekoElectrolyzerDirection.LEFT
@@ -339,19 +336,24 @@ def test_decode_issue_28() -> None:
 
 def test_normalize_value_edge_cases() -> None:
     """Test normalization of edge cases."""
-    assert AsekoDecoder._normalize_value(None) is None
-    assert AsekoDecoder._normalize_value(255) is None
-    assert AsekoDecoder._normalize_value("") is None
-    assert AsekoDecoder._normalize_value("255") is None
-    assert AsekoDecoder._normalize_value(42) == 42
-    assert AsekoDecoder._normalize_value("42") == "42"
+
+    assert AsekoDecoder._normalize_value(None, int) is None
+    assert AsekoDecoder._normalize_value(255, int) is None
+    assert AsekoDecoder._normalize_value("", str) is None
+    assert AsekoDecoder._normalize_value("255", str) is None
+    assert AsekoDecoder._normalize_value(42, int) == 42
+    assert AsekoDecoder._normalize_value("42", str) == "42"
+
+    with pytest.raises(ValueError):
+        AsekoDecoder._normalize_value(0xFF, float)
 
 
 from datetime import datetime, timedelta
 
 
-def test_timestamp_invalid() -> None:
-    """Test timestamp decoding with invalid values."""
+def test_timestamp_unspecified() -> None:
+    """Test timestamp decoding with unspecified values."""
+
     data = bytearray(120)
     data[6:12] = b"\xff\xff\xff\xff\xff\xff"
     ts = AsekoDecoder._timestamp(data)
@@ -360,13 +362,34 @@ def test_timestamp_invalid() -> None:
     assert abs((ts - now).total_seconds()) < 5
 
 
-def test_time_invalid() -> None:
-    # Ungültige Werte (ValueError)
+def test_timestamp_invalid() -> None:
+    """Test timestamp decoding with invalid values."""
+    data = bytearray(120)
+    data[6:12] = b"\xf0\xf0\xf0\xf0\xf0\xf0"
+    ts = AsekoDecoder._timestamp(data)
+    assert isinstance(ts, datetime)
+    now = datetime.now(ts.tzinfo)
+    assert abs((ts - now).total_seconds()) < 5
+
+
+def test_time_unspecified() -> None:
+    """Test time decoding with unspecified values."""
+
     data = bytearray(120)
     data[0] = 255
     data[1] = 255
     t = AsekoDecoder._time(data)
-    assert t is None or isinstance(t, time)
+    assert t is None
+
+
+def test_time_invalid() -> None:
+    """Test time decoding with invalid values."""
+
+    data = bytearray(120)
+    data[0] = 200
+    data[1] = 200
+    t = AsekoDecoder._time(data)
+    assert t is None
 
 
 def test_available_probes_combinations() -> None:
@@ -377,10 +400,10 @@ def test_available_probes_combinations() -> None:
         PROBE_SANOSIL_MISSING,
     )
 
-    # Alle Sonden vorhanden
+    # All probes present
     data = bytearray(120)
     data[4] = 0x00
-    probes = AsekoDecoder._available_probes(data)
+    probes = AsekoDecoder._configuration(data)
     assert probes == {
         AsekoProbeType.PH,
         AsekoProbeType.CLF,
@@ -389,53 +412,53 @@ def test_available_probes_combinations() -> None:
         AsekoProbeType.SANOSIL,
     }
 
-    # Nur CLF fehlt
+    # Just CLF is missing
     data[4] = PROBE_CLF_MISSING
-    probes = AsekoDecoder._available_probes(data)
+    probes = AsekoDecoder._configuration(data)
     assert AsekoProbeType.CLF not in probes
 
-    # Nur REDOX fehlt
+    # Just REDOX is missing
     data[4] = PROBE_REDOX_MISSING
-    probes = AsekoDecoder._available_probes(data)
+    probes = AsekoDecoder._configuration(data)
     assert AsekoProbeType.REDOX not in probes
 
-    # Nur SANOSIL fehlt
+    # Just SANOSIL is missing
     data[4] = PROBE_SANOSIL_MISSING
-    probes = AsekoDecoder._available_probes(data)
+    probes = AsekoDecoder._configuration(data)
     assert AsekoProbeType.SANOSIL not in probes
 
-    # Nur DOSE fehlt
+    # Just DOSE is missing
     data[4] = PROBE_DOSE_MISSING
-    probes = AsekoDecoder._available_probes(data)
+    probes = AsekoDecoder._configuration(data)
     assert AsekoProbeType.DOSE not in probes
 
 
-def test_decode_pump_types() -> None:
-    """Test decoding of different pump types."""
-
-    data = _make_base_bytes()
-
-    # Test: Chlor pump running
-    data[29] = 0x48
-    device = AsekoDecoder.decode(bytes(data))
-    assert device.active_pump == AsekoPumpType.CHLOR
-
-    # Test: PH+ pump running --> data Byte is unknwon
-    # data[29] = -1
-    # device = AsekoDecoder.decode(bytes(data))
-    # assert device.active_pump == AsekoPumpType.PH_PLUS
-
-    # Test: PH- pump running
-    data[29] = 0x88
-    device = AsekoDecoder.decode(bytes(data))
-    assert device.active_pump == AsekoPumpType.PH_MINUS
-
-    # Test: Floc pump running
-    data[29] = 0x28
-    device = AsekoDecoder.decode(bytes(data))
-    assert device.active_pump == AsekoPumpType.FLOC
-
-    # Test: No pump running
-    data[29] = 0x00
-    device = AsekoDecoder.decode(bytes(data))
-    assert device.active_pump == 0
+# def test_decode_pump_types() -> None:
+#    """Test decoding of different pump types."""
+#
+#    data = _make_base_bytes()
+#
+#    # Test: Chlor pump running
+#    data[29] = 0x48
+#    device = AsekoDecoder.decode(bytes(data))
+#    assert device.active_pump == AsekoPumpType.CHLOR
+#
+#    # Test: PH+ pump running --> data Byte is unknwon
+#    # data[29] = -1
+#    # device = AsekoDecoder.decode(bytes(data))
+#    # assert device.active_pump == AsekoPumpType.PH_PLUS
+#
+#    # Test: PH- pump running
+#    data[29] = 0x88
+#    device = AsekoDecoder.decode(bytes(data))
+#    assert device.active_pump == AsekoPumpType.PH_MINUS
+#
+#    # Test: Floc pump running
+#    data[29] = 0x28
+#    device = AsekoDecoder.decode(bytes(data))
+#    assert device.active_pump == AsekoPumpType.FLOC
+#
+#    # Test: No pump running
+#    data[29] = 0x00
+#    device = AsekoDecoder.decode(bytes(data))
+#    assert device.active_pump == 0

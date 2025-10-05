@@ -1,25 +1,22 @@
 import logging
 from datetime import datetime, time
-from enum import IntEnum
-from sys import exception
 import homeassistant.util
+from typing import Type, TypeVar
 
 
 from .aseko_data import (
+    AsekoConsumableType,
     AsekoDevice,
     AsekoDeviceType,
     AsekoElectrolyzerDirection,
     AsekoProbeType,
-    AsekoPumpType,
 )
 from .const import (
-    ELECTROLYZER_RUNNING,
-    ELECTROLYZER_RUNNING_LEFT,
+    ALGICIDE_CONFIGURED,
     PROBE_CLF_MISSING,
     PROBE_DOSE_MISSING,
     PROBE_REDOX_MISSING,
     PROBE_SANOSIL_MISSING,
-    PUMP_RUNNING,
     UNIT_TYPE_HOME,
     UNIT_TYPE_NET,
     UNIT_TYPE_PROFI,
@@ -31,12 +28,14 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
+T = TypeVar("T")
+
 
 class AsekoDecoder:
     """Decoder of Aseko unit data."""
 
     @staticmethod
-    def _normalize_value(value: int | str | None) -> int | str | None:
+    def _normalize_value(value: int | str | None, type: Type[T]) -> T | None:
         """Normalize raw values to None if they are unspecified/invalid.
         Rules:
         - None stays None
@@ -49,16 +48,16 @@ class AsekoDecoder:
         if value is None:
             return None
 
-        if isinstance(value, int):
-            return None if value == UNSPECIFIED_VALUE else value
+        if type is int and isinstance(value, int):
+            return None if value == UNSPECIFIED_VALUE else type(value)
 
-        if isinstance(value, str):
+        if type is str and isinstance(value, str):
             val = value.strip()
             if not val or val == str(UNSPECIFIED_VALUE):
                 return None
-            return val
+            return type(val)
 
-        return value
+        raise ValueError(f"Unsupported type {type} or value {value}")
 
     @staticmethod
     def _unit_type(data: bytes) -> AsekoDeviceType | None:
@@ -81,7 +80,7 @@ class AsekoDecoder:
         raise ValueError(error)
 
     @staticmethod
-    def _available_probes(data: bytes) -> set[AsekoProbeType]:
+    def _configuration(data: bytes) -> set[AsekoProbeType]:
         """Determine types of probes installed from the binary data."""
 
         probe_info = data[4]
@@ -116,30 +115,20 @@ class AsekoDecoder:
             or data[10] == UNSPECIFIED_VALUE
             or data[11] == UNSPECIFIED_VALUE
         ):
+            _LOGGER.info(
+                "Received unspecified timestamp – falling back to now(). Frame: %s",
+                data.hex(),
+            )
             return datetime.now(tz=homeassistant.util.dt.get_default_time_zone())
 
         try:
             year = YEAR_OFFSET + data[6]
 
-            if data[7] > 12 or data[7] < 1:
-                raise ValueError("Invalid month")
-            month = min(max(data[7], 1), 12)
-
-            if data[8] > 31 or data[8] < 1:
-                raise ValueError("Invalid day")
-            day = min(max(data[8], 1), 31)
-
-            if data[9] > 23 or data[9] < 0:
-                raise ValueError("Invalid hour")
-            hour = min(max(data[9], 0), 23)
-
-            if data[10] > 59 or data[10] < 0:
-                raise ValueError("Invalid minute")
-            minute = min(max(data[10], 0), 59)
-
-            if data[11] > 59 or data[11] < 0:
-                raise ValueError("Invalid second")
-            second = min(max(data[11], 0), 59)
+            month = data[7]
+            day = data[8]
+            hour = data[9]
+            minute = data[10]
+            second = data[11]
 
             return datetime(
                 year=year,
@@ -167,11 +156,6 @@ class AsekoDecoder:
         hour = data[0]
         minute = data[1]
 
-        if not (0 <= hour <= 23):
-            hour = 0
-        if not (0 <= minute <= 59):
-            minute = 0
-
         try:
             return time(hour=hour, minute=minute)
         except ValueError as e:
@@ -180,9 +164,11 @@ class AsekoDecoder:
 
     @staticmethod
     def _electrolyzer_direction(data: bytes) -> AsekoElectrolyzerDirection | None:
-        if (data[29] & ELECTROLYZER_RUNNING_LEFT) == ELECTROLYZER_RUNNING_LEFT:
+        if (
+            data[29] & AsekoConsumableType.ELECTROLYZER_RUNNING_LEFT
+        ) == AsekoConsumableType.ELECTROLYZER_RUNNING_LEFT:
             return AsekoElectrolyzerDirection.LEFT
-        if data[29] & ELECTROLYZER_RUNNING:
+        if data[29] & AsekoConsumableType.ELECTROLYZER_RUNNING_RIGHT:
             return AsekoElectrolyzerDirection.RIGHT
         return AsekoElectrolyzerDirection.WAITING
 
@@ -207,56 +193,86 @@ class AsekoDecoder:
     def _fill_clf_data(unit: AsekoDevice, data: bytes) -> None:
         unit.cl_free = int.from_bytes(data[16:18], "big") / 100
         unit.required_cl_free = data[53] / 10
-        unit.cl_free_mv = int.from_bytes(data[20:22], "big")
+        if unit.device_type != AsekoDeviceType.SALT:
+            unit.cl_free_mv = int.from_bytes(data[20:22], "big")
 
     @staticmethod
     def _fill_salt_unit_data(unit: AsekoDevice, data: bytes) -> None:
         unit.salinity = data[20] / 10
-        unit.electrolyzer_power = data[21] if data[29] & ELECTROLYZER_RUNNING else 0
-        unit.electrolyzer_active = bool(data[29] & ELECTROLYZER_RUNNING)
+        unit.electrolyzer_power = (
+            data[21] if data[29] & AsekoConsumableType.ELECTROLYZER_RUNNING else 0
+        )
+        unit.electrolyzer_active = bool(
+            data[29] & AsekoConsumableType.ELECTROLYZER_RUNNING
+        )
         unit.electrolyzer_direction = AsekoDecoder._electrolyzer_direction(data)
 
     @staticmethod
     def _fill_flowrate_data(unit: AsekoDevice, data: bytes) -> None:
-        def _normalize(value: int) -> int | None:
-            return None if value == 255 else value
+        unit.flowrate_ph_minus = AsekoDecoder._normalize_value(data[95], int)
+        # unit.flowrate_ph_plus = AsekoDecoder._normalize_value(data[97], int)
 
-        unit.flowrate_chlor = _normalize(data[95])
-        unit.flowrate_ph_plus = _normalize(data[97])
-        unit.flowrate_ph_minus = _normalize(data[99])
-        unit.flowrate_floc = _normalize(data[101])
+        if unit.device_type != AsekoDeviceType.SALT:
+            unit.flowrate_chlor = AsekoDecoder._normalize_value(data[99], int)
+
+        if unit.device_type != AsekoDeviceType.NET:
+            if bool(data[37] & ALGICIDE_CONFIGURED):
+                unit.flowrate_algicide = AsekoDecoder._normalize_value(data[103], int)
+
+            if unit.device_type == AsekoDeviceType.PROFI or not bool(
+                data[37] & ALGICIDE_CONFIGURED
+            ):
+                unit.flowrate_floc = AsekoDecoder._normalize_value(data[101], int)
+
+    @staticmethod
+    def _fill_consumable_data(unit: AsekoDevice, data: bytes) -> None:
+        unit.filtration_pump_running = bool(data[29] & AsekoConsumableType.FILTRATION)
+
+        if unit.device_type != AsekoDeviceType.SALT:
+            unit.cl_pump_running = bool(data[29] & AsekoConsumableType.CL)
+
+        unit.ph_minus_pump_running = bool(data[29] & AsekoConsumableType.PH_MINUS)
+        # unit.ph_plus_pump_running = bool(data[29] & AsekoConsumableType.PH_PLUS)
+
+        if unit.device_type != AsekoDeviceType.NET:
+            if bool(data[37] & ALGICIDE_CONFIGURED):
+                unit.algicide_pump_running = bool(
+                    data[29] & AsekoConsumableType.ALICIDE
+                )
+
+            if unit.device_type == AsekoDeviceType.PROFI or not bool(
+                data[37] & ALGICIDE_CONFIGURED
+            ):
+                unit.floc_pump_running = bool(data[29] & AsekoConsumableType.FLOCCULANT)
 
     @staticmethod
     def decode(data: bytes) -> AsekoDevice:
         unit_type = AsekoDecoder._unit_type(data)
-        probes = AsekoDecoder._available_probes(data)
+        probes = AsekoDecoder._configuration(data)
 
         ts = AsekoDecoder._timestamp(data)
         _LOGGER.debug("Decoded timestamp = %s (raw: %s)", ts, data[6:12].hex())
 
-        # Pump type running (byte 29)
-        pump_code = int(data[29])
-        active_pump = (
-            AsekoPumpType(pump_code)
-            if pump_code in AsekoPumpType._value2member_map_
-            else AsekoPumpType.OFF
-        )
-
         device = AsekoDevice(
             serial_number=int.from_bytes(data[0:4], "big"),
             device_type=unit_type,
+            configuration=probes,
             timestamp=AsekoDecoder._timestamp(data),
             water_temperature=int.from_bytes(data[25:27], "big") / 10,
             water_flow_to_probes=(data[28] == WATER_FLOW_TO_PROBES),
-            pump_running=bool(data[29] & PUMP_RUNNING),
-            active_pump=active_pump,
-            required_algicide=AsekoDecoder._normalize_value(data[54]),
-            required_water_temperature=AsekoDecoder._normalize_value(data[55]),
+            filtration_pump_running=bool(data[29] & AsekoConsumableType.FILTRATION),
+            required_algicide=AsekoDecoder._normalize_value(data[54], int)
+            if data[37] & ALGICIDE_CONFIGURED
+            else None,
+            required_floc=AsekoDecoder._normalize_value(data[54], int)
+            if not data[37] & ALGICIDE_CONFIGURED
+            else None,
+            required_water_temperature=AsekoDecoder._normalize_value(data[55], int),
             start1=AsekoDecoder._time(data[56:58]),
             stop1=AsekoDecoder._time(data[58:60]),
             start2=AsekoDecoder._time(data[60:62]),
             stop2=AsekoDecoder._time(data[62:64]),
-            backwash_every_n_days=AsekoDecoder._normalize_value(data[68]),
+            backwash_every_n_days=AsekoDecoder._normalize_value(data[68], int),
             backwash_time=AsekoDecoder._time(data[69:71]),
             backwash_duration=data[71] * 10 if data[71] != UNSPECIFIED_VALUE else None,
             pool_volume=int.from_bytes(data[92:94], "big"),
@@ -265,15 +281,18 @@ class AsekoDecoder:
             delay_after_dose=int.from_bytes(data[106:108], "big"),
         )
 
-        if AsekoProbeType.PH in probes:
+        if AsekoProbeType.PH in device.configuration:
             AsekoDecoder._fill_ph_data(device, data)
-        if AsekoProbeType.REDOX in probes:
+        if AsekoProbeType.REDOX in device.configuration:
             AsekoDecoder._fill_redox_data(device, data)
-        if AsekoProbeType.CLF in probes:
+        if AsekoProbeType.CLF in device.configuration:
             AsekoDecoder._fill_clf_data(device, data)
         if unit_type == AsekoDeviceType.SALT:
             AsekoDecoder._fill_salt_unit_data(device, data)
 
+        AsekoDecoder._fill_consumable_data(device, data)
+
+        # We are unsure with flowrate data
         AsekoDecoder._fill_flowrate_data(device, data)
 
         return device
