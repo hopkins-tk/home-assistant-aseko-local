@@ -160,7 +160,6 @@ SENSORS: list[AsekoSensorEntityDescription] = [
     AsekoSensorEntityDescription(
         key="required_algicide",
         translation_key="required_algicide",
-        native_unit_of_measurement="ml/m³/day",
         state_class=SensorStateClass.MEASUREMENT,
         icon="mdi:pool",
         value_fn=lambda device: device.required_algicide,

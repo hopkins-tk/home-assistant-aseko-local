@@ -99,7 +99,8 @@
         "name": "Benötigte Wassertemperatur"
       },
       "required_algicide": {
-        "name": "Benötigte Dosis Algizid"
+        "name": "Benötigte Dosis Algizid",
+        "unit_of_measurement": "ml/m³/Tag"
       },
       "required_floc": {
         "name": "Benötigte Dosis Flockungsmittel"

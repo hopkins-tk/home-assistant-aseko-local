@@ -99,7 +99,8 @@
         "name": "Požadovaná teplota vody"
       },
       "required_algicide": {
-        "name": "Požadovaná dávka algicidu"
+        "name": "Požadovaná dávka algicidu",
+        "unit_of_measurement": "ml/m³/den"
       },
       "required_floc": {
         "name": "Požadovaná dávka flokulantu"

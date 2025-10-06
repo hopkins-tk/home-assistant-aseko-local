@@ -99,7 +99,8 @@
         "name": "Required water temperature"
       },
       "required_algicide": {
-        "name": "Required algicide dose"
+        "name": "Required algicide dose",
+        "unit_of_measurement": "ml/m³/day"
       },
       "required_floc": {
         "name": "Required flocculant dose"
