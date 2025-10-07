@@ -3,19 +3,15 @@
 from __future__ import annotations
 
 import logging
-import os
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, CONF_PORT, Platform
 from homeassistant.core import HomeAssistant
-from homeassistant.config_entries import ConfigEntry as AsekoLocalConfigEntry
 from homeassistant.exceptions import ConfigEntryNotReady
-from homeassistant.helpers.device_registry import DeviceEntry
 
 from .aseko_data import AsekoDevice
 from .aseko_server import AsekoDeviceServer
 from .coordinator import AsekoLocalDataUpdateCoordinator
-from pathlib import Path
 from dataclasses import dataclass
 
 from .mirror_forwarder import AsekoCloudMirror

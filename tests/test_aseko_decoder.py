@@ -1,6 +1,6 @@
 """Test the Aseko Decoder."""
 
-from datetime import time
+from datetime import time, datetime
 
 import pytest
 
@@ -346,9 +346,6 @@ def test_normalize_value_edge_cases() -> None:
 
     with pytest.raises(ValueError):
         AsekoDecoder._normalize_value(0xFF, float)
-
-
-from datetime import datetime, timedelta
 
 
 def test_timestamp_unspecified() -> None:

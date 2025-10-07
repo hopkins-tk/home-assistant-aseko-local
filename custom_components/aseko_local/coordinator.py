@@ -4,14 +4,12 @@ import logging
 from collections.abc import Callable
 from types import CoroutineType
 from typing import Any
-from datetime import datetime, timedelta
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, CONF_PORT
 from homeassistant.core import DOMAIN as HOMEASSISTANT_DOMAIN
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
-from homeassistant.util import dt as dt_util  # ← for timestamps
 
 from .aseko_data import AsekoData, AsekoDevice
 

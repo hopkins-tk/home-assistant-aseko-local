@@ -2,28 +2,22 @@
 
 import pytest
 from homeassistant.config_entries import ConfigEntryState
-from homeassistant.exceptions import ConfigEntryNotReady
 from pytest_homeassistant_custom_component.common import MockConfigEntry
-from regex import D
 from typing import Any
 
 from custom_components.aseko_local import (
-    AsekoLocalDataUpdateCoordinator,
     async_setup_entry,
-    async_unload_entry,
 )
-from custom_components.aseko_local.aseko_data import AsekoDevice, AsekoDeviceType
+from custom_components.aseko_local.aseko_data import AsekoDevice
 from custom_components.aseko_local.const import (
     DOMAIN,
 )
 
 from .const import MOCK_CONFIG
 import asyncio
-import pytest
 from custom_components.aseko_local.mirror_forwarder import AsekoCloudMirror
 from custom_components.aseko_local.aseko_server import (
     AsekoDeviceServer,
-    ServerConnectionError,
 )
 
 
@@ -136,9 +130,6 @@ async def test_setup_unload_entry(hass, bypass_get_data, api_server_running) -> 
         await server._call_forward_cb(frame)  # noqa: SLF001
 
 
-import pytest
-from custom_components.aseko_local.aseko_data import AsekoDevice
-from custom_components.aseko_local.aseko_server import AsekoDeviceServer
 
 
 # Hilfsfunktion: Hex-String zu Bytes

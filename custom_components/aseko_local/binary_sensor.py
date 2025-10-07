@@ -45,36 +45,6 @@ BINARY_SENSORS: tuple[AsekoLocalBinarySensorEntityDescription, ...] = (
         icon="mdi:pump",
         value_fn=lambda device: device.filtration_pump_running,
     ),
-    AsekoLocalBinarySensorEntityDescription(
-        key="cl_pump_running",
-        translation_key="cl_pump_running",
-        icon="mdi:pump",
-        value_fn=lambda device: device.cl_pump_running,
-    ),
-    AsekoLocalBinarySensorEntityDescription(
-        key="ph_minus_pump_running",
-        translation_key="ph_minus_pump_running",
-        icon="mdi:pump",
-        value_fn=lambda device: device.ph_minus_pump_running,
-    ),
-    AsekoLocalBinarySensorEntityDescription(
-        key="ph_plus_pump_running",
-        translation_key="ph_plus_pump_running",
-        icon="mdi:pump",
-        value_fn=lambda device: device.ph_plus_pump_running,
-    ),
-    AsekoLocalBinarySensorEntityDescription(
-        key="algicide_pump_running",
-        translation_key="algicide_pump_running",
-        icon="mdi:pump",
-        value_fn=lambda device: device.algicide_pump_running,
-    ),
-    AsekoLocalBinarySensorEntityDescription(
-        key="floc_pump_running",
-        translation_key="floc_pump_running",
-        icon="mdi:pump",
-        value_fn=lambda device: device.floc_pump_running,
-    ),
 )
 
 

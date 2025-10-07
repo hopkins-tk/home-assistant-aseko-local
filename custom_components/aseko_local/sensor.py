@@ -43,7 +43,7 @@ class AsekoConsumptionSensorEntityDescription(SensorEntityDescription):
 
 # ---------- Fixed (system-level) sensors ----------
 
-SENSORS: list[AsekoSensorEntityDescription] = [
+SENSORS: list[SensorEntityDescription] = [
     AsekoSensorEntityDescription(
         # Air temperature is missing in decoder, no idea which byte is
         key="airTemp",
@@ -178,7 +178,11 @@ SENSORS: list[AsekoSensorEntityDescription] = [
         native_unit_of_measurement="ml/min",
         state_class=SensorStateClass.MEASUREMENT,
         icon="mdi:water-pump",
-        value_fn=lambda device: device.flowrate_chlor,
+        value_fn=lambda device: device.flowrate_chlor
+        if device.cl_pump_running
+        else 0
+        if device.flowrate_chlor is not None
+        else None,
         entity_registry_visible_default=False,
     ),
     AsekoSensorEntityDescription(
@@ -187,7 +191,11 @@ SENSORS: list[AsekoSensorEntityDescription] = [
         native_unit_of_measurement="ml/min",
         state_class=SensorStateClass.MEASUREMENT,
         icon="mdi:water-pump",
-        value_fn=lambda device: device.flowrate_ph_minus,
+        value_fn=lambda device: device.flowrate_ph_minus
+        if device.ph_minus_pump_running
+        else 0
+        if device.flowrate_ph_minus is not None
+        else None,
         entity_registry_visible_default=False,
     ),
     AsekoSensorEntityDescription(
@@ -196,7 +204,11 @@ SENSORS: list[AsekoSensorEntityDescription] = [
         native_unit_of_measurement="ml/min",
         state_class=SensorStateClass.MEASUREMENT,
         icon="mdi:water-pump",
-        value_fn=lambda device: device.flowrate_ph_plus,
+        value_fn=lambda device: device.flowrate_ph_plus
+        if device.ph_plus_pump_running
+        else 0
+        if device.flowrate_ph_plus is not None
+        else None,
         entity_registry_visible_default=False,
     ),
     AsekoSensorEntityDescription(
@@ -205,7 +217,11 @@ SENSORS: list[AsekoSensorEntityDescription] = [
         native_unit_of_measurement="ml/min",
         state_class=SensorStateClass.MEASUREMENT,
         icon="mdi:water-pump",
-        value_fn=lambda device: device.flowrate_algicide,
+        value_fn=lambda device: device.flowrate_algicide
+        if device.algicide_pump_running
+        else 0
+        if device.flowrate_algicide is not None
+        else None,
         entity_registry_visible_default=False,
     ),
     AsekoSensorEntityDescription(
@@ -214,7 +230,11 @@ SENSORS: list[AsekoSensorEntityDescription] = [
         native_unit_of_measurement="ml/min",
         state_class=SensorStateClass.MEASUREMENT,
         icon="mdi:water-pump",
-        value_fn=lambda device: device.flowrate_floc,
+        value_fn=lambda device: device.flowrate_floc
+        if device.floc_pump_running
+        else 0
+        if device.flowrate_floc is not None
+        else None,
         entity_registry_visible_default=False,
     ),
 ]

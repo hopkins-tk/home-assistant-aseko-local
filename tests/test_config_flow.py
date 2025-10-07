@@ -9,7 +9,6 @@ from homeassistant.data_entry_flow import FlowResultType
 
 from custom_components.aseko_local.aseko_server import ServerConnectionError
 from custom_components.aseko_local.const import (
-    CONF_ENABLE_RAW_LOGGING,
     CONF_FORWARDER_ENABLED,
     CONF_FORWARDER_HOST,
     CONF_FORWARDER_PORT,

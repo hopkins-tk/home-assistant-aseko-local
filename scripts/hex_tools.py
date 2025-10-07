@@ -1,8 +1,3 @@
-from operator import index
-
-from numpy import byte
-
-
 def print_hex_table(data: bytes) -> None:
     """Prints a table of byte index and hex value."""
     print("Byte Nr | HEX")
@@ -170,7 +165,7 @@ if __name__ == "__main__":
         data = bytearray.fromhex(hex_string)
         hex_pos = 3
     else:
-        print(f"Invalid HEX dump. More or less 120 Bytes. ({len(hex_dump) / 2} bytes)")
+        print("Invalid HEX dump. More or less 120 Bytes.")
         print("Usage: python3 hex_tools.py <function> <hexstring> [byte_index]")
         print("Functions: --table, --tablewrite, --byteinfo, --generateTest")
         sys.exit(1)
