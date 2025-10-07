@@ -130,8 +130,6 @@ async def test_setup_unload_entry(hass, bypass_get_data, api_server_running) -> 
         await server._call_forward_cb(frame)  # noqa: SLF001
 
 
-
-
 # Hilfsfunktion: Hex-String zu Bytes
 def hexstr_to_bytes(s: str) -> bytes:
     return bytes.fromhex(s.replace("\n", "").replace(" ", ""))
