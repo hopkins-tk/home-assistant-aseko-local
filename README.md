@@ -4,11 +4,13 @@
 
 ## Summary
 
-Local integration for receiving data directly from **Aseko** pool unit without relying on the **[Aseko Cloud](https://aseko.cloud)**.
+Local integration for receiving data directly from **Aseko** pool unit without relying on the **[Aseko Cloud](https://aseko.cloud)**. The imported entities depends on your Aseko device model. Here is an example of ASIN Aqua SALT.
 
 ![Home Assistant Sensors](images/sensors-salt.png)
 
-The Aseko unit and your Home Assistant need to run on the same network (Aseko unit needs to be able to send data to a configured port on your Home Assistant) as the integration relies on direct data stream from the unit.
+The Aseko unit and your Home Assistant need to run on the same network or the router must let pass the configured port (default = 47524, Aseko unit needs to be able to send data to a configured port on your Home Assistant) as the integration relies on direct data stream from the unit.
+
+Aseko Local gives you the option to forward reiceived raw data to Aseko Cloud (or anywhere else) in parallel.
 
 ## Installation
 
@@ -55,21 +57,10 @@ You need to re-configure your Aseko unit to send data to your Home Assistant ins
 
 ### Optional: Keep data to Aseko Cloud
 
-If you want to keep sending the data to Aseko Cloud, you will have to ensure mirroring of the data stream to both: Aseko Cloud & your Home Assistant.
+If you want to keep sending the data to Aseko Cloud, you had to use a TCP proxy (like Goduuplicator) before release 1.2.0. The installation of such a TCP proxy with package copying is tricky, especially the stream to Aseko Local was always interrupted after some seconds. Further goduplicator hasn't been updated for 5 years.
 
-You can achieve that by introducing a TCP proxy, which will mirror the trafic to Aseko Cloud as well as your Home Assistant server - e.g. using https://github.com/mkevac/goduplicator
+Since release 1.3.0 Aseko Local has a built in proxy to forward the raw data received from Aseko Device to Aseko Cloud (pool.aseko.com:47524 = original address). Open Aseko Local integration, klick on settings (see image) and enable cloud proxy.
 
-### Example configuration in Docker Compose
+![Aseko Local options](images/aseko-options.png)
 
-```
-  goduplicator:
-    container_name: goduplicator
-    image: ptlange/goduplicator:latest
-    command: "-l ':47524' -f 'pool.aseko.com:47524' -m '192.168.192.168:47524'"
-    restart: unless-stopped
-```
 
-- `pool.aseko.com` being the original **Remote Server Addr** with port `47524` configured as **Remote Port Number** in the Aseko unit previously
-- `192.168.192.168` being your **Home Assistant** server with port `47524` configured for this integration
-
-In the Aseko unit configuration, configure IP & port of the TCP mirror instead of the Home Assistant instance as the TCP mirror will be sending the data to both Aseko Cloud & your Home Assistant instance.

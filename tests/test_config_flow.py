@@ -8,7 +8,14 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
 from custom_components.aseko_local.aseko_server import ServerConnectionError
-from custom_components.aseko_local.const import DOMAIN
+from custom_components.aseko_local.const import (
+    CONF_FORWARDER_ENABLED,
+    CONF_FORWARDER_HOST,
+    CONF_FORWARDER_PORT,
+    DEFAULT_FORWARDER_HOST,
+    DEFAULT_FORWARDER_PORT,
+    DOMAIN,
+)
 
 
 async def test_form(hass: HomeAssistant, mock_setup_entry: AsyncMock) -> None:
@@ -86,3 +93,36 @@ async def test_form_cannot_connect(
         CONF_PORT: 12345,
     }
     assert len(mock_setup_entry.mock_calls) == 1
+
+
+async def test_options_flow(
+    hass, mock_config_entry, mock_setup_entry: AsyncMock
+) -> None:
+    """Test the options flow for Aseko Local."""
+
+    # If the fixture is async:
+    if callable(getattr(mock_config_entry, "__await__", None)):
+        mock_config_entry = await mock_config_entry
+
+    # Start options flow
+    result = await hass.config_entries.options.async_init(mock_config_entry.entry_id)
+    assert result["type"] == FlowResultType.FORM
+    assert result["step_id"] == "options_init"
+
+    options = {
+        CONF_FORWARDER_ENABLED: True,
+        CONF_FORWARDER_HOST: DEFAULT_FORWARDER_HOST,
+        CONF_FORWARDER_PORT: DEFAULT_FORWARDER_PORT,
+    }
+
+    with patch(
+        "custom_components.aseko_local.aseko_server.AsekoDeviceServer.remove_all"
+    ):
+        result2 = await hass.config_entries.options.async_configure(
+            result["flow_id"],
+            options,
+        )
+        await hass.async_block_till_done()
+
+    assert result2["type"] == FlowResultType.CREATE_ENTRY
+    assert result2["data"] == options

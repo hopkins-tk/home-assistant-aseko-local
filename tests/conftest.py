@@ -6,6 +6,8 @@ from unittest.mock import AsyncMock, PropertyMock, patch
 import pytest
 
 from custom_components.aseko_local.aseko_server import ServerConnectionError
+from homeassistant.config_entries import ConfigEntry
+from custom_components.aseko_local.const import DOMAIN
 
 
 @pytest.fixture(autouse=True)
@@ -21,6 +23,29 @@ def mock_setup_entry() -> Generator[AsyncMock]:
         "custom_components.aseko_local.async_setup_entry", return_value=True
     ) as mock_setup_entry:
         yield mock_setup_entry
+
+
+@pytest.fixture
+async def mock_config_entry(hass) -> ConfigEntry:
+    """Create a mock ConfigEntry for tests."""
+
+    entry = ConfigEntry(
+        version=1,
+        minor_version=0,
+        domain=DOMAIN,
+        title="Aseko Local",
+        data={},
+        options={},
+        entry_id="test_entry_id",
+        source="user",
+        unique_id=None,
+        discovery_keys={},
+        subentries_data=None,
+    )
+
+    await hass.config_entries.async_add(entry)
+
+    return entry
 
 
 # This fixture is used to prevent HomeAssistant from attempting to create and dismiss persistent

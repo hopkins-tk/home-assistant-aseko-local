@@ -44,7 +44,21 @@
       "problemMatcher": []
     },
     {
-      "label": "Ruff",
+      "label": "Ruff (fix)",
+      "type": "shell",
+      "command": "python -m ruff check --fix .",
+      "group": {
+        "kind": "test",
+        "isDefault": true
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Ruff (format)",
       "type": "shell",
       "command": "python -m ruff format .",
       "group": {

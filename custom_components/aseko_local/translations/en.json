@@ -5,20 +5,32 @@
       "reconfigure_successful": "Reconfiguration successful"
     },
     "error": {
-      "cannot_connect": "Failed to connect",
+      "cannot_connect": "Connection failed",
       "unknown": "Unexpected error"
     },
     "step": {
       "user": {
         "data": {
-          "host": "Listen on (IP address)",
+          "host": "Bind to IP address",
           "port": "Port"
-        }
+        },
+        "description": "Please the port number. The IP address can usually be left to 0.0.0.0"
       },
       "reconfigure": {
         "data": {
-          "host": "Listen on (IP address)",
+          "host": "Bind to IP address",
           "port": "Port"
+        }
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "options_init": {
+        "data": {
+          "forwarder_enabled": "Enable forwarding",
+          "forwarder_host": "Forward to host",
+          "forwarder_port": "Forward to port"
         }
       }
     }
@@ -28,8 +40,23 @@
       "electrolyzer_active": {
         "name": "Electrolyzer active"
       },
-      "pump_running": {
-        "name": "Pump running"
+      "filtration_pump_running": {
+        "name": "Filtration pump running"
+      },
+      "cl_pump_running": {
+        "name": "Chlorine dosing pump running"
+      },
+      "ph_minus_pump_running": {
+        "name": "pH- dosing pump running"
+      },
+      "ph_plus_pump_running": {
+        "name": "pH+ dosing pump running"
+      },
+      "algicide_pump_running": {
+        "name": "Algicide dosing pump running"
+      },
+      "floc_pump_running": {
+        "name": "Flocculant dosing pump running"
       },
       "water_flow_to_probes": {
         "name": "Water flow to probes"
@@ -63,7 +90,7 @@
         "name": "Required free chlorine"
       },
       "required_ph": {
-        "name": "Required pH"
+        "name": "Required pH value"
       },
       "required_redox": {
         "name": "Required redox potential"
@@ -71,11 +98,112 @@
       "required_water_temperature": {
         "name": "Required water temperature"
       },
+      "required_algicide": {
+        "name": "Required algicide dose",
+        "unit_of_measurement": "ml/m³/day"
+      },
+      "required_floc": {
+        "name": "Required flocculant dose"
+      },
       "salinity": {
         "name": "Salinity"
       },
       "water_temperature": {
         "name": "Water temperature"
+      },
+      "flowrate_chlor": {
+        "name": "Flow rate chlorine"
+      },
+      "flowrate_ph_minus": {
+        "name": "Flow rate pH-"
+      },
+      "flowrate_ph_plus": {
+        "name": "Flow rate pH+"
+      },
+      "flowrate_algicide": {
+        "name": "Flow rate algicide"
+      },
+      "flowrate_floc": {
+        "name": "Flow rate flocculant"
+      },
+      "chlor_consumed": {
+        "name": "Chlorine consumed (since refill)"
+      },
+      "chlor_total_consumed": {
+        "name": "Chlorine consumed (total)"
+      },
+      "chlor_remaining": {
+        "name": "Chlorine remaining"
+      },
+      "ph_minus_consumed": {
+        "name": "pH- consumed (since refill)"
+      },
+      "ph_minus_total_consumed": {
+        "name": "pH- consumed (total)"
+      },
+      "ph_minus_remaining": {
+        "name": "pH- remaining"
+      },
+      "ph_plus_consumed": {
+        "name": "pH+ consumed (since refill)"
+      },
+      "ph_plus_total_consumed": {
+        "name": "pH+ consumed (total)"
+      },
+      "ph_plus_remaining": {
+        "name": "pH+ remaining"
+      },
+      "algicide_consumed": {
+        "name": "Algicide consumed (since refill)"
+      },
+      "algicide_total_consumed": {
+        "name": "Algicide consumed (total)"
+      },
+      "algicide_remaining": {
+        "name": "Algicide remaining"
+      },
+      "floc_consumed": {
+        "name": "Flocculant consumed (since refill)"
+      },
+      "floc_total_consumed": {
+        "name": "Flocculant consumed (total)"
+      },
+      "floc_remaining": {
+        "name": "Flocculant remaining"
+      }
+    },
+    "number": {
+      "chlor_last_filled_quantity": {
+        "name": "Chlorine last filled quantity"
+      },
+      "ph_minus_last_filled_quantity": {
+        "name": "pH- last filled quantity"
+      },
+      "ph_plus_last_filled_quantity": {
+        "name": "pH+ last filled quantity"
+      },
+      "algicide_last_filled_quantity": {
+        "name": "Algicide last filled quantity"
+      },
+      "floc_last_filled_quantity": {
+        "name": "Flocculant last filled quantity"
+      }
+    },
+    "button": {
+      "chlor_refill_reset": {
+        "name": "Chlorine refill"
+      },
+      "ph_minus_refill_reset": {
+        "name": "pH- refill"
+      },
+      "ph_plus_refill_reset": {
+        "name": "pH+ refill"
+      },
+      "algicide_refill_reset": {
+        "name": "Algicide refill"
+      },
+      "floc_refill_reset": {
+        "name": "Flocculant refill"
       }
     }
   }

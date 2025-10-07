@@ -23,6 +23,7 @@ class AsekoLocalBinarySensorEntityDescription(BinarySensorEntityDescription):
     """Describes an Aseko device binary sensor entity."""
 
     value_fn: Callable[[AsekoDevice], bool | None]
+    enabled: bool = True
 
 
 BINARY_SENSORS: tuple[AsekoLocalBinarySensorEntityDescription, ...] = (
@@ -40,9 +41,9 @@ BINARY_SENSORS: tuple[AsekoLocalBinarySensorEntityDescription, ...] = (
     ),
     AsekoLocalBinarySensorEntityDescription(
         key="pump_running",
-        translation_key="pump_running",
+        translation_key="filtration_pump_running",
         icon="mdi:pump",
-        value_fn=lambda device: device.pump_running,
+        value_fn=lambda device: device.filtration_pump_running,
     ),
 )
 
@@ -56,12 +57,46 @@ async def async_setup_entry(
 
     coordinator = config_entry.runtime_data.coordinator
     devices = coordinator.get_devices()
-    async_add_entities(
-        AsekoLocalBinarySensorEntity(device, coordinator, description)
-        for description in BINARY_SENSORS
-        for device in devices
-        if description.value_fn(device) is not None
+    _LOGGER.debug(
+        ">>> [sensor] Found %s devices: %s",
+        len(devices),
+        [d.serial_number for d in devices],
     )
+
+    entities: list[BinarySensorEntity] = []
+
+    for device in devices:
+        _LOGGER.debug(
+            ">>> [sensor] Setting up binary sensors for device (serial=%s)",
+            device.serial_number,
+        )
+
+        for description in filter(lambda d: d.enabled, BINARY_SENSORS):
+            key = description.key
+            val = description.value_fn(device)
+
+            _LOGGER.debug(
+                "Processing binary sensor: %s (value=%s)",
+                key,
+                val,
+            )
+
+            if val is None:
+                _LOGGER.debug(
+                    "   - Skipped non-available binary sensor: %s (value=None)",
+                    key,
+                )
+                continue
+            entity = AsekoLocalBinarySensorEntity(device, coordinator, description)
+            entities.append(entity)
+            _LOGGER.debug(
+                "   - Regular binary sensor: %s (unique_id=%s)",
+                key,
+                entity.unique_id,
+            )
+
+    _LOGGER.debug(">>> [sensor] Adding %s binary sensors", len(entities))
+    async_add_entities(entities)
 
 
 class AsekoLocalBinarySensorEntity(AsekoLocalEntity, BinarySensorEntity):
@@ -72,4 +107,11 @@ class AsekoLocalBinarySensorEntity(AsekoLocalEntity, BinarySensorEntity):
     @property
     def is_on(self) -> bool | None:
         """Return the state of the sensor."""
-        return self.entity_description.value_fn(self.device)
+        val = self.entity_description.value_fn(self.device)
+        _LOGGER.debug(
+            ">>> [sensor] native_value for %s (%s): %s",
+            self.entity_description.key,
+            self.unique_id,
+            val,
+        )
+        return val
