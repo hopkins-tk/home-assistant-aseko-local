@@ -12,6 +12,7 @@ from homeassistant.components.sensor import (
     SensorEntityDescription,
     SensorStateClass,
 )
+from homeassistant.components.number import NumberDeviceClass
 from homeassistant.const import UnitOfElectricPotential, UnitOfTemperature
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
@@ -167,6 +168,7 @@ SENSORS: list[SensorEntityDescription] = [
     AsekoSensorEntityDescription(
         key="required_floc",
         translation_key="required_floc",
+        device_class=NumberDeviceClass.VOLUME_FLOW_RATE,
         native_unit_of_measurement="ml/h",
         state_class=SensorStateClass.MEASUREMENT,
         icon="mdi:pool",
@@ -175,6 +177,7 @@ SENSORS: list[SensorEntityDescription] = [
     AsekoSensorEntityDescription(
         key="flowrate_chlor",
         translation_key="flowrate_chlor",
+        device_class=NumberDeviceClass.VOLUME_FLOW_RATE,
         native_unit_of_measurement="ml/min",
         state_class=SensorStateClass.MEASUREMENT,
         icon="mdi:water-pump",
@@ -188,6 +191,7 @@ SENSORS: list[SensorEntityDescription] = [
     AsekoSensorEntityDescription(
         key="flowrate_ph_minus",
         translation_key="flowrate_ph_minus",
+        device_class=NumberDeviceClass.VOLUME_FLOW_RATE,
         native_unit_of_measurement="ml/min",
         state_class=SensorStateClass.MEASUREMENT,
         icon="mdi:water-pump",
@@ -201,6 +205,7 @@ SENSORS: list[SensorEntityDescription] = [
     AsekoSensorEntityDescription(
         key="flowrate_ph_plus",
         translation_key="flowrate_ph_plus",
+        device_class=NumberDeviceClass.VOLUME_FLOW_RATE,
         native_unit_of_measurement="ml/min",
         state_class=SensorStateClass.MEASUREMENT,
         icon="mdi:water-pump",
@@ -214,6 +219,7 @@ SENSORS: list[SensorEntityDescription] = [
     AsekoSensorEntityDescription(
         key="flowrate_algicide",
         translation_key="flowrate_algicide",
+        device_class=NumberDeviceClass.VOLUME_FLOW_RATE,
         native_unit_of_measurement="ml/min",
         state_class=SensorStateClass.MEASUREMENT,
         icon="mdi:water-pump",
@@ -227,6 +233,7 @@ SENSORS: list[SensorEntityDescription] = [
     AsekoSensorEntityDescription(
         key="flowrate_floc",
         translation_key="flowrate_floc",
+        device_class=NumberDeviceClass.VOLUME_FLOW_RATE,
         native_unit_of_measurement="ml/min",
         state_class=SensorStateClass.MEASUREMENT,
         icon="mdi:water-pump",
