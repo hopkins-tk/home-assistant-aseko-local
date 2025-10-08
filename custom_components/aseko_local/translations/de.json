@@ -43,21 +43,6 @@
       "filtration_pump_running": {
         "name": "Filtrationspumpe läuft"
       },
-      "cl_pump_running": {
-        "name": "Chlor-Dosierpumpe läuft"
-      },
-      "ph_minus_pump_running": {
-        "name": "pH--Dosierpumpe läuft"
-      },
-      "ph_plus_pump_running": {
-        "name": "pH+-Dosierpumpe läuft"
-      },
-      "algicide_pump_running": {
-        "name": "Algizid-Dosierpumpe läuft"
-      },
-      "floc_pump_running": {
-        "name": "Flockungsmittel-Dosierpumpe läuft"
-      },
       "water_flow_to_probes": {
         "name": "Wasserfluss zu den Sensoren"
       }

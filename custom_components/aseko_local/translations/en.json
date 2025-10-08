@@ -43,21 +43,6 @@
       "filtration_pump_running": {
         "name": "Filtration pump running"
       },
-      "cl_pump_running": {
-        "name": "Chlorine dosing pump running"
-      },
-      "ph_minus_pump_running": {
-        "name": "pH- dosing pump running"
-      },
-      "ph_plus_pump_running": {
-        "name": "pH+ dosing pump running"
-      },
-      "algicide_pump_running": {
-        "name": "Algicide dosing pump running"
-      },
-      "floc_pump_running": {
-        "name": "Flocculant dosing pump running"
-      },
       "water_flow_to_probes": {
         "name": "Water flow to probes"
       }

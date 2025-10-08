@@ -43,21 +43,6 @@
       "filtration_pump_running": {
         "name": "Filtrační čerpadlo běží"
       },
-      "cl_pump_running": {
-        "name": "Dávkovácí čerpadlo chloru běží"
-      },
-      "ph_minus_pump_running": {
-        "name": "Dávkovácí čerpadlo pH- běží"
-      },
-      "ph_plus_pump_running": {
-        "name": "Dávkovácí čerpadlo pH+ běží"
-      },
-      "algicide_pump_running": {
-        "name": "Dávkovácí čerpadlo algicidu běží"
-      },
-      "floc_pump_running": {
-        "name": "Dávkovácí čerpadlo flokulantu běží"
-      },
       "water_flow_to_probes": {
         "name": "Průtok vody k sondám"
       }

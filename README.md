@@ -8,9 +8,9 @@ Local integration for receiving data directly from **Aseko** pool unit without r
 
 ![Home Assistant Sensors](images/sensors-salt.png)
 
-The Aseko unit and your Home Assistant need to run on the same network or the router must let pass the configured port (default = 47524, Aseko unit needs to be able to send data to a configured port on your Home Assistant) as the integration relies on direct data stream from the unit.
+The Aseko unit and your Home Assistant need to run on the same network or traffic needs to be allowed to flow from the unit to the configured port (default is **47524**) as the integration relies on direct data stream from the unit.
 
-Aseko Local gives you the option to forward reiceived raw data to Aseko Cloud (or anywhere else) in parallel.
+**Aseko Local** gives you an option to forward reiceived raw data to Aseko Cloud (or anywhere else).
 
 ## Installation
 
@@ -43,13 +43,16 @@ You need to re-configure your Aseko unit to send data to your Home Assistant ins
 2. Go to **Serial Port** configuration
 
    ![Aseko unit initial configuration](images/aseko-init.png)
-   You can see the default **Remote Srver Address** is **pool.aseko.com** (or something similar) - make note of that if you would like to keep sending the data there as well - see [Optional: Keep data to Aseko Cloud](#optional-keep-data-to-aseko-cloud)
+   You can see the default **Remote Srver Address** is **pool.aseko.com** (or something similar) and **Local/Remote Port Number** is **47524** - make note of that if you would like to keep sending the data there as well - see [Optional: Keep data to Aseko Cloud](#optional-keep-data-to-aseko-cloud)
+
+   **WARNING:** In case you see in **Local/Remote Port Number** a different number than **47524** (e.g. **51050**) that meens you have a newer Firmware, which is using a different format of the messages sent to the Aseko, which is currently not supported.
+   You might try to check with your vendor if the format can be changed on your unit.
 
 3. Change **Remote Server Addr** to the IP address or DNS record of your **Home Assistant** instance on your local network (or your TCP mirror - see [Optional: Keep data to Aseko Cloud](#optional-keep-data-to-aseko-cloud))
 
    ![Aseko unit changed configuration](images/aseko-changed.png)
 
-4. (Optional) Change **Remote Port Number** to the port on which the integration will be listening on your **Home Assistant** instance
+4. (Optional) Change **Remote Port Number** to the port on which the integration will be listening on your **Home Assistant** instance (in case it can not be the default port **47524**)
 
 5. Confirm the **Restart** of the module
 
@@ -57,10 +60,8 @@ You need to re-configure your Aseko unit to send data to your Home Assistant ins
 
 ### Optional: Keep data to Aseko Cloud
 
-If you want to keep sending the data to Aseko Cloud, you had to use a TCP proxy (like Goduuplicator) before release 1.2.0. The installation of such a TCP proxy with package copying is tricky, especially the stream to Aseko Local was always interrupted after some seconds. Further goduplicator hasn't been updated for 5 years.
+If you want to keep sending the data to Aseko Cloud, you had to use a TCP proxy (like [goduplicator](https://github.com/hopkins-tk/home-assistant-aseko-local/issues/14#issuecomment-2897932015)) before release `1.3.0`. The installation and configuration of goduplicator proved trouble some for some of the users and goduplicator has not been updated for over 5 years.
 
-Since release 1.3.0 Aseko Local has a built in proxy to forward the raw data received from Aseko Device to Aseko Cloud (pool.aseko.com:47524 = original address). Open Aseko Local integration, klick on settings (see image) and enable cloud proxy.
+Since release `1.3.0` **Aseko Local** has a built in forwarder that can be enabled to forward the raw data received from Aseko Device to Aseko Cloud (default `pool.aseko.com:47524`). To use it, open **Aseko Local** integration, klick on settings (see image) and enable the forwarder.
 
 ![Aseko Local options](images/aseko-options.png)
-
-
