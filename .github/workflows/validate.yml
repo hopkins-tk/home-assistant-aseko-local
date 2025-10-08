@@ -25,6 +25,7 @@ jobs:
   hacs: # https://github.com/hacs/action
     name: HACS validation
     runs-on: ubuntu-latest
+    if: github.repository == 'hopkins-tk/home-assistant-aseko-local'
     steps:
       - name: Run HACS validation
         uses: hacs/action@main
