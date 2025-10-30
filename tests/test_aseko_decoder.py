@@ -99,7 +99,7 @@ def test_decode_home() -> None:
     """Test decoding of HOME device data."""
 
     data = _make_base_bytes()
-    data[4] = 0x05  # HOME with CL probe
+    data[4] = 0x03  # HOME with CL probe
     data[14:16] = (720).to_bytes(2, "big")  # ph
     data[37] = 0xB3  # required_ph
     data[52] = 72  # required_ph
@@ -329,6 +329,22 @@ def test_decode_issue_28() -> None:
     assert device.electrolyzer_active is False
     assert device.electrolyzer_direction == AsekoElectrolyzerDirection.WAITING
     assert device.water_temperature == 28.4
+
+
+def test_decode_issue_61() -> None:
+    """Test decoding data from issue #61."""
+
+    data = bytearray.fromhex(
+        "0690cf4a0301190a12103232000402cb015201520152a3fe700099fe000800000000000000130267"
+        "0690cf4a0303190a121032324842011d080f122d15001737027600a9000c1e0a012801e00e10a202"
+        "0690cf4a03 02190a1210 3232002d00 3c003c003c 000a1e3c6e 9600f00802 580f0f0f1e 14ffbf0297"
+    )
+
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.device_type == AsekoDeviceType.HOME
+    assert device.ph is not None
+    assert device.redox is not None
+    assert device.cl_free is None
 
 
 # test combinations of different methodes like date, time, normalize, probe types etc.

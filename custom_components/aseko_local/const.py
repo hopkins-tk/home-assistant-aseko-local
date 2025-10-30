@@ -27,7 +27,7 @@ PROBE_DOSE_MISSING = 0x04
 PROBE_SANOSIL_MISSING = 0x08  # OXY Pure
 
 UNIT_TYPE_SALT = 0x0C  # SALT can be 0x0D or 0x0E
-UNIT_TYPE_HOME = 0x04  # HOME can be 0x05 or 0x06
+UNIT_TYPE_HOME = 0x03  # HOME can be CLF or REDOX (CLF version code unknown)
 UNIT_TYPE_NET = 0x08  # NET can be 0x09 or 0x0A
 UNIT_TYPE_PROFI = 0x08  # PROFI is 0x08
 
