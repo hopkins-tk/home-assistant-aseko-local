@@ -121,6 +121,8 @@ class AsekoDeviceServer:
 
                 # Try to decode the frame
                 try:
+                    frame = self._rewind_frame(frame)
+
                     # 🔎 Plausibility check before decoding: pH values must be between 0 and 14
                     ph_value = int.from_bytes(frame[14:16], "big") / 100
                     if not (0 <= ph_value <= 14):
@@ -170,13 +172,42 @@ class AsekoDeviceServer:
             except Exception:
                 pass
 
-    # Forwarder setzen
+    # Set Forwarder
     def set_forward_callback(self, callback: Optional[Callable[[bytes], Any]]) -> None:
         self._forward_cb = callback
         if callback:
             _LOGGER.debug("Forward callback registered")
         else:
             _LOGGER.debug("Forward callback removed")
+
+    def _rewind_frame(self, data: bytes) -> bytes:
+        """Rewind the frame to the start position for processing."""
+
+        offset = 0
+        while (
+            data[offset + 5] != 0x01
+            or data[offset + 45] != 0x03
+            or data[offset + 85] != 0x02
+            or data[offset : offset + 4] != data[offset + 40 : offset + 44]
+            or data[offset + 40 : offset + 44] != data[offset + 80 : offset + 84]
+        ):
+            offset += 1
+
+        if offset == 0:
+            _LOGGER.debug(
+                "Frame did not have to be rewinded",
+            )
+        else:
+            # Rewind the frame
+            data = data[offset:] + data[:offset]
+
+            _LOGGER.warning(
+                "Frame has been rewinded by %d bytes:\n%s",
+                offset,
+                data.hex(" ", 1),  # print as spaced hex string
+            )
+
+        return data
 
     @classmethod
     async def create(

@@ -69,7 +69,7 @@ class AsekoDecoder:
         if (data[4] & UNIT_TYPE_SALT) == UNIT_TYPE_SALT:
             return AsekoDeviceType.SALT
 
-        if bool(data[4] & UNIT_TYPE_HOME):
+        if (data[4] & UNIT_TYPE_HOME) == UNIT_TYPE_HOME:
             return AsekoDeviceType.HOME
 
         if bool(data[4] & UNIT_TYPE_NET):
@@ -88,7 +88,10 @@ class AsekoDecoder:
         probes = set()
         probes.add(AsekoProbeType.PH)
 
-        if not bool(probe_info & PROBE_REDOX_MISSING):
+        if (
+            not bool(probe_info & PROBE_REDOX_MISSING)
+            or (data[4] & UNIT_TYPE_HOME) == UNIT_TYPE_HOME
+        ):
             probes.add(AsekoProbeType.REDOX)
 
         if not bool(probe_info & PROBE_CLF_MISSING):
