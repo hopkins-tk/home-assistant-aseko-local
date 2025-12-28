@@ -47,5 +47,7 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install --requirement requirements.txt --requirement requirements.test.txt
       - name: Run tests
+        env:
+          AIOHTTP_NO_EXTENSIONS: 1
         run: |
           python -m pytest --timeout=10 tests
