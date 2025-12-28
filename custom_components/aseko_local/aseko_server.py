@@ -7,7 +7,12 @@ from typing import ClassVar, Optional, Any
 
 from .aseko_data import AsekoDevice
 from .aseko_decoder import AsekoDecoder
-from .const import DEFAULT_BINDING_ADDRESS, DEFAULT_BINDING_PORT, MESSAGE_SIZE
+from .const import (
+    DEFAULT_BINDING_ADDRESS,
+    DEFAULT_BINDING_PORT,
+    MESSAGE_SIZE,
+    READ_TIMEOUT,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -101,8 +106,10 @@ class AsekoDeviceServer:
         try:
             while True:
                 try:
-                    # ✅ Read exactly MESSAGE_SIZE bytes per frame
-                    frame = await reader.readexactly(MESSAGE_SIZE)
+                    # ✅ Read exactly MESSAGE_SIZE bytes per frame with timeout
+                    frame = await asyncio.wait_for(
+                        reader.readexactly(MESSAGE_SIZE), timeout=READ_TIMEOUT
+                    )
 
                     _LOGGER.debug(
                         "Frame received from %s (%d bytes):\n%s",
@@ -111,17 +118,27 @@ class AsekoDeviceServer:
                         frame.hex(" ", 1),  # print as spaced hex string
                     )
 
+                except asyncio.TimeoutError:
+                    _LOGGER.debug(
+                        "No data received from %s for %d seconds, closing connection",
+                        addr,
+                        READ_TIMEOUT,
+                    )
+                    break
+
                 except asyncio.IncompleteReadError:
                     _LOGGER.error("Client %s closed the connection", addr)
                     break
 
-                # Forward raw data (e.g. for debugging or mirroring)
-                await self._call_raw_sink(frame)
-                await self._call_forward_cb(frame)
-
                 # Try to decode the frame
                 try:
-                    frame = self._rewind_frame(frame)
+                    # Rewind FIRST before forwarding to ensure correct data is sent
+                    rewinded_frame, offset = self._rewind_frame(frame)
+                    frame = rewinded_frame
+
+                    # Forward corrected data (e.g. for debugging or mirroring)
+                    await self._call_raw_sink(frame)
+                    await self._call_forward_cb(frame)
 
                     # 🔎 Plausibility check before decoding: pH values must be between 0 and 14
                     ph_value = int.from_bytes(frame[14:16], "big") / 100
@@ -161,6 +178,15 @@ class AsekoDeviceServer:
                 # Send decoded data to higher layer
                 await self._maybe_call_on_data(device)
 
+                # If frame had to be rewinded, close connection AFTER processing
+                # to force realignment on reconnect
+                if offset > 0:
+                    _LOGGER.info(
+                        "Frame was offset by %d bytes, closing connection to force realignment",
+                        offset,
+                    )
+                    break  # Exit loop to close and allow reconnection
+
         except ConnectionResetError:
             _LOGGER.error("Client %s resets the connection", addr)
         finally:
@@ -180,8 +206,12 @@ class AsekoDeviceServer:
         else:
             _LOGGER.debug("Forward callback removed")
 
-    def _rewind_frame(self, data: bytes) -> bytes:
-        """Rewind the frame to the start position for processing."""
+    def _rewind_frame(self, data: bytes) -> tuple[bytes, int]:
+        """Rewind the frame to the start position for processing.
+
+        Returns:
+            tuple[bytes, int]: (rewinded_frame, offset)
+        """
 
         offset = 0
         while (
@@ -207,7 +237,7 @@ class AsekoDeviceServer:
                 data.hex(" ", 1),  # print as spaced hex string
             )
 
-        return data
+        return data, offset
 
     @classmethod
     async def create(

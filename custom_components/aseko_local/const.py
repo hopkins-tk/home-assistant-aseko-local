@@ -16,6 +16,9 @@ YEAR_OFFSET = 2000
 MESSAGE_SIZE = 120
 MAX_CLF_LIMIT = 100
 
+# Connection timeout in seconds (3x normal 10s interval)
+READ_TIMEOUT = 30.0
+
 # Bit masks
 WATER_FLOW_TO_PROBES = 0xAA
 ALGICIDE_CONFIGURED = 0x80
