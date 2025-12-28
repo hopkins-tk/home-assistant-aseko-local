@@ -1,3 +1,5 @@
 pytest
 pytest-cov
 pytest-homeassistant-custom-component
+aiodns>=3.2.0
+pycares>=4.4.0

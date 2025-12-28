@@ -132,16 +132,17 @@ class AsekoDeviceServer:
 
                 # Try to decode the frame
                 try:
-                    # Rewind FIRST before forwarding to ensure correct data is sent
-                    rewinded_frame, offset = self._rewind_frame(frame)
-                    frame = rewinded_frame
-
-                    # Forward corrected data (e.g. for debugging or mirroring)
+                    # Call raw_sink BEFORE rewind to capture truly raw data (for debugging)
                     await self._call_raw_sink(frame)
-                    await self._call_forward_cb(frame)
+
+                    # Rewind frame to correct byte offset if necessary
+                    rewound_frame, offset = self._rewind_frame(frame)
+
+                    # Forward CORRECTED data to cloud (after rewind)
+                    await self._call_forward_cb(rewound_frame)
 
                     # 🔎 Plausibility check before decoding: pH values must be between 0 and 14
-                    ph_value = int.from_bytes(frame[14:16], "big") / 100
+                    ph_value = int.from_bytes(rewound_frame[14:16], "big") / 100
                     if not (0 <= ph_value <= 14):
                         _LOGGER.error(
                             "Unreasonable pH value (%s) received from %s → closing connection",
@@ -150,7 +151,7 @@ class AsekoDeviceServer:
                         )
                         break  # leave loop → connection will be closed
 
-                    required_ph = frame[52] / 10
+                    required_ph = rewound_frame[52] / 10
                     if not (6 <= required_ph <= 10):
                         _LOGGER.error(
                             "Unreasonable required pH value (%s) received from %s → closing connection",
@@ -159,7 +160,7 @@ class AsekoDeviceServer:
                         )
                         break  # leave loop → connection will be closed
 
-                    device = AsekoDecoder.decode(frame)
+                    device = AsekoDecoder.decode(rewound_frame)
 
                 except ValueError as e:
                     _LOGGER.error(
@@ -207,10 +208,13 @@ class AsekoDeviceServer:
             _LOGGER.debug("Forward callback removed")
 
     def _rewind_frame(self, data: bytes) -> tuple[bytes, int]:
-        """Rewind the frame to the start position for processing.
+        """Rewind missaligned frame to the start position for processing.
+        Sometimes the TCP stream gets out of sync and the frame
+        starts at an offset. This function searches for the correct
+        start position and rewinds the frame accordingly.
 
         Returns:
-            tuple[bytes, int]: (rewinded_frame, offset)
+            tuple[bytes, int]: (rewound_frame, offset)
         """
 
         offset = 0
