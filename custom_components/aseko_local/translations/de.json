@@ -43,6 +43,21 @@
       "filtration_pump_running": {
         "name": "Filtrationspumpe läuft"
       },
+      "cl_pump_running": {
+        "name": "Chlorpumpe läuft"
+      },
+      "ph_minus_pump_running": {
+        "name": "pH-Minus-Pumpe läuft"
+      },
+      "ph_plus_pump_running": {
+        "name": "pH-Plus-Pumpe läuft"
+      },
+      "algicide_pump_running": {
+        "name": "Algizid-Pumpe läuft"
+      },
+      "floc_pump_running": {
+        "name": "Flockungsmittel-Pumpe läuft"
+      },
       "water_flow_to_probes": {
         "name": "Wasserfluss zu den Sensoren"
       }

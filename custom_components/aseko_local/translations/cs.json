@@ -43,6 +43,21 @@
       "filtration_pump_running": {
         "name": "Filtrační čerpadlo běží"
       },
+      "cl_pump_running": {
+        "name": "Čerpadlo chloru běží"
+      },
+      "ph_minus_pump_running": {
+        "name": "Čerpadlo pH- běží"
+      },
+      "ph_plus_pump_running": {
+        "name": "Čerpadlo pH+ běží"
+      },
+      "algicide_pump_running": {
+        "name": "Čerpadlo algicidu běží"
+      },
+      "floc_pump_running": {
+        "name": "Čerpadlo flokulantu běží"
+      },
       "water_flow_to_probes": {
         "name": "Průtok vody k sondám"
       }

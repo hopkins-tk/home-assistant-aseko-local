@@ -254,7 +254,8 @@ async def test_async_setup_salt_redox(hass) -> None:
         getattr(e.device, "serial_number", None) == device.serial_number
         for e in added_entities
     )
-    assert len(added_entities) == 14  # 1 sensors should be added for
+    # 11 sensors + 4 binary (water_flow, electrolyzer_active, filtration, ph_minus)
+    assert len(added_entities) == 15
     assert any(
         getattr(e.entity_description, "key", None) != "water_flow_to_probes"
         for e in added_entities
@@ -346,7 +347,8 @@ async def test_async_setup_salt_clf(hass) -> None:
         getattr(e.device, "serial_number", None) == device.serial_number
         for e in added_entities
     )
-    assert len(added_entities) == 14  # 1 sensors should be added for
+    # 11 sensors + 4 binary (water_flow, electrolyzer_active, filtration, ph_minus)
+    assert len(added_entities) == 15
     assert any(
         getattr(e.entity_description, "key", None) != "water_flow_to_probes"
         for e in added_entities
@@ -428,7 +430,8 @@ async def test_async_setup_net_clf(hass) -> None:
         getattr(e.device, "serial_number", None) == device.serial_number
         for e in added_entities
     )
-    assert len(added_entities) == 11  # 1 sensors should be added for
+    # 9 sensors + 4 binary (water_flow, filtration, cl_pump, ph_minus_pump)
+    assert len(added_entities) == 13
     assert any(
         getattr(e.entity_description, "key", None) == "free_chlorine"
         for e in added_entities
@@ -502,7 +505,8 @@ async def test_async_setup_profi_clf_redox(hass) -> None:
         getattr(e.device, "serial_number", None) == device.serial_number
         for e in added_entities
     )
-    assert len(added_entities) == 12  # 1 sensors should be added for
+    # 10 sensors + 5 binary (water_flow, filtration, cl_pump, ph_minus_pump, floc_pump)
+    assert len(added_entities) == 15
     assert any(
         getattr(e.entity_description, "key", None) == "free_chlorine"
         for e in added_entities
