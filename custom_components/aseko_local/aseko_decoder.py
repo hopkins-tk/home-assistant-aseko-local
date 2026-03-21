@@ -5,11 +5,12 @@ from typing import Type, TypeVar
 
 
 from .aseko_data import (
-    AsekoConsumableType,
+    AsekoConsumableMasks,
     AsekoDevice,
     AsekoDeviceType,
     AsekoElectrolyzerDirection,
     AsekoProbeType,
+    CONSUMABLE_MASKS,
 )
 from .const import (
     ALGICIDE_CONFIGURED,
@@ -166,12 +167,14 @@ class AsekoDecoder:
             return None
 
     @staticmethod
-    def _electrolyzer_direction(data: bytes) -> AsekoElectrolyzerDirection | None:
-        if (
-            data[29] & AsekoConsumableType.ELECTROLYZER_RUNNING_LEFT
-        ) == AsekoConsumableType.ELECTROLYZER_RUNNING_LEFT:
+    def _electrolyzer_direction(
+        data: bytes, masks: AsekoConsumableMasks
+    ) -> AsekoElectrolyzerDirection:
+        if masks.electrolyzer_running_left and (
+            data[29] & masks.electrolyzer_running_left
+        ) == masks.electrolyzer_running_left:
             return AsekoElectrolyzerDirection.LEFT
-        if data[29] & AsekoConsumableType.ELECTROLYZER_RUNNING_RIGHT:
+        if masks.electrolyzer_running_right and data[29] & masks.electrolyzer_running_right:
             return AsekoElectrolyzerDirection.RIGHT
         return AsekoElectrolyzerDirection.WAITING
 
@@ -201,14 +204,13 @@ class AsekoDecoder:
 
     @staticmethod
     def _fill_salt_unit_data(unit: AsekoDevice, data: bytes) -> None:
+        masks = CONSUMABLE_MASKS[AsekoDeviceType.SALT]
         unit.salinity = data[20] / 10
         unit.electrolyzer_power = (
-            data[21] if data[29] & AsekoConsumableType.ELECTROLYZER_RUNNING else 0
+            data[21] if data[29] & masks.electrolyzer_running else 0
         )
-        unit.electrolyzer_active = bool(
-            data[29] & AsekoConsumableType.ELECTROLYZER_RUNNING
-        )
-        unit.electrolyzer_direction = AsekoDecoder._electrolyzer_direction(data)
+        unit.electrolyzer_active = bool(data[29] & masks.electrolyzer_running)
+        unit.electrolyzer_direction = AsekoDecoder._electrolyzer_direction(data, masks)
 
     @staticmethod
     def _fill_flowrate_data(unit: AsekoDevice, data: bytes) -> None:
@@ -229,24 +231,28 @@ class AsekoDecoder:
 
     @staticmethod
     def _fill_consumable_data(unit: AsekoDevice, data: bytes) -> None:
-        unit.filtration_pump_running = bool(data[29] & AsekoConsumableType.FILTRATION)
+        masks = CONSUMABLE_MASKS.get(unit.device_type)
+        if masks is None:
+            _LOGGER.warning("No consumable masks for device type %s", unit.device_type)
+            return
 
-        if unit.device_type != AsekoDeviceType.SALT:
-            unit.cl_pump_running = bool(data[29] & AsekoConsumableType.CL)
+        if masks.filtration:
+            unit.filtration_pump_running = bool(data[29] & masks.filtration)
 
-        unit.ph_minus_pump_running = bool(data[29] & AsekoConsumableType.PH_MINUS)
-        # unit.ph_plus_pump_running = bool(data[29] & AsekoConsumableType.PH_PLUS)
+        if masks.cl:
+            unit.cl_pump_running = bool(data[29] & masks.cl)
 
-        if unit.device_type != AsekoDeviceType.NET:
-            if bool(data[37] & ALGICIDE_CONFIGURED):
-                unit.algicide_pump_running = bool(
-                    data[29] & AsekoConsumableType.ALICIDE
-                )
+        if masks.ph_minus:
+            unit.ph_minus_pump_running = bool(data[29] & masks.ph_minus)
 
-            if unit.device_type == AsekoDeviceType.PROFI or not bool(
-                data[37] & ALGICIDE_CONFIGURED
-            ):
-                unit.floc_pump_running = bool(data[29] & AsekoConsumableType.FLOCCULANT)
+        if masks.algicide and bool(data[37] & ALGICIDE_CONFIGURED):
+            unit.algicide_pump_running = bool(data[29] & masks.algicide)
+
+        if masks.flocculant and (
+            unit.device_type == AsekoDeviceType.PROFI
+            or not bool(data[37] & ALGICIDE_CONFIGURED)
+        ):
+            unit.floc_pump_running = bool(data[29] & masks.flocculant)
 
     @staticmethod
     def decode(data: bytes) -> AsekoDevice:
@@ -263,7 +269,6 @@ class AsekoDecoder:
             timestamp=AsekoDecoder._timestamp(data),
             water_temperature=int.from_bytes(data[25:27], "big") / 10,
             water_flow_to_probes=(data[28] == WATER_FLOW_TO_PROBES),
-            filtration_pump_running=bool(data[29] & AsekoConsumableType.FILTRATION),
             required_algicide=AsekoDecoder._normalize_value(data[54], int)
             if data[37] & ALGICIDE_CONFIGURED
             else None,

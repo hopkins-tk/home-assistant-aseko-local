@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass, field, fields
 from datetime import datetime, time, timedelta
-from enum import Enum, IntEnum
+from enum import Enum
 
 import homeassistant.util
 
@@ -35,18 +35,47 @@ class AsekoElectrolyzerDirection(Enum):
     WAITING = "waiting"
 
 
-class AsekoConsumableType(IntEnum):
-    """Enumeration of consumable types from byte 29."""
+@dataclass(frozen=True)
+class AsekoConsumableMasks:
+    """Byte 29 bit masks for pump/consumable state detection, per device type."""
 
-    FILTRATION = 0x08
-    CL = 0x40  # uncertain - PROFI seems to can have CL & electrolyzer at the same time
-    PH_MINUS = 0x80
-    PH_PLUS = 0x00  # unknown yet (0x04 / 0x02 / 0x01 ?), except PROFI unit can't have both ph+ and ph-
-    ALICIDE = 0x20
-    FLOCCULANT = 0x20  # uncertain - HOME seems to have both algicide and flocculant at the same time
-    ELECTROLYZER_RUNNING = 0x10
-    ELECTROLYZER_RUNNING_RIGHT = 0x10
-    ELECTROLYZER_RUNNING_LEFT = 0x50
+    filtration: int = 0x00
+    cl: int = 0x00
+    ph_minus: int = 0x00
+    algicide: int = 0x00
+    flocculant: int = 0x00
+    electrolyzer_running: int = 0x00
+    electrolyzer_running_right: int = 0x00
+    electrolyzer_running_left: int = 0x00
+
+
+CONSUMABLE_MASKS: dict[AsekoDeviceType, AsekoConsumableMasks] = {
+    AsekoDeviceType.NET: AsekoConsumableMasks(
+        filtration=0x08,
+        cl=0x02,        # confirmed: Issue #66 (Aqua NET)
+        ph_minus=0x01,  # confirmed: Issue #66 (Aqua NET)
+    ),
+    AsekoDeviceType.SALT: AsekoConsumableMasks(
+        filtration=0x08,
+        ph_minus=0x80,               # uncertain
+        electrolyzer_running=0x10,
+        electrolyzer_running_right=0x10,
+        electrolyzer_running_left=0x50,
+    ),
+    AsekoDeviceType.HOME: AsekoConsumableMasks(
+        filtration=0x08,
+        cl=0x40,        # uncertain
+        ph_minus=0x80,  # uncertain
+        algicide=0x20,  # uncertain
+        flocculant=0x20,  # uncertain – HOME may have both algicide and flocculant
+    ),
+    AsekoDeviceType.PROFI: AsekoConsumableMasks(
+        filtration=0x08,
+        cl=0x40,        # uncertain
+        ph_minus=0x80,  # uncertain
+        flocculant=0x20,  # uncertain
+    ),
+}
 
 
 @dataclass

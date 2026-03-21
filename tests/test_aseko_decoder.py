@@ -5,7 +5,6 @@ from datetime import time, datetime
 import pytest
 
 from custom_components.aseko_local.aseko_data import (
-    AsekoConsumableType,
     AsekoDeviceType,
     AsekoElectrolyzerDirection,
     AsekoProbeType,
@@ -141,7 +140,7 @@ def test_decode_electrolyzer_data() -> None:
     data[4] = 0x0E  # SALT with REDOX probe
     data[20] = 32  # salinity = 3.2
     data[21] = 80  # electrolyzer_power
-    data[29] = AsekoConsumableType.ELECTROLYZER_RUNNING_RIGHT  # electrolyzer_active
+    data[29] = 0x10  # ELECTROLYZER_RUNNING_RIGHT
     data[16:18] = (50).to_bytes(2, "big")  # cl_free < MAX_CLF_LIMIT
     data[14:16] = (700).to_bytes(2, "big")  # ph
     data[52] = 70
@@ -161,7 +160,7 @@ def test_decode_electrolyzer_data_left_direction() -> None:
     data[4] = 0x0E  # SALT with REDOX probe
     data[20] = 32
     data[21] = 80
-    data[29] = AsekoConsumableType.ELECTROLYZER_RUNNING_LEFT
+    data[29] = 0x50  # ELECTROLYZER_RUNNING_LEFT
 
     device = AsekoDecoder.decode(bytes(data))
     assert device.electrolyzer_direction == AsekoElectrolyzerDirection.LEFT
@@ -345,6 +344,78 @@ def test_decode_issue_61() -> None:
     assert device.ph is not None
     assert device.redox is not None
     assert device.cl_free is None
+
+
+# test combinations of different methodes like date, time, normalize, probe types etc.
+
+
+def test_decode_net_pump_states() -> None:
+    """Test pump state decoding for Aqua NET (confirmed byte 29 masks from Issue #66)."""
+
+    data = _make_base_bytes()
+    data[4] = 0x09  # NET with CLF probe
+
+    # Filtration only
+    data[29] = 0x08
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.filtration_pump_running is True
+    assert device.cl_pump_running is False
+    assert device.ph_minus_pump_running is False
+
+    # CL pump + filtration
+    data[29] = 0x0A  # 0x08 | 0x02
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.filtration_pump_running is True
+    assert device.cl_pump_running is True
+    assert device.ph_minus_pump_running is False
+
+    # PH-minus + filtration
+    data[29] = 0x09  # 0x08 | 0x01
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.filtration_pump_running is True
+    assert device.cl_pump_running is False
+    assert device.ph_minus_pump_running is True
+
+    # No pump running
+    data[29] = 0x00
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.filtration_pump_running is False
+    assert device.cl_pump_running is False
+    assert device.ph_minus_pump_running is False
+
+    # SALT-specific fields must be None for NET
+    assert device.electrolyzer_active is None
+    assert device.electrolyzer_direction is None
+
+
+def test_decode_salt_pump_states() -> None:
+    """Test pump state decoding for Aqua SALT (electrolyzer, no CL pump)."""
+
+    data = _make_base_bytes()
+    data[4] = 0x0E  # SALT
+    data[20] = 32   # salinity
+    data[21] = 80   # electrolyzer_power
+
+    # Electrolyzer running, right direction (no filtration bit)
+    data[29] = 0x10  # ELECTROLYZER_RUNNING_RIGHT
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.filtration_pump_running is False
+    assert device.electrolyzer_active is True
+    assert device.electrolyzer_direction == AsekoElectrolyzerDirection.RIGHT
+    assert device.cl_pump_running is None  # SALT has no CL pump
+
+    # Electrolyzer running, left direction
+    data[29] = 0x58  # 0x50 | 0x08 (LEFT + FILTRATION)
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.filtration_pump_running is True
+    assert device.electrolyzer_active is True
+    assert device.electrolyzer_direction == AsekoElectrolyzerDirection.LEFT
+
+    # Electrolyzer off
+    data[29] = 0x08  # filtration only
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.electrolyzer_active is False
+    assert device.electrolyzer_direction == AsekoElectrolyzerDirection.WAITING
 
 
 # test combinations of different methodes like date, time, normalize, probe types etc.
