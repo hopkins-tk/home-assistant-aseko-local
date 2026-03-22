@@ -65,3 +65,37 @@ If you want to keep sending the data to Aseko Cloud, you had to use a TCP proxy 
 Since release `1.3.0` **Aseko Local** has a built in forwarder that can be enabled to forward the raw data received from Aseko Device to Aseko Cloud (default `pool.aseko.com:47524`). To use it, open **Aseko Local** integration, klick on settings (see image) and enable the forwarder.
 
 ![Aseko Local options](images/aseko-options.png)
+
+## Device support
+
+### Confirmed supported devices
+
+| Device | Firmware | Sensors | Pump state | Chemical consumption |
+|---|---|---|---|---|
+| Aqua NET | ≤ 7.x | ✅ | ✅ cl, pH− | ✅ cl, pH− |
+| Aqua SALT | ≤ 7.x | ✅ | ✅ pH− | ✅ pH− |
+
+> **Firmware note:** This integration supports the **120-byte binary protocol** used by firmware ≤ 7.x. Aseko devices typically send to port **47524** by default; the port can be changed in the integration settings to match your device.
+> Devices with newer firmware (e.g. those reporting port **51050**) transmit a different 463-byte record format that is not yet supported — see [issue #49](https://github.com/hopkins-tk/home-assistant-aseko-local/issues/49) for progress.
+
+### Partially supported / untested devices
+
+The following devices are likely compatible but the byte mapping for pump states and chemical consumption has not been confirmed:
+
+| Device | Status | Known unknowns |
+|---|---|---|
+| Aqua HOME | ⚠️ Untested | Pump state bits uncertain; algicide/floc may share a single bit |
+| Aqua PROFI (Aqua Pro) | ⚠️ Untested | Pump state bits uncertain; pH+ pump bit position unknown |
+
+Sensors that cannot be mapped reliably are **not shown** by default to avoid misleading values.
+
+### Help wanted — expanding device support
+
+If you own an Aqua HOME, Aqua PROFI, or any other Aseko device that is not listed above as fully supported, you can help by sharing a diagnostics snapshot:
+
+1. In Home Assistant go to **Settings → Devices & Services → Aseko Local**
+2. Click on your device, then click **Download Diagnostics**
+3. Open a new issue at [github.com/hopkins-tk/home-assistant-aseko-local](https://github.com/hopkins-tk/home-assistant-aseko-local/issues/new) and attach the downloaded JSON file
+
+The diagnostics file contains an annotated table of every byte in the raw data frame sent by your device.
+It does **not** contain any credentials or network addresses — those fields are automatically redacted.

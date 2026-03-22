@@ -1,0 +1,36 @@
+reset_consumption:
+  name: Reset consumption
+  description: >
+    Resets the chemical consumption counter(s) for one or all pumps.
+    Use this after refilling a canister to start tracking from zero again.
+  fields:
+    pump:
+      name: Pump
+      description: >
+        Which pump to reset. Use "all" to reset every pump at once.
+      required: false
+      default: all
+      example: cl
+      selector:
+        select:
+          options:
+            - all
+            - cl
+            - ph_minus
+            - ph_plus
+            - algicide
+            - floc
+    counter:
+      name: Counter
+      description: >
+        Which counter to reset. "canister" (since last refill), "total"
+        (lifetime), or "all" (both).
+      required: false
+      default: canister
+      example: canister
+      selector:
+        select:
+          options:
+            - canister
+            - total
+            - all
