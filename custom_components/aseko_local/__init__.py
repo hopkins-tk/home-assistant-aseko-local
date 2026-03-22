@@ -95,8 +95,8 @@ async def async_setup_entry(
         server=None,
     )
 
-    # Optional: Raw-Sink (single line log for appending the log file)
-    raw_sink = None
+    # Raw-Sink: caches the last frame per device for diagnostics
+    raw_sink = coordinator.store_raw_frame
 
     # start Server
     server = await AsekoDeviceServer.create(
