@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from collections.abc import Callable
 
 from homeassistant.components.sensor import (
+    RestoreSensor,
     SensorDeviceClass,
     SensorEntity,
     SensorEntityDescription,
@@ -20,6 +21,7 @@ from homeassistant.helpers.typing import StateType
 
 from . import AsekoLocalConfigEntry
 from .aseko_data import AsekoDevice, AsekoElectrolyzerDirection
+from .coordinator import AsekoLocalDataUpdateCoordinator
 from .entity import AsekoLocalEntity
 
 _LOGGER = logging.getLogger(__name__)
@@ -39,8 +41,115 @@ class AsekoSensorEntityDescription(SensorEntityDescription):
 class AsekoConsumptionSensorEntityDescription(SensorEntityDescription):
     """Describes a chemical consumption sensor entity (value from Tracker)."""
 
-    resettable: bool = False
+    pump_key: str = ""  # one of PUMP_KEYS in consumption_tracker
+    counter: str = ""   # "total" or "canister"
 
+
+# ---------- Consumption sensors ----------
+
+# Maps pump_key to the AsekoDevice attribute that signals pump presence.
+# If the attribute is None for a device, the pump is not available and no
+# consumption sensors are registered for it.
+PUMP_FLOWRATE_ATTR: dict[str, str] = {
+    "cl":       "flowrate_chlor",
+    "ph_minus": "flowrate_ph_minus",
+    "ph_plus":  "flowrate_ph_plus",
+    "algicide": "flowrate_algicide",
+    "floc":     "flowrate_floc",
+}
+
+CONSUMPTION_SENSORS: list[AsekoConsumptionSensorEntityDescription] = [
+    AsekoConsumptionSensorEntityDescription(
+        key="chlor_consumed",
+        translation_key="chlor_consumed",
+        pump_key="cl",
+        counter="canister",
+        native_unit_of_measurement="mL",
+        state_class=SensorStateClass.TOTAL,
+        icon="mdi:cup-water",
+    ),
+    AsekoConsumptionSensorEntityDescription(
+        key="chlor_total_consumed",
+        translation_key="chlor_total_consumed",
+        pump_key="cl",
+        counter="total",
+        native_unit_of_measurement="mL",
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        icon="mdi:cup-water",
+    ),
+    AsekoConsumptionSensorEntityDescription(
+        key="ph_minus_consumed",
+        translation_key="ph_minus_consumed",
+        pump_key="ph_minus",
+        counter="canister",
+        native_unit_of_measurement="mL",
+        state_class=SensorStateClass.TOTAL,
+        icon="mdi:cup-water",
+    ),
+    AsekoConsumptionSensorEntityDescription(
+        key="ph_minus_total_consumed",
+        translation_key="ph_minus_total_consumed",
+        pump_key="ph_minus",
+        counter="total",
+        native_unit_of_measurement="mL",
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        icon="mdi:cup-water",
+    ),
+    AsekoConsumptionSensorEntityDescription(
+        key="ph_plus_consumed",
+        translation_key="ph_plus_consumed",
+        pump_key="ph_plus",
+        counter="canister",
+        native_unit_of_measurement="mL",
+        state_class=SensorStateClass.TOTAL,
+        icon="mdi:cup-water",
+    ),
+    AsekoConsumptionSensorEntityDescription(
+        key="ph_plus_total_consumed",
+        translation_key="ph_plus_total_consumed",
+        pump_key="ph_plus",
+        counter="total",
+        native_unit_of_measurement="mL",
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        icon="mdi:cup-water",
+    ),
+    AsekoConsumptionSensorEntityDescription(
+        key="algicide_consumed",
+        translation_key="algicide_consumed",
+        pump_key="algicide",
+        counter="canister",
+        native_unit_of_measurement="mL",
+        state_class=SensorStateClass.TOTAL,
+        icon="mdi:cup-water",
+    ),
+    AsekoConsumptionSensorEntityDescription(
+        key="algicide_total_consumed",
+        translation_key="algicide_total_consumed",
+        pump_key="algicide",
+        counter="total",
+        native_unit_of_measurement="mL",
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        icon="mdi:cup-water",
+    ),
+    AsekoConsumptionSensorEntityDescription(
+        key="floc_consumed",
+        translation_key="floc_consumed",
+        pump_key="floc",
+        counter="canister",
+        native_unit_of_measurement="mL",
+        state_class=SensorStateClass.TOTAL,
+        icon="mdi:cup-water",
+    ),
+    AsekoConsumptionSensorEntityDescription(
+        key="floc_total_consumed",
+        translation_key="floc_total_consumed",
+        pump_key="floc",
+        counter="total",
+        native_unit_of_measurement="mL",
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        icon="mdi:cup-water",
+    ),
+]
 
 # ---------- Fixed (system-level) sensors ----------
 
@@ -296,8 +405,61 @@ async def async_setup_entry(
                 entity.unique_id,
             )
 
+        for description in CONSUMPTION_SENSORS:
+            presence_attr = PUMP_FLOWRATE_ATTR[description.pump_key]
+            if getattr(device, presence_attr) is not None:
+                entity = AsekoConsumptionSensorEntity(device, coordinator, description)
+                entities.append(entity)
+                _LOGGER.debug(
+                    "   - Consumption sensor: %s (unique_id=%s)",
+                    description.key,
+                    entity.unique_id,
+                )
+
     _LOGGER.debug(">>> [sensor] Adding %s sensors", len(entities))
     async_add_entities(entities)
+
+
+class AsekoConsumptionSensorEntity(AsekoLocalEntity, RestoreSensor):
+    """Sensor that reads ml consumed from AsekoConsumptionTracker and restores across restarts."""
+
+    entity_description: AsekoConsumptionSensorEntityDescription
+
+    def __init__(
+        self,
+        unit: AsekoDevice,
+        coordinator: AsekoLocalDataUpdateCoordinator,
+        description: AsekoConsumptionSensorEntityDescription,
+    ) -> None:
+        AsekoLocalEntity.__init__(self, unit, coordinator, description)
+
+    @property
+    def native_value(self) -> float | None:
+        """Return current consumption from the tracker, or None if not ready."""
+        tracker = self.coordinator.get_tracker(self.device.serial_number)
+        if tracker is None:
+            return None
+        return round(
+            tracker.get(self.entity_description.pump_key, self.entity_description.counter),
+            1,
+        )
+
+    async def async_added_to_hass(self) -> None:
+        """Restore persisted state and seed the tracker on integration startup."""
+        await super().async_added_to_hass()
+        last_state = await self.async_get_last_sensor_data()
+        if last_state and last_state.native_value is not None:
+            try:
+                value = float(last_state.native_value)
+            except (TypeError, ValueError):
+                return
+            tracker = self.coordinator.get_tracker(self.device.serial_number)
+            if tracker is not None:
+                tracker.seed_counter(
+                    self.entity_description.pump_key,
+                    self.entity_description.counter,
+                    value,
+                )
 
 
 class AsekoLocalSensorEntity(AsekoLocalEntity, SensorEntity):

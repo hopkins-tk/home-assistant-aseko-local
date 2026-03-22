@@ -59,11 +59,11 @@ class AsekoConsumptionTracker:
         device and the elapsed time since the last ON packet is credited.
         """
         pump_states: dict[str, tuple[bool | None, int | None]] = {
-            "cl":       (device.cl_pump_running,       device.flowrate_chlor),
+            "cl": (device.cl_pump_running, device.flowrate_chlor),
             "ph_minus": (device.ph_minus_pump_running, device.flowrate_ph_minus),
-            "ph_plus":  (device.ph_plus_pump_running,  device.flowrate_ph_plus),
+            "ph_plus": (device.ph_plus_pump_running, device.flowrate_ph_plus),
             "algicide": (device.algicide_pump_running, device.flowrate_algicide),
-            "floc":     (device.floc_pump_running,     device.flowrate_floc),
+            "floc": (device.floc_pump_running, device.flowrate_floc),
         }
 
         for key, (is_on, flowrate_per_min) in pump_states.items():
@@ -135,4 +135,24 @@ class AsekoConsumptionTracker:
             return
         self._counters[pump_key].total = total_ml
         self._counters[pump_key].canister = canister_ml
-        _LOGGER.debug("Tracker seeded: %s total=%.1f canister=%.1f", pump_key, total_ml, canister_ml)
+        _LOGGER.debug(
+            "Tracker seeded: %s total=%.1f canister=%.1f",
+            pump_key,
+            total_ml,
+            canister_ml,
+        )
+
+    def seed_counter(self, pump_key: str, counter: str, value: float) -> None:
+        """Restore a single persisted counter value after HA restart.
+
+        Unlike seed(), which sets both counters at once, this updates only
+        the named counter. Each AsekoConsumptionSensorEntity calls this
+        independently from async_added_to_hass().
+        """
+        if pump_key not in self._counters:
+            _LOGGER.warning("seed_counter: unknown pump key %r – skipping", pump_key)
+            return
+        if counter not in ("total", "canister"):
+            raise ValueError(f"counter must be 'total' or 'canister', got {counter!r}")
+        setattr(self._counters[pump_key], counter, value)
+        _LOGGER.debug("Tracker seeded: %s.%s = %.1f", pump_key, counter, value)

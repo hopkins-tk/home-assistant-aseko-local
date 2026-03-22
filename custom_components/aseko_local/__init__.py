@@ -4,13 +4,16 @@ from __future__ import annotations
 
 import logging
 
+import voluptuous as vol
+
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, CONF_PORT, Platform
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.exceptions import ConfigEntryNotReady
 
 from .aseko_data import AsekoDevice
 from .aseko_server import AsekoDeviceServer
+from .consumption_tracker import PUMP_KEYS
 from .coordinator import AsekoLocalDataUpdateCoordinator
 from dataclasses import dataclass
 
@@ -30,6 +33,17 @@ PLATFORMS: list[Platform] = [Platform.BINARY_SENSOR, Platform.SENSOR]
 
 _MIRRORS: dict[str, AsekoCloudMirror] = {}
 _SERVERS: dict[str, AsekoDeviceServer] = {}
+
+SERVICE_RESET_CONSUMPTION = "reset_consumption"
+
+RESET_CONSUMPTION_SCHEMA = vol.Schema(
+    {
+        vol.Optional("pump", default="all"): vol.In(list(PUMP_KEYS) + ["all"]),
+        vol.Optional("counter", default="canister"): vol.In(
+            ["canister", "total", "all"]
+        ),
+    }
+)
 
 type AsekoLocalConfigEntry = ConfigEntry["AsekoLocalRuntimeData"]
 
@@ -119,6 +133,26 @@ async def async_setup_entry(
     rd.server = server
     rd.mirror = mirror_instance
 
+    # Register domain service once (shared across all config entries)
+    if not hass.services.has_service(DOMAIN, SERVICE_RESET_CONSUMPTION):
+
+        async def handle_reset_consumption(call: ServiceCall) -> None:
+            pump = call.data.get("pump", "all")
+            counter = call.data.get("counter", "canister")
+            for entry in hass.config_entries.async_entries(DOMAIN):
+                rd = getattr(entry, "runtime_data", None)
+                if rd:
+                    for tracker in rd.coordinator._trackers.values():
+                        tracker.reset(pump_key=pump, counter=counter)
+
+        hass.services.async_register(
+            DOMAIN,
+            SERVICE_RESET_CONSUMPTION,
+            handle_reset_consumption,
+            schema=RESET_CONSUMPTION_SCHEMA,
+        )
+        _LOGGER.debug("Registered service %s.%s", DOMAIN, SERVICE_RESET_CONSUMPTION)
+
     return True
 
 
@@ -139,6 +173,16 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 await entry.runtime_data.server.stop()
             if entry.runtime_data.mirror:
                 await entry.runtime_data.mirror.stop()
+
+        # Remove domain service when the last entry is unloaded
+        remaining = [
+            e
+            for e in hass.config_entries.async_entries(DOMAIN)
+            if e.entry_id != entry.entry_id
+        ]
+        if not remaining and hass.services.has_service(DOMAIN, SERVICE_RESET_CONSUMPTION):
+            hass.services.async_remove(DOMAIN, SERVICE_RESET_CONSUMPTION)
+            _LOGGER.debug("Unregistered service %s.%s", DOMAIN, SERVICE_RESET_CONSUMPTION)
 
         # Remove runtime_data to avoid stale references
         domain_data = hass.data.get(DOMAIN)

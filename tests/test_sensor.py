@@ -10,6 +10,7 @@ from custom_components.aseko_local.binary_sensor import (
 from custom_components.aseko_local.sensor import (
     async_setup_entry,
     AsekoLocalSensorEntity,
+    AsekoConsumptionSensorEntity,
 )
 from custom_components.aseko_local.aseko_decoder import AsekoDecoder
 
@@ -218,6 +219,9 @@ async def test_async_setup_salt_redox(hass) -> None:
         def get_devices(self):
             return [device]
 
+        def get_tracker(self, serial_number):
+            return None
+
     # Create a MagicMock for ConfigEntry with runtime_data attribute
     dummy_entry = MagicMock(spec=ConfigEntry)
     dummy_entry.runtime_data = type(
@@ -255,7 +259,8 @@ async def test_async_setup_salt_redox(hass) -> None:
         for e in added_entities
     )
     # 11 sensors + 4 binary (water_flow, electrolyzer_active, filtration, ph_minus)
-    assert len(added_entities) == 15
+    # + 2 consumption (ph_minus canister + total)
+    assert len(added_entities) == 17
     assert any(
         getattr(e.entity_description, "key", None) != "water_flow_to_probes"
         for e in added_entities
@@ -291,6 +296,7 @@ async def test_async_setup_salt_redox(hass) -> None:
         getattr(e.entity_description, "key", None) == "required_algicide"
         for e in added_entities
     )
+    assert any(isinstance(e, AsekoConsumptionSensorEntity) for e in added_entities)
 
 
 @pytest.mark.asyncio
@@ -304,6 +310,9 @@ async def test_async_setup_salt_clf(hass) -> None:
     class DummyCoordinator:
         def get_devices(self):
             return [device]
+
+        def get_tracker(self, serial_number):
+            return None
 
         def last_update_success(self):
             return True
@@ -348,7 +357,8 @@ async def test_async_setup_salt_clf(hass) -> None:
         for e in added_entities
     )
     # 11 sensors + 4 binary (water_flow, electrolyzer_active, filtration, ph_minus)
-    assert len(added_entities) == 15
+    # + 2 consumption (ph_minus canister + total)
+    assert len(added_entities) == 17
     assert any(
         getattr(e.entity_description, "key", None) != "water_flow_to_probes"
         for e in added_entities
@@ -380,6 +390,7 @@ async def test_async_setup_salt_clf(hass) -> None:
         getattr(e.entity_description, "key", None) == "required_algicide"
         for e in added_entities
     )
+    assert any(isinstance(e, AsekoConsumptionSensorEntity) for e in added_entities)
 
 
 @pytest.mark.asyncio
@@ -393,6 +404,9 @@ async def test_async_setup_net_clf(hass) -> None:
     class DummyCoordinator:
         def get_devices(self):
             return [device]
+
+        def get_tracker(self, serial_number):
+            return None
 
     # Create a MagicMock for ConfigEntry with runtime_data attribute
     dummy_entry = MagicMock(spec=ConfigEntry)
@@ -431,7 +445,8 @@ async def test_async_setup_net_clf(hass) -> None:
         for e in added_entities
     )
     # 9 sensors + 4 binary (water_flow, filtration, cl_pump, ph_minus_pump)
-    assert len(added_entities) == 13
+    # + 4 consumption (ph_minus canister + total, cl canister + total)
+    assert len(added_entities) == 17
     assert any(
         getattr(e.entity_description, "key", None) == "free_chlorine"
         for e in added_entities
@@ -455,6 +470,7 @@ async def test_async_setup_net_clf(hass) -> None:
         getattr(e.entity_description, "key", None) == "required_algicide"
         for e in added_entities
     )
+    assert any(isinstance(e, AsekoConsumptionSensorEntity) for e in added_entities)
 
 
 @pytest.mark.asyncio
@@ -468,6 +484,9 @@ async def test_async_setup_profi_clf_redox(hass) -> None:
     class DummyCoordinator:
         def get_devices(self):
             return [device]
+
+        def get_tracker(self, serial_number):
+            return None
 
     # Create a MagicMock for ConfigEntry with runtime_data attribute
     dummy_entry = MagicMock(spec=ConfigEntry)
@@ -506,7 +525,8 @@ async def test_async_setup_profi_clf_redox(hass) -> None:
         for e in added_entities
     )
     # 10 sensors + 5 binary (water_flow, filtration, cl_pump, ph_minus_pump, floc_pump)
-    assert len(added_entities) == 15
+    # + 2 consumption (ph_minus canister + total)
+    assert len(added_entities) == 17
     assert any(
         getattr(e.entity_description, "key", None) == "free_chlorine"
         for e in added_entities
