@@ -170,11 +170,16 @@ class AsekoDecoder:
     def _electrolyzer_direction(
         data: bytes, masks: AsekoConsumableMasks
     ) -> AsekoElectrolyzerDirection:
-        if masks.electrolyzer_running_left and (
-            data[29] & masks.electrolyzer_running_left
-        ) == masks.electrolyzer_running_left:
+        if (
+            masks.electrolyzer_running_left
+            and (data[29] & masks.electrolyzer_running_left)
+            == masks.electrolyzer_running_left
+        ):
             return AsekoElectrolyzerDirection.LEFT
-        if masks.electrolyzer_running_right and data[29] & masks.electrolyzer_running_right:
+        if (
+            masks.electrolyzer_running_right
+            and data[29] & masks.electrolyzer_running_right
+        ):
             return AsekoElectrolyzerDirection.RIGHT
         return AsekoElectrolyzerDirection.WAITING
 

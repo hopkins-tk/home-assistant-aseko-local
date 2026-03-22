@@ -393,8 +393,8 @@ def test_decode_salt_pump_states() -> None:
 
     data = _make_base_bytes()
     data[4] = 0x0E  # SALT
-    data[20] = 32   # salinity
-    data[21] = 80   # electrolyzer_power
+    data[20] = 32  # salinity
+    data[21] = 80  # electrolyzer_power
 
     # Electrolyzer running, right direction (no filtration bit)
     data[29] = 0x10  # ELECTROLYZER_RUNNING_RIGHT

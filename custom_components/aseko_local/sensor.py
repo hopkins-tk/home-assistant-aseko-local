@@ -13,8 +13,7 @@ from homeassistant.components.sensor import (
     SensorEntityDescription,
     SensorStateClass,
 )
-from homeassistant.components.number import NumberDeviceClass
-from homeassistant.const import UnitOfElectricPotential, UnitOfTemperature
+from homeassistant.const import UnitOfElectricPotential, UnitOfTemperature, UnitOfVolume
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.typing import StateType
@@ -63,7 +62,7 @@ CONSUMPTION_SENSORS: list[AsekoConsumptionSensorEntityDescription] = [
         translation_key="chlor_consumed",
         pump_key="cl",
         counter="canister",
-        native_unit_of_measurement="mL",
+        native_unit_of_measurement=UnitOfVolume.LITERS,
         state_class=SensorStateClass.TOTAL,
         icon="mdi:cup-water",
     ),
@@ -72,7 +71,7 @@ CONSUMPTION_SENSORS: list[AsekoConsumptionSensorEntityDescription] = [
         translation_key="chlor_total_consumed",
         pump_key="cl",
         counter="total",
-        native_unit_of_measurement="mL",
+        native_unit_of_measurement=UnitOfVolume.LITERS,
         state_class=SensorStateClass.TOTAL_INCREASING,
         icon="mdi:cup-water",
     ),
@@ -81,7 +80,7 @@ CONSUMPTION_SENSORS: list[AsekoConsumptionSensorEntityDescription] = [
         translation_key="ph_minus_consumed",
         pump_key="ph_minus",
         counter="canister",
-        native_unit_of_measurement="mL",
+        native_unit_of_measurement=UnitOfVolume.LITERS,
         state_class=SensorStateClass.TOTAL,
         icon="mdi:cup-water",
     ),
@@ -90,7 +89,7 @@ CONSUMPTION_SENSORS: list[AsekoConsumptionSensorEntityDescription] = [
         translation_key="ph_minus_total_consumed",
         pump_key="ph_minus",
         counter="total",
-        native_unit_of_measurement="mL",
+        native_unit_of_measurement=UnitOfVolume.LITERS,
         state_class=SensorStateClass.TOTAL_INCREASING,
         icon="mdi:cup-water",
     ),
@@ -99,7 +98,7 @@ CONSUMPTION_SENSORS: list[AsekoConsumptionSensorEntityDescription] = [
         translation_key="ph_plus_consumed",
         pump_key="ph_plus",
         counter="canister",
-        native_unit_of_measurement="mL",
+        native_unit_of_measurement=UnitOfVolume.LITERS,
         state_class=SensorStateClass.TOTAL,
         icon="mdi:cup-water",
     ),
@@ -108,7 +107,7 @@ CONSUMPTION_SENSORS: list[AsekoConsumptionSensorEntityDescription] = [
         translation_key="ph_plus_total_consumed",
         pump_key="ph_plus",
         counter="total",
-        native_unit_of_measurement="mL",
+        native_unit_of_measurement=UnitOfVolume.LITERS,
         state_class=SensorStateClass.TOTAL_INCREASING,
         icon="mdi:cup-water",
     ),
@@ -117,7 +116,7 @@ CONSUMPTION_SENSORS: list[AsekoConsumptionSensorEntityDescription] = [
         translation_key="algicide_consumed",
         pump_key="algicide",
         counter="canister",
-        native_unit_of_measurement="mL",
+        native_unit_of_measurement=UnitOfVolume.LITERS,
         state_class=SensorStateClass.TOTAL,
         icon="mdi:cup-water",
     ),
@@ -126,7 +125,7 @@ CONSUMPTION_SENSORS: list[AsekoConsumptionSensorEntityDescription] = [
         translation_key="algicide_total_consumed",
         pump_key="algicide",
         counter="total",
-        native_unit_of_measurement="mL",
+        native_unit_of_measurement=UnitOfVolume.LITERS,
         state_class=SensorStateClass.TOTAL_INCREASING,
         icon="mdi:cup-water",
     ),
@@ -135,7 +134,7 @@ CONSUMPTION_SENSORS: list[AsekoConsumptionSensorEntityDescription] = [
         translation_key="floc_consumed",
         pump_key="floc",
         counter="canister",
-        native_unit_of_measurement="mL",
+        native_unit_of_measurement=UnitOfVolume.LITERS,
         state_class=SensorStateClass.TOTAL,
         icon="mdi:cup-water",
     ),
@@ -144,7 +143,7 @@ CONSUMPTION_SENSORS: list[AsekoConsumptionSensorEntityDescription] = [
         translation_key="floc_total_consumed",
         pump_key="floc",
         counter="total",
-        native_unit_of_measurement="mL",
+        native_unit_of_measurement=UnitOfVolume.LITERS,
         state_class=SensorStateClass.TOTAL_INCREASING,
         icon="mdi:cup-water",
     ),
@@ -152,7 +151,7 @@ CONSUMPTION_SENSORS: list[AsekoConsumptionSensorEntityDescription] = [
 
 # ---------- Fixed (system-level) sensors ----------
 
-SENSORS: list[SensorEntityDescription] = [
+SENSORS: list[AsekoSensorEntityDescription] = [
     AsekoSensorEntityDescription(
         # Air temperature is missing in decoder, no idea which byte is
         key="airTemp",
@@ -276,7 +275,7 @@ SENSORS: list[SensorEntityDescription] = [
     AsekoSensorEntityDescription(
         key="required_floc",
         translation_key="required_floc",
-        device_class=NumberDeviceClass.VOLUME_FLOW_RATE,
+        device_class=SensorDeviceClass.VOLUME_FLOW_RATE,
         native_unit_of_measurement="ml/h",
         state_class=SensorStateClass.MEASUREMENT,
         icon="mdi:pool",
@@ -285,71 +284,81 @@ SENSORS: list[SensorEntityDescription] = [
     AsekoSensorEntityDescription(
         key="flowrate_chlor",
         translation_key="flowrate_chlor",
-        device_class=NumberDeviceClass.VOLUME_FLOW_RATE,
+        device_class=SensorDeviceClass.VOLUME_FLOW_RATE,
         native_unit_of_measurement="mL/min",
         state_class=SensorStateClass.MEASUREMENT,
         icon="mdi:water-pump",
-        value_fn=lambda device: device.flowrate_chlor
-        if device.cl_pump_running
-        else 0
-        if device.flowrate_chlor is not None
-        else None,
+        value_fn=lambda device: (
+            device.flowrate_chlor
+            if device.cl_pump_running
+            else 0
+            if device.flowrate_chlor is not None
+            else None
+        ),
         entity_registry_visible_default=False,
     ),
     AsekoSensorEntityDescription(
         key="flowrate_ph_minus",
         translation_key="flowrate_ph_minus",
-        device_class=NumberDeviceClass.VOLUME_FLOW_RATE,
+        device_class=SensorDeviceClass.VOLUME_FLOW_RATE,
         native_unit_of_measurement="mL/min",
         state_class=SensorStateClass.MEASUREMENT,
         icon="mdi:water-pump",
-        value_fn=lambda device: device.flowrate_ph_minus
-        if device.ph_minus_pump_running
-        else 0
-        if device.flowrate_ph_minus is not None
-        else None,
+        value_fn=lambda device: (
+            device.flowrate_ph_minus
+            if device.ph_minus_pump_running
+            else 0
+            if device.flowrate_ph_minus is not None
+            else None
+        ),
         entity_registry_visible_default=False,
     ),
     AsekoSensorEntityDescription(
         key="flowrate_ph_plus",
         translation_key="flowrate_ph_plus",
-        device_class=NumberDeviceClass.VOLUME_FLOW_RATE,
+        device_class=SensorDeviceClass.VOLUME_FLOW_RATE,
         native_unit_of_measurement="mL/min",
         state_class=SensorStateClass.MEASUREMENT,
         icon="mdi:water-pump",
-        value_fn=lambda device: device.flowrate_ph_plus
-        if device.ph_plus_pump_running
-        else 0
-        if device.flowrate_ph_plus is not None
-        else None,
+        value_fn=lambda device: (
+            device.flowrate_ph_plus
+            if device.ph_plus_pump_running
+            else 0
+            if device.flowrate_ph_plus is not None
+            else None
+        ),
         entity_registry_visible_default=False,
     ),
     AsekoSensorEntityDescription(
         key="flowrate_algicide",
         translation_key="flowrate_algicide",
-        device_class=NumberDeviceClass.VOLUME_FLOW_RATE,
+        device_class=SensorDeviceClass.VOLUME_FLOW_RATE,
         native_unit_of_measurement="mL/min",
         state_class=SensorStateClass.MEASUREMENT,
         icon="mdi:water-pump",
-        value_fn=lambda device: device.flowrate_algicide
-        if device.algicide_pump_running
-        else 0
-        if device.flowrate_algicide is not None
-        else None,
+        value_fn=lambda device: (
+            device.flowrate_algicide
+            if device.algicide_pump_running
+            else 0
+            if device.flowrate_algicide is not None
+            else None
+        ),
         entity_registry_visible_default=False,
     ),
     AsekoSensorEntityDescription(
         key="flowrate_floc",
         translation_key="flowrate_floc",
-        device_class=NumberDeviceClass.VOLUME_FLOW_RATE,
+        device_class=SensorDeviceClass.VOLUME_FLOW_RATE,
         native_unit_of_measurement="mL/min",
         state_class=SensorStateClass.MEASUREMENT,
         icon="mdi:water-pump",
-        value_fn=lambda device: device.flowrate_floc
-        if device.floc_pump_running
-        else 0
-        if device.flowrate_floc is not None
-        else None,
+        value_fn=lambda device: (
+            device.flowrate_floc
+            if device.floc_pump_running
+            else 0
+            if device.flowrate_floc is not None
+            else None
+        ),
         entity_registry_visible_default=False,
     ),
 ]
@@ -404,7 +413,9 @@ async def async_setup_entry(
                 entity.unique_id,
             )
 
-        device_masks = CONSUMABLE_MASKS.get(device.device_type)
+        device_masks = (
+            CONSUMABLE_MASKS.get(device.device_type) if device.device_type else None
+        )
         for description in CONSUMPTION_SENSORS:
             mask_field = PUMP_MASK_FIELD[description.pump_key]
             if mask_field is None:
@@ -424,7 +435,7 @@ async def async_setup_entry(
 
 
 class AsekoConsumptionSensorEntity(AsekoLocalEntity, RestoreSensor):
-    """Sensor that reads ml consumed from AsekoConsumptionTracker and restores across restarts."""
+    """Sensor that reads L consumed from AsekoConsumptionTracker and restores across restarts."""
 
     entity_description: AsekoConsumptionSensorEntityDescription
 
@@ -438,15 +449,18 @@ class AsekoConsumptionSensorEntity(AsekoLocalEntity, RestoreSensor):
 
     @property
     def native_value(self) -> float | None:
-        """Return current consumption from the tracker, or None if not ready."""
+        """Return current consumption in litres (3 dp) from the tracker, or None if not ready."""
+        if self.device.serial_number is None:
+            return None
         tracker = self.coordinator.get_tracker(self.device.serial_number)
         if tracker is None:
             return None
         return round(
             tracker.get(
                 self.entity_description.pump_key, self.entity_description.counter
-            ),
-            1,
+            )
+            / 1000,
+            3,
         )
 
     async def async_added_to_hass(self) -> None:
@@ -455,15 +469,18 @@ class AsekoConsumptionSensorEntity(AsekoLocalEntity, RestoreSensor):
         last_state = await self.async_get_last_sensor_data()
         if last_state and last_state.native_value is not None:
             try:
-                value = float(last_state.native_value)
+                value = float(str(last_state.native_value))
             except (TypeError, ValueError):
+                return
+            if self.device.serial_number is None:
                 return
             tracker = self.coordinator.get_tracker(self.device.serial_number)
             if tracker is not None:
+                # Persisted value is in L; tracker works internally in mL
                 tracker.seed_counter(
                     self.entity_description.pump_key,
                     self.entity_description.counter,
-                    value,
+                    value * 1000,
                 )
 
 

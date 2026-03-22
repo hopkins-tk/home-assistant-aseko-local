@@ -52,26 +52,26 @@ class AsekoConsumableMasks:
 CONSUMABLE_MASKS: dict[AsekoDeviceType, AsekoConsumableMasks] = {
     AsekoDeviceType.NET: AsekoConsumableMasks(
         filtration=0x08,
-        cl=0x02,        # confirmed: Issue #66 (Aqua NET)
+        cl=0x02,  # confirmed: Issue #66 (Aqua NET)
         ph_minus=0x01,  # confirmed: Issue #66 (Aqua NET)
     ),
     AsekoDeviceType.SALT: AsekoConsumableMasks(
         filtration=0x08,
-        ph_minus=0x80,               # uncertain
+        ph_minus=0x80,  # uncertain
         electrolyzer_running=0x10,
         electrolyzer_running_right=0x10,
         electrolyzer_running_left=0x50,
     ),
     AsekoDeviceType.HOME: AsekoConsumableMasks(
         filtration=0x08,
-        cl=0x40,        # uncertain
+        cl=0x40,  # uncertain
         ph_minus=0x80,  # uncertain
         algicide=0x20,  # uncertain
         flocculant=0x20,  # uncertain – HOME may have both algicide and flocculant
     ),
     AsekoDeviceType.PROFI: AsekoConsumableMasks(
         filtration=0x08,
-        cl=0x40,        # uncertain
+        cl=0x40,  # uncertain
         ph_minus=0x80,  # uncertain
         flocculant=0x20,  # uncertain
     ),
