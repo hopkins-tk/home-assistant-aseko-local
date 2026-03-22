@@ -525,8 +525,8 @@ async def test_async_setup_profi_clf_redox(hass) -> None:
         for e in added_entities
     )
     # 10 sensors + 5 binary (water_flow, filtration, cl_pump, ph_minus_pump, floc_pump)
-    # + 2 consumption (ph_minus canister + total)
-    assert len(added_entities) == 17
+    # + 6 consumption (cl, ph_minus, floc × canister + total)
+    assert len(added_entities) == 21
     assert any(
         getattr(e.entity_description, "key", None) == "free_chlorine"
         for e in added_entities

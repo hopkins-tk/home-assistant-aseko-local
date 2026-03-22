@@ -20,7 +20,7 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.typing import StateType
 
 from . import AsekoLocalConfigEntry
-from .aseko_data import AsekoDevice, AsekoElectrolyzerDirection
+from .aseko_data import AsekoDevice, AsekoElectrolyzerDirection, CONSUMABLE_MASKS
 from .coordinator import AsekoLocalDataUpdateCoordinator
 from .entity import AsekoLocalEntity
 
@@ -47,15 +47,14 @@ class AsekoConsumptionSensorEntityDescription(SensorEntityDescription):
 
 # ---------- Consumption sensors ----------
 
-# Maps pump_key to the AsekoDevice attribute that signals pump presence.
-# If the attribute is None for a device, the pump is not available and no
-# consumption sensors are registered for it.
-PUMP_FLOWRATE_ATTR: dict[str, str] = {
-    "cl":       "flowrate_chlor",
-    "ph_minus": "flowrate_ph_minus",
-    "ph_plus":  "flowrate_ph_plus",
-    "algicide": "flowrate_algicide",
-    "floc":     "flowrate_floc",
+# Maps pump_key to the corresponding field name in AsekoConsumableMasks.
+# None means the pump is not yet mapped (e.g. pH+) and sensors are skipped.
+PUMP_MASK_FIELD: dict[str, str | None] = {
+    "cl":       "cl",
+    "ph_minus": "ph_minus",
+    "ph_plus":  None,       # byte position unknown — disabled until confirmed
+    "algicide": "algicide",
+    "floc":     "flocculant",
 }
 
 CONSUMPTION_SENSORS: list[AsekoConsumptionSensorEntityDescription] = [
@@ -405,16 +404,20 @@ async def async_setup_entry(
                 entity.unique_id,
             )
 
+        device_masks = CONSUMABLE_MASKS.get(device.device_type)
         for description in CONSUMPTION_SENSORS:
-            presence_attr = PUMP_FLOWRATE_ATTR[description.pump_key]
-            if getattr(device, presence_attr) is not None:
-                entity = AsekoConsumptionSensorEntity(device, coordinator, description)
-                entities.append(entity)
-                _LOGGER.debug(
-                    "   - Consumption sensor: %s (unique_id=%s)",
-                    description.key,
-                    entity.unique_id,
-                )
+            mask_field = PUMP_MASK_FIELD[description.pump_key]
+            if mask_field is None:
+                continue  # pump not yet mapped (e.g. ph_plus)
+            if device_masks is None or getattr(device_masks, mask_field, 0) == 0:
+                continue  # pump not present on this device type
+            entity = AsekoConsumptionSensorEntity(device, coordinator, description)
+            entities.append(entity)
+            _LOGGER.debug(
+                "   - Consumption sensor: %s (unique_id=%s)",
+                description.key,
+                entity.unique_id,
+            )
 
     _LOGGER.debug(">>> [sensor] Adding %s sensors", len(entities))
     async_add_entities(entities)
