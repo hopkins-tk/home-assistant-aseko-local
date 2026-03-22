@@ -48,18 +48,19 @@ def test_second_on_packet_accumulates() -> None:
     assert tracker.get("cl", "canister") == pytest.approx(10.0)
 
 
-def test_pump_off_resets_timestamp() -> None:
-    """After an OFF packet the next ON starts fresh (no phantom dose)."""
+def test_pump_off_credits_final_interval_and_resets() -> None:
+    """OFF packet credits the final ON→OFF interval; next ON starts fresh."""
     tracker = AsekoConsumptionTracker()
-    on_dev  = _device(cl_pump_running=True,  flowrate_chlor=60)
+    on_dev = _device(cl_pump_running=True, flowrate_chlor=60)
     off_dev = _device(cl_pump_running=False, flowrate_chlor=60)
 
-    tracker.update(on_dev,  T0)
-    tracker.update(off_dev, T0 + timedelta(seconds=10))
-    tracker.update(on_dev,  T0 + timedelta(seconds=20))  # fresh start
-    tracker.update(on_dev,  T0 + timedelta(seconds=30))  # +10 s
+    tracker.update(on_dev, T0)  # sets timestamp
+    tracker.update(off_dev, T0 + timedelta(seconds=10))  # credits 10 s
+    tracker.update(on_dev, T0 + timedelta(seconds=20))  # fresh start
+    tracker.update(on_dev, T0 + timedelta(seconds=30))  # credits another 10 s
 
-    assert tracker.get("cl", "total") == pytest.approx(10.0)
+    # 10 ml from ON→OFF  +  10 ml from ON→ON  =  20 ml
+    assert tracker.get("cl", "total") == pytest.approx(20.0)
 
 
 def test_multiple_pump_types_independent() -> None:
@@ -67,17 +68,25 @@ def test_multiple_pump_types_independent() -> None:
     tracker = AsekoConsumptionTracker()
     t1 = T0 + timedelta(seconds=10)
 
-    d0 = _device(cl_pump_running=True, flowrate_chlor=60,
-                 ph_minus_pump_running=True, flowrate_ph_minus=30)
-    d1 = _device(cl_pump_running=True, flowrate_chlor=60,
-                 ph_minus_pump_running=False, flowrate_ph_minus=30)
+    d0 = _device(
+        cl_pump_running=True,
+        flowrate_chlor=60,
+        ph_minus_pump_running=True,
+        flowrate_ph_minus=30,
+    )
+    d1 = _device(
+        cl_pump_running=True,
+        flowrate_chlor=60,
+        ph_minus_pump_running=False,
+        flowrate_ph_minus=30,
+    )
 
     tracker.update(d0, T0)
     tracker.update(d1, t1)
 
-    # CL: 10 s × 60 ml/min = 10 ml; ph_minus turned OFF → no credit
+    # CL: 10 s × 60 mL/min = 10 mL; ph_minus OFF at T0+10s → 10 s × 30 mL/min = 5 mL credited
     assert tracker.get("cl", "total") == pytest.approx(10.0)
-    assert tracker.get("ph_minus", "total") == 0.0
+    assert tracker.get("ph_minus", "total") == pytest.approx(5.0)
 
 
 # ---------------------------------------------------------------------------
@@ -135,8 +144,12 @@ def test_reset_total_only() -> None:
 def test_reset_all_pumps() -> None:
     """reset(pump_key=None) resets canister for all pumps."""
     tracker = AsekoConsumptionTracker()
-    device = _device(cl_pump_running=True, flowrate_chlor=60,
-                     ph_minus_pump_running=True, flowrate_ph_minus=30)
+    device = _device(
+        cl_pump_running=True,
+        flowrate_chlor=60,
+        ph_minus_pump_running=True,
+        flowrate_ph_minus=30,
+    )
 
     tracker.update(device, T0)
     tracker.update(device, T0 + timedelta(seconds=60))
@@ -191,6 +204,19 @@ def test_seed_then_update() -> None:
 # ---------------------------------------------------------------------------
 # None pump (pump not present on this device type)
 # ---------------------------------------------------------------------------
+
+
+def test_single_on_off_cycle_credits_interval() -> None:
+    """A lone ON→OFF cycle (no second ON) is fully credited at OFF."""
+    tracker = AsekoConsumptionTracker()
+    on_dev = _device(cl_pump_running=True, flowrate_chlor=60)
+    off_dev = _device(cl_pump_running=False, flowrate_chlor=60)
+
+    tracker.update(on_dev, T0)
+    tracker.update(off_dev, T0 + timedelta(seconds=3))  # 3 s pump run
+
+    # 3 s / 60 * 60 mL/min = 3 mL
+    assert tracker.get("cl", "total") == pytest.approx(3.0)
 
 
 def test_none_pump_state_is_ignored() -> None:

@@ -180,9 +180,13 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             for e in hass.config_entries.async_entries(DOMAIN)
             if e.entry_id != entry.entry_id
         ]
-        if not remaining and hass.services.has_service(DOMAIN, SERVICE_RESET_CONSUMPTION):
+        if not remaining and hass.services.has_service(
+            DOMAIN, SERVICE_RESET_CONSUMPTION
+        ):
             hass.services.async_remove(DOMAIN, SERVICE_RESET_CONSUMPTION)
-            _LOGGER.debug("Unregistered service %s.%s", DOMAIN, SERVICE_RESET_CONSUMPTION)
+            _LOGGER.debug(
+                "Unregistered service %s.%s", DOMAIN, SERVICE_RESET_CONSUMPTION
+            )
 
         # Remove runtime_data to avoid stale references
         domain_data = hass.data.get(DOMAIN)

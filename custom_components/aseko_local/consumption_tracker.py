@@ -46,6 +46,9 @@ class AsekoConsumptionTracker:
     _last_on: dict[str, datetime | None] = field(
         default_factory=lambda: {k: None for k in PUMP_KEYS}
     )
+    _last_flowrate: dict[str, int | None] = field(
+        default_factory=lambda: {k: None for k in PUMP_KEYS}
+    )
 
     # ------------------------------------------------------------------ #
     # Public API                                                           #
@@ -70,6 +73,7 @@ class AsekoConsumptionTracker:
             if is_on is None:
                 # Pump not present on this device type – skip silently
                 self._last_on[key] = None
+                self._last_flowrate[key] = None
                 continue
 
             if is_on and flowrate_per_min:
@@ -82,7 +86,7 @@ class AsekoConsumptionTracker:
                     self._counters[key].total += ml
                     self._counters[key].canister += ml
                     _LOGGER.debug(
-                        "Tracker[%s]: +%.1f ml (dt=%.1fs capped=%.1fs flowrate=%d ml/min)",
+                        "Tracker[%s]: +%.1f mL (dt=%.1fs capped=%.1fs flowrate=%d mL/min)",
                         key,
                         ml,
                         raw_delta.total_seconds(),
@@ -90,9 +94,27 @@ class AsekoConsumptionTracker:
                         flowrate_per_min,
                     )
                 self._last_on[key] = now
+                self._last_flowrate[key] = flowrate_per_min
             else:
-                # Pump off – clear timestamp so next ON starts fresh
+                # Pump just turned OFF – credit the final ON→OFF interval
+                last = self._last_on[key]
+                saved_flowrate = self._last_flowrate[key]
+                if last is not None and saved_flowrate:
+                    raw_delta = now - last
+                    effective_delta = min(raw_delta, MAX_PUMP_INTERVAL)
+                    ml = (effective_delta.total_seconds() / 60.0) * saved_flowrate
+                    self._counters[key].total += ml
+                    self._counters[key].canister += ml
+                    _LOGGER.debug(
+                        "Tracker[%s] OFF: +%.1f mL (dt=%.1fs capped=%.1fs flowrate=%d mL/min)",
+                        key,
+                        ml,
+                        raw_delta.total_seconds(),
+                        effective_delta.total_seconds(),
+                        saved_flowrate,
+                    )
                 self._last_on[key] = None
+                self._last_flowrate[key] = None
 
     def get(self, pump_key: str, counter: str) -> float:
         """Return the current value (ml) for *pump_key* and *counter* ("total"|"canister")."""
