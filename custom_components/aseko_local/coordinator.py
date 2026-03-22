@@ -2,6 +2,7 @@
 
 import logging
 from collections.abc import Callable
+from datetime import datetime
 from types import CoroutineType
 from typing import Any
 
@@ -12,6 +13,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .aseko_data import AsekoData, AsekoDevice
+from .consumption_tracker import AsekoConsumptionTracker
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -37,6 +39,8 @@ class AsekoLocalDataUpdateCoordinator(DataUpdateCoordinator[AsekoData]):
             _LOGGER,
             name=f"{HOMEASSISTANT_DOMAIN} ({config_entry.unique_id})",
         )
+        # One tracker per device serial number
+        self._trackers: dict[int, AsekoConsumptionTracker] = {}
 
     def devices_update_callback(self, device: AsekoDevice) -> None:
         """Receive callback with device update."""
@@ -70,6 +74,11 @@ class AsekoLocalDataUpdateCoordinator(DataUpdateCoordinator[AsekoData]):
 
             new_data.set(device.serial_number, device)
 
+            # Update consumption tracker for this device
+            if device.serial_number not in self._trackers:
+                self._trackers[device.serial_number] = AsekoConsumptionTracker()
+            self._trackers[device.serial_number].update(device, datetime.now())
+
             _LOGGER.debug(
                 "✅ Stored device %s → known serials now: %s",
                 device.serial_number,
@@ -91,6 +100,10 @@ class AsekoLocalDataUpdateCoordinator(DataUpdateCoordinator[AsekoData]):
             _LOGGER.debug("🆕 NEW DEVICE DISCOVERED: %s", device.serial_number)
             if self.cb_new_device is not None:
                 self.hass.loop.create_task(self.cb_new_device(device))
+
+    def get_tracker(self, serial_number: int) -> AsekoConsumptionTracker | None:
+        """Return the consumption tracker for a given device serial number."""
+        return self._trackers.get(serial_number)
 
     def get_device(self, serial_number: int) -> AsekoDevice | None:
         _LOGGER.debug("get_device(%s) called", serial_number)
