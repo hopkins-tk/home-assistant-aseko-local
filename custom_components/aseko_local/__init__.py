@@ -142,8 +142,7 @@ async def async_setup_entry(
             for entry in hass.config_entries.async_entries(DOMAIN):
                 rd = getattr(entry, "runtime_data", None)
                 if rd:
-                    for tracker in rd.coordinator._trackers.values():
-                        tracker.reset(pump_key=pump, counter=counter)
+                    rd.coordinator.reset_consumption(pump, counter)
 
         hass.services.async_register(
             DOMAIN,

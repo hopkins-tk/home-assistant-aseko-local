@@ -132,11 +132,11 @@ class AsekoDeviceServer:
 
                 # Try to decode the frame
                 try:
-                    # Call raw_sink BEFORE rewind to capture truly raw data (for debugging)
-                    await self._call_raw_sink(frame)
-
                     # Rewind frame to correct byte offset if necessary
                     rewound_frame, offset = self._rewind_frame(frame)
+
+                    # Call raw_sink AFTER rewind so diagnostics see the correctly aligned frame
+                    await self._call_raw_sink(rewound_frame)
 
                     # Forward CORRECTED data to cloud (after rewind)
                     await self._call_forward_cb(rewound_frame)

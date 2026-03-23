@@ -73,7 +73,7 @@ Since release `1.3.0` **Aseko Local** has a built in forwarder that can be enabl
 | Device | Firmware | Sensors | Pump state | Chemical consumption |
 |---|---|---|---|---|
 | Aqua NET | ≤ 7.x | ✅ | ✅ cl, pH− | ✅ cl, pH− |
-| Aqua SALT | ≤ 7.x | ✅ | ✅ pH− | ✅ pH− |
+| Aqua SALT | ≤ 7.x | ✅ | ⚠️ pH− (bitmask unconfirmed) | ⚠️ pH− (bitmask unconfirmed) |
 
 > **Firmware note:** This integration supports the **120-byte binary protocol** used by firmware ≤ 7.x. Aseko devices typically send to port **47524** by default; the port can be changed in the integration settings to match your device.
 > Devices with newer firmware (e.g. those reporting port **51050**) transmit a different 463-byte record format that is not yet supported — see [issue #49](https://github.com/hopkins-tk/home-assistant-aseko-local/issues/49) for progress.

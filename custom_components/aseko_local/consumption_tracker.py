@@ -135,6 +135,10 @@ class AsekoConsumptionTracker:
             pump_key: which pump to reset, or None / "all" to reset all pumps.
             counter:  "total", "canister", or "all" – defaults to "canister".
         """
+        if counter not in ("total", "canister", "all"):
+            raise ValueError(
+                f"counter must be 'total', 'canister', or 'all', got {counter!r}"
+            )
         keys = list(PUMP_KEYS) if pump_key is None or pump_key == "all" else [pump_key]
         counters = ("total", "canister") if counter == "all" else (counter,)
 

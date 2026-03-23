@@ -2,7 +2,6 @@
 
 import logging
 from collections.abc import Callable
-from datetime import datetime
 from types import CoroutineType
 from typing import Any
 
@@ -11,6 +10,7 @@ from homeassistant.const import CONF_HOST, CONF_PORT
 from homeassistant.core import DOMAIN as HOMEASSISTANT_DOMAIN
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
+from homeassistant.util import dt as dt_util
 
 from .aseko_data import AsekoData, AsekoDevice
 from .consumption_tracker import AsekoConsumptionTracker
@@ -79,7 +79,7 @@ class AsekoLocalDataUpdateCoordinator(DataUpdateCoordinator[AsekoData]):
             # Update consumption tracker for this device
             if device.serial_number not in self._trackers:
                 self._trackers[device.serial_number] = AsekoConsumptionTracker()
-            self._trackers[device.serial_number].update(device, datetime.now())
+            self._trackers[device.serial_number].update(device, dt_util.now())
 
             _LOGGER.debug(
                 "✅ Stored device %s → known serials now: %s",
@@ -116,6 +116,12 @@ class AsekoLocalDataUpdateCoordinator(DataUpdateCoordinator[AsekoData]):
     def get_tracker(self, serial_number: int) -> AsekoConsumptionTracker | None:
         """Return the consumption tracker for a given device serial number."""
         return self._trackers.get(serial_number)
+
+    def reset_consumption(self, pump_key: str, counter: str) -> None:
+        """Reset consumption counters for all tracked devices and notify listeners."""
+        for tracker in self._trackers.values():
+            tracker.reset(pump_key=pump_key, counter=counter)
+        self.async_update_listeners()
 
     def get_device(self, serial_number: int) -> AsekoDevice | None:
         _LOGGER.debug("get_device(%s) called", serial_number)
