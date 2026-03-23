@@ -19,7 +19,6 @@ from homeassistant.components.diagnostics import async_redact_data
 from homeassistant.core import HomeAssistant
 
 from . import AsekoLocalConfigEntry
-from .aseko_data import AsekoDeviceType
 from .consumption_tracker import PUMP_KEYS
 
 # Fields that may contain personally identifying information

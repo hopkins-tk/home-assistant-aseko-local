@@ -8,7 +8,6 @@ from custom_components.aseko_local.aseko_data import AsekoDevice
 from custom_components.aseko_local.consumption_tracker import (
     MAX_PUMP_INTERVAL,
     AsekoConsumptionTracker,
-    PUMP_KEYS,
 )
 
 T0 = datetime(2024, 6, 15, 12, 0, 0, tzinfo=timezone.utc)
