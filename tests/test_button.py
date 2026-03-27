@@ -1,7 +1,7 @@
 """Tests for the Aseko Local button platform (canister-reset buttons)."""
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 from homeassistant.config_entries import ConfigEntry
 
