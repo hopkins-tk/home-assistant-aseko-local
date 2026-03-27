@@ -355,31 +355,31 @@ def test_decode_net_pump_states() -> None:
     data = _make_base_bytes()
     data[4] = 0x09  # NET with CLF probe
 
-    # Filtration only
+    # Bit 0x08 is not mapped for NET – filtration_pump_running stays None
     data[29] = 0x08
     device = AsekoDecoder.decode(bytes(data))
-    assert device.filtration_pump_running is True
+    assert device.filtration_pump_running is None
     assert device.cl_pump_running is False
     assert device.ph_minus_pump_running is False
 
-    # CL pump + filtration
+    # CL pump only (0x02; bit 0x08 has no meaning on NET)
     data[29] = 0x0A  # 0x08 | 0x02
     device = AsekoDecoder.decode(bytes(data))
-    assert device.filtration_pump_running is True
+    assert device.filtration_pump_running is None
     assert device.cl_pump_running is True
     assert device.ph_minus_pump_running is False
 
-    # PH-minus + filtration
+    # PH-minus pump only (0x01; bit 0x08 has no meaning on NET)
     data[29] = 0x09  # 0x08 | 0x01
     device = AsekoDecoder.decode(bytes(data))
-    assert device.filtration_pump_running is True
+    assert device.filtration_pump_running is None
     assert device.cl_pump_running is False
     assert device.ph_minus_pump_running is True
 
     # No pump running
     data[29] = 0x00
     device = AsekoDecoder.decode(bytes(data))
-    assert device.filtration_pump_running is False
+    assert device.filtration_pump_running is None
     assert device.cl_pump_running is False
     assert device.ph_minus_pump_running is False
 

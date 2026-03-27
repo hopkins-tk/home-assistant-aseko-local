@@ -56,11 +56,10 @@ def _make_salt_redox_bytes() -> bytearray:
     data[71] = 2  # backwash_duration (20)
     data[74:76] = (120).to_bytes(2, "big")  # delay_after_startup
     data[92:94] = (5000).to_bytes(2, "big")  # pool_volume
-    data[95] = 255  # flowrate_chlor
-    data[94:96] = (60).to_bytes(2, "big")  # max_filling_time
-    data[97] = 255  # flowrate_ph_plus
-    data[99] = 60  # flowrate_ph_minus (not measured)
-    data[101] = 70  # flowrate_floc
+    data[94:96] = (60).to_bytes(2, "big")  # max_filling_time (byte 95 = 60 = flowrate_ph_minus)
+    data[97] = 255  # flowrate_ph_plus: 0xFF = not present
+    data[99] = 255  # flowrate_chlor: 0xFF = SALT has no chlorine pump
+    data[101] = 255  # flowrate_floc: 0xFF = SALT has no flocculant pump
     data[106:108] = (30).to_bytes(2, "big")  # delay_after_dose
     return data
 
@@ -102,11 +101,10 @@ def _make_salt_clf_bytes() -> bytearray:
     data[71] = 2  # backwash_duration (20)
     data[74:76] = (120).to_bytes(2, "big")  # delay_after_startup
     data[92:94] = (5000).to_bytes(2, "big")  # pool_volume
-    data[95] = 255  # flowrate_chlor
-    data[94:96] = (60).to_bytes(2, "big")  # max_filling_time
+    data[94:96] = (60).to_bytes(2, "big")  # max_filling_time (byte 95 = 60 = flowrate_ph_minus)
     data[97] = 20  # flowrate_ph_plus
-    data[99] = 255  # flowrate_ph_minus (not measured)
-    data[101] = 255  # flowrate_floc
+    data[99] = 255  # flowrate_chlor: 0xFF = SALT has no chlorine pump
+    data[101] = 255  # flowrate_floc: 0xFF = SALT has no flocculant pump
     data[106:108] = (30).to_bytes(2, "big")  # delay_after_dose
     return data
 
@@ -202,7 +200,7 @@ def _make_profi_clf_redox_bytes() -> bytearray:
     data[94:96] = (60).to_bytes(2, "big")  # max_filling_time
     data[97] = 20  # flowrate_ph_plus
     data[99] = 255  # flowrate_ph_minus (not measured)
-    data[101] = 255  # flowrate_floc
+    data[101] = 60  # flowrate_floc (PROFI has flocculant pump configured)
     data[106:108] = (30).to_bytes(2, "big")  # delay_after_dose
     return data
 
@@ -444,9 +442,9 @@ async def test_async_setup_net_clf(hass) -> None:
         getattr(e.device, "serial_number", None) == device.serial_number
         for e in added_entities
     )
-    # 9 sensors + 4 binary (water_flow, filtration, cl_pump, ph_minus_pump)
+    # 9 sensors + 3 binary (water_flow, cl_pump, ph_minus_pump – NET has no filtration output)
     # + 4 consumption (ph_minus canister + total, cl canister + total)
-    assert len(added_entities) == 17
+    assert len(added_entities) == 16
     assert any(
         getattr(e.entity_description, "key", None) == "free_chlorine"
         for e in added_entities
@@ -524,9 +522,9 @@ async def test_async_setup_profi_clf_redox(hass) -> None:
         getattr(e.device, "serial_number", None) == device.serial_number
         for e in added_entities
     )
-    # 10 sensors + 5 binary (water_flow, filtration, cl_pump, ph_minus_pump, floc_pump)
+    # 11 sensors + 5 binary (water_flow, filtration, cl_pump, ph_minus_pump, floc_pump)
     # + 6 consumption (cl, ph_minus, floc × canister + total)
-    assert len(added_entities) == 21
+    assert len(added_entities) == 22
     assert any(
         getattr(e.entity_description, "key", None) == "free_chlorine"
         for e in added_entities

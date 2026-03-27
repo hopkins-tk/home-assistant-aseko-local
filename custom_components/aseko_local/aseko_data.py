@@ -36,8 +36,8 @@ class AsekoElectrolyzerDirection(Enum):
 
 
 @dataclass(frozen=True)
-class AsekoConsumableMasks:
-    """Byte 29 bit masks for pump/consumable state detection, per device type."""
+class AsekoActuatorMasks:
+    """Byte 29 bit masks for actuator state detection (pumps + electrolyzer), per device type."""
 
     filtration: int = 0x00
     cl: int = 0x00
@@ -49,28 +49,29 @@ class AsekoConsumableMasks:
     electrolyzer_running_left: int = 0x00
 
 
-CONSUMABLE_MASKS: dict[AsekoDeviceType, AsekoConsumableMasks] = {
-    AsekoDeviceType.NET: AsekoConsumableMasks(
-        filtration=0x08,
+ACTUATOR_MASKS: dict[AsekoDeviceType, AsekoActuatorMasks] = {
+    AsekoDeviceType.NET: AsekoActuatorMasks(
+        # Aqua NET has no filtration output — confirmed: Issue #66
         cl=0x02,  # confirmed: Issue #66 (Aqua NET)
         ph_minus=0x01,  # confirmed: Issue #66 (Aqua NET)
     ),
-    AsekoDeviceType.SALT: AsekoConsumableMasks(
-        filtration=0x08,
+    AsekoDeviceType.SALT: AsekoActuatorMasks(
+        filtration=0x08,  # uncertain
         ph_minus=0x80,  # uncertain
+        algicide=0x20,  # uncertain – SALT has algicide, not flocculant (confirmed by product page)
         electrolyzer_running=0x10,
         electrolyzer_running_right=0x10,
         electrolyzer_running_left=0x50,
     ),
-    AsekoDeviceType.HOME: AsekoConsumableMasks(
-        filtration=0x08,
+    AsekoDeviceType.HOME: AsekoActuatorMasks(
+        filtration=0x08,  # uncertain
         cl=0x40,  # uncertain
         ph_minus=0x80,  # uncertain
         algicide=0x20,  # uncertain
         flocculant=0x20,  # uncertain – HOME may have both algicide and flocculant
     ),
-    AsekoDeviceType.PROFI: AsekoConsumableMasks(
-        filtration=0x08,
+    AsekoDeviceType.PROFI: AsekoActuatorMasks(
+        filtration=0x08,  # uncertain
         cl=0x40,  # uncertain
         ph_minus=0x80,  # uncertain
         flocculant=0x20,  # uncertain

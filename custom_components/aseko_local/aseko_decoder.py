@@ -5,12 +5,12 @@ from typing import Type, TypeVar
 
 
 from .aseko_data import (
-    AsekoConsumableMasks,
+    AsekoActuatorMasks,
     AsekoDevice,
     AsekoDeviceType,
     AsekoElectrolyzerDirection,
     AsekoProbeType,
-    CONSUMABLE_MASKS,
+    ACTUATOR_MASKS,
 )
 from .const import (
     ALGICIDE_CONFIGURED,
@@ -168,7 +168,7 @@ class AsekoDecoder:
 
     @staticmethod
     def _electrolyzer_direction(
-        data: bytes, masks: AsekoConsumableMasks
+        data: bytes, masks: AsekoActuatorMasks
     ) -> AsekoElectrolyzerDirection:
         if (
             masks.electrolyzer_running_left
@@ -209,7 +209,7 @@ class AsekoDecoder:
 
     @staticmethod
     def _fill_salt_unit_data(unit: AsekoDevice, data: bytes) -> None:
-        masks = CONSUMABLE_MASKS[AsekoDeviceType.SALT]
+        masks = ACTUATOR_MASKS[AsekoDeviceType.SALT]
         unit.salinity = data[20] / 10
         unit.electrolyzer_power = (
             data[21] if data[29] & masks.electrolyzer_running else 0
@@ -219,26 +219,19 @@ class AsekoDecoder:
 
     @staticmethod
     def _fill_flowrate_data(unit: AsekoDevice, data: bytes) -> None:
+        # Read all known flowrate bytes unconditionally.
+        # _normalize_value returns None for 0xFF (= pump not configured on this device).
+        # The resulting values are used as pump-presence indicators in _fill_consumable_data.
         unit.flowrate_ph_minus = AsekoDecoder._normalize_value(data[95], int)
-        # unit.flowrate_ph_plus = AsekoDecoder._normalize_value(data[97], int)
-
-        if unit.device_type != AsekoDeviceType.SALT:
-            unit.flowrate_chlor = AsekoDecoder._normalize_value(data[99], int)
-
-        if unit.device_type != AsekoDeviceType.NET:
-            if bool(data[37] & ALGICIDE_CONFIGURED):
-                unit.flowrate_algicide = AsekoDecoder._normalize_value(data[103], int)
-
-            if unit.device_type == AsekoDeviceType.PROFI or not bool(
-                data[37] & ALGICIDE_CONFIGURED
-            ):
-                unit.flowrate_floc = AsekoDecoder._normalize_value(data[101], int)
+        unit.flowrate_chlor = AsekoDecoder._normalize_value(data[99], int)
+        unit.flowrate_floc = AsekoDecoder._normalize_value(data[101], int)
+        # flowrate_ph_plus (byte 97) and flowrate_algicide: byte mapping not yet confirmed
 
     @staticmethod
     def _fill_consumable_data(unit: AsekoDevice, data: bytes) -> None:
-        masks = CONSUMABLE_MASKS.get(unit.device_type)
+        masks = ACTUATOR_MASKS.get(unit.device_type)
         if masks is None:
-            _LOGGER.warning("No consumable masks for device type %s", unit.device_type)
+            _LOGGER.warning("No actuator masks for device type %s", unit.device_type)
             return
 
         if masks.filtration:
@@ -250,13 +243,14 @@ class AsekoDecoder:
         if masks.ph_minus:
             unit.ph_minus_pump_running = bool(data[29] & masks.ph_minus)
 
-        if masks.algicide and bool(data[37] & ALGICIDE_CONFIGURED):
+        # Algicide and flocculant share bit 0x20 on some device types and byte 37
+        # (ALGICIDE_CONFIGURED) is unreliable (0xFF = unspecified) on several devices.
+        # Instead, use flowrate presence (non-0xFF in the respective flowrate byte) as
+        # the pump-existence discriminator. _fill_flowrate_data must run first.
+        if masks.algicide and unit.flowrate_algicide is not None:
             unit.algicide_pump_running = bool(data[29] & masks.algicide)
 
-        if masks.flocculant and (
-            unit.device_type == AsekoDeviceType.PROFI
-            or not bool(data[37] & ALGICIDE_CONFIGURED)
-        ):
+        if masks.flocculant and unit.flowrate_floc is not None:
             unit.floc_pump_running = bool(data[29] & masks.flocculant)
 
     @staticmethod
@@ -303,9 +297,9 @@ class AsekoDecoder:
         if unit_type == AsekoDeviceType.SALT:
             AsekoDecoder._fill_salt_unit_data(device, data)
 
-        AsekoDecoder._fill_consumable_data(device, data)
-
-        # We are unsure with flowrate data
+        # Flowrate must be decoded before consumable data: pump presence for
+        # algicide/flocculant is determined by whether the flowrate byte is set (≠ 0xFF).
         AsekoDecoder._fill_flowrate_data(device, data)
+        AsekoDecoder._fill_consumable_data(device, data)
 
         return device

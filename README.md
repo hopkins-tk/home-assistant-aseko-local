@@ -58,13 +58,79 @@ You need to re-configure your Aseko unit to send data to your Home Assistant ins
 
    ![Aseko unit - modul restart required](images/aseko-restart.png)
 
-### Optional: Keep data to Aseko Cloud
+### Optional: Send data to Aseko Cloud
 
 If you want to keep sending the data to Aseko Cloud, you had to use a TCP proxy (like [goduplicator](https://github.com/hopkins-tk/home-assistant-aseko-local/issues/14#issuecomment-2897932015)) before release `1.3.0`. The installation and configuration of goduplicator proved trouble some for some of the users and goduplicator has not been updated for over 5 years.
 
-Since release `1.3.0` **Aseko Local** has a built in forwarder that can be enabled to forward the raw data received from Aseko Device to Aseko Cloud (default `pool.aseko.com:47524`). To use it, open **Aseko Local** integration, klick on settings (see image) and enable the forwarder.
+**Aseko Local** has a built in forwarder that can be enabled to forward the raw data received from Aseko Device to Aseko Cloud (default `pool.aseko.com:47524`). To use it, open **Aseko Local** integration, klick on settings (see image) and enable the forwarder.
 
 ![Aseko Local options](images/aseko-options.png)
+
+## Chemical consumption & canister management
+
+Supported devices report how much chemical each dosing pump has dispensed. The integration exposes two consumption sensors per pump:
+
+- **Since last reset** (`*_since_reset`) — resets to zero when you refill the canister and trigger a reset.
+- **Total** (`*_total`) — a running lifetime total that never resets automatically.
+
+![Consumption dashboard example](images/aseko_dashboard_consum_example.png)
+
+### Resetting the canister counter
+
+After refilling a chemical canister trigger a reset so the *since last reset* counter starts from zero again.
+
+**Option 1 – Developer Tools**
+
+Go to **Developer Tools → Actions**, search for `aseko_local.reset_consumption` and call it with the pump you refilled (or `all`) and counter `canister`.
+
+![Reset consumption via Developer Tools](images/aseko_action_reset.png)
+
+**Option 2 – Dashboard button**
+
+Add a **Button** card to your dashboard, set the tap action to **Perform action → Aseko Local: Reset consumption** and choose the pump and counter type. The button can be placed right next to the consumption sensor cards for a convenient one-tap refill workflow.
+
+![Button card configuration for reset](images/aseko_config_reset_button.png)
+
+### Optional: Track remaining canister volume
+
+Aseko's own app counts down the remaining chemical volume in a canister. You can replicate this in Home Assistant using two standard helpers.
+
+**Step 1 – Number helper for fill-up amount**
+
+Go to **Settings → Devices & Services → Helpers → Create helper → Number** and create one helper per chemical, e.g.:
+
+| Field | Example value |
+|---|---|
+| Name | PH Minus fill-up |
+| Minimum | 0 |
+| Maximum | 25 |
+| Step | 0.1 |
+| Unit of measurement | L |
+
+When you refill the canister, update this helper to the volume you actually added before triggering the reset.
+
+![Number helper for canister fill-up](images/aseko_number_canister_fill-up.png)
+
+**Step 2 – Template sensor for remaining volume**
+
+Go to **Settings → Devices & Services → Helpers → Create helper → Template → Template sensor** and configure it as follows:
+
+| Field | Example value |
+|---|---|
+| Name | PH minus remaining fill |
+| State template | `{{ states('input_number.ph_minus_fill_up')\|float(0) - states('sensor.ph_minus_since_reset')\|float(0) }}` |
+| Unit of measurement | L |
+| Device class | Volume |
+
+Adjust the entity IDs to match your own helper and sensor names.
+
+![Template sensor for remaining canister volume](images/aseko_template_sensor_remaining.png)
+
+**Step 3 – Add everything to a dashboard card**
+
+Combine the fill-up number input, the *since last reset* sensor, the remaining volume template sensor, and a reset button into a single dashboard card for a complete canister management view.
+
+![Dashboard canister management card](images/aseko_dashboard_canister_handling.png)
 
 ## Device support
 
