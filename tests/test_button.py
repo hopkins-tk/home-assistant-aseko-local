@@ -24,9 +24,13 @@ def _make_net_bytes() -> bytearray:
     data[6:12] = [24, 6, 15, 12, 0, 0]
     data[14:16] = (700).to_bytes(2, "big")
     data[28] = WATER_FLOW_TO_PROBES
-    data[29] = 0x00  # no pump running, but masks are set → running_attr = False (not None)
-    data[94:96] = (60).to_bytes(2, "big")  # max_filling_time (byte 95 = flowrate_ph_minus = 60)
-    data[99] = 60   # flowrate_chlor present
+    data[29] = (
+        0x00  # no pump running, but masks are set → running_attr = False (not None)
+    )
+    data[94:96] = (60).to_bytes(
+        2, "big"
+    )  # max_filling_time (byte 95 = flowrate_ph_minus = 60)
+    data[99] = 60  # flowrate_chlor present
     data[101] = 0xFF  # flowrate_floc: not present
     return data
 
@@ -40,7 +44,9 @@ def _make_salt_bytes() -> bytearray:
     data[21] = 80
     data[28] = WATER_FLOW_TO_PROBES
     data[29] = 0x10  # electrolyzer on
-    data[94:96] = (60).to_bytes(2, "big")  # max_filling_time (byte 95 = flowrate_ph_minus = 60)
+    data[94:96] = (60).to_bytes(
+        2, "big"
+    )  # max_filling_time (byte 95 = flowrate_ph_minus = 60)
     data[99] = 0xFF  # no chlor
     data[101] = 0xFF  # no floc
     return data
@@ -56,8 +62,8 @@ def _make_profi_bytes() -> bytearray:
     data[18:20] = (650).to_bytes(2, "big")
     data[28] = WATER_FLOW_TO_PROBES
     data[29] = 0x08  # filtration on
-    data[95] = 60   # flowrate_ph_minus (byte 95)
-    data[99] = 60   # flowrate_chlor
+    data[95] = 60  # flowrate_ph_minus (byte 95)
+    data[99] = 60  # flowrate_chlor
     data[101] = 60  # flowrate_floc present → floc_pump_running will be set
     return data
 
@@ -80,6 +86,7 @@ def _dummy_entry(device):
 def _mock_add_entities(added):
     def _cb(new_entities, update_before_add=False, *, config_subentry_id=None):
         added.extend(new_entities)
+
     return _cb
 
 

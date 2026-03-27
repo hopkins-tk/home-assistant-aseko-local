@@ -95,7 +95,9 @@ def test_off_packet_resets_last_on():
     tracker.update(_device(cl_on=True, cl_rate=60), T0)
     # 60 s gap → capped at 30 s × 60 mL/min = 30 mL
     tracker.update(_device(cl_on=False, cl_rate=60), T0 + timedelta(seconds=60))
-    tracker.update(_device(cl_on=True, cl_rate=60), T0 + timedelta(seconds=90))  # new window
+    tracker.update(
+        _device(cl_on=True, cl_rate=60), T0 + timedelta(seconds=90)
+    )  # new window
     # 2nd ON is first of new window → no extra accumulation
     assert tracker.get("cl", "total") == pytest.approx(30.0)
 
@@ -177,14 +179,16 @@ def test_on_with_zero_flowrate_does_not_accumulate():
 def test_independent_pump_counters():
     """cl and ph_minus accumulators are independent (gap capped at 30 s)."""
     tracker = AsekoConsumptionTracker()
-    tracker.update(_device(cl_on=True, cl_rate=60, ph_minus_on=True, ph_minus_rate=30), T0)
+    tracker.update(
+        _device(cl_on=True, cl_rate=60, ph_minus_on=True, ph_minus_rate=30), T0
+    )
     # 60 s gap → capped at 30 s
     tracker.update(
         _device(cl_on=True, cl_rate=60, ph_minus_on=True, ph_minus_rate=30),
         T0 + timedelta(seconds=60),
     )
 
-    assert tracker.get("cl", "total") == pytest.approx(30.0)      # 30 s × 60 mL/min
+    assert tracker.get("cl", "total") == pytest.approx(30.0)  # 30 s × 60 mL/min
     assert tracker.get("ph_minus", "total") == pytest.approx(15.0)  # 30 s × 30 mL/min
 
 
