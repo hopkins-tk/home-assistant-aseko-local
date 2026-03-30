@@ -64,6 +64,7 @@ def _make_profi_bytes() -> bytearray:
     data[29] = 0x08  # filtration on
     data[95] = 60  # flowrate_ph_minus (byte 95)
     data[99] = 60  # flowrate_chlor
+    data[37] = 0x00  # flocculant mode → byte[101] routes to flowrate_floc
     data[101] = 60  # flowrate_floc present → floc_pump_running will be set
     return data
 

@@ -114,7 +114,7 @@ class AsekoDevice:
     flowrate_ph_minus: int | None = None
     flowrate_ph_plus: int | None = None
 
-    # algicide/Floculant based on the byte 37 mask 0x80
+    # algicide/flocculant based on byte 37: bit 0x10 set = algicide, 0 = flocculant, 0xFF = undefined
     flowrate_algicide: int | None = None
     flowrate_floc: int | None = None
 
@@ -122,7 +122,7 @@ class AsekoDevice:
     required_redox: int | None = None  # byte 53*10
     required_cl_free: float | None = None  # byte 53*10?
 
-    # algicide/Floculant based on the byte 37 mask 0x80
+    # algicide/flocculant based on byte 37: bit 0x10 set = algicide, 0 = flocculant, 0xFF = undefined
     required_algicide: int | None = None  # byte 54
     required_floc: int | None = None  # byte 54
 

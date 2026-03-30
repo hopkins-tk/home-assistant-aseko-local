@@ -31,7 +31,12 @@ def _make_base_bytes(size: int = 120) -> bytearray:
     data[25:27] = (245).to_bytes(2, "big")  # water_temperature = 24.5
     data[28] = WATER_FLOW_TO_PROBES
     data[29] = 0x08  # pump_running
-    data[54] = 5  # required_algicide
+    data[37] = (
+        0xFF  # UNSPECIFIED (0xFF) → byte[101] not routed; flowrate_algicide and flowrate_floc both None
+    )
+    data[54] = (
+        5  # required dosing rate (byte 54); algicide or floc depending on byte[37]
+    )
     data[55] = 28  # required_water_temperature
     data[56] = 8  # start1 hour
     data[57] = 0  # start1 min
@@ -86,6 +91,7 @@ def test_flowrates() -> None:
     """Test decoding of flowrate data."""
 
     data = _make_base_bytes()
+    data[37] = 0x00  # flocculant mode → byte[101] routes to flowrate_floc
 
     device = AsekoDecoder.decode(bytes(data))
     assert device.flowrate_chlor is None

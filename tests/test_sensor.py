@@ -38,6 +38,7 @@ def _make_salt_redox_bytes() -> bytearray:
     data[25:27] = (245).to_bytes(2, "big")  # water_temperature = 24.5
     data[28] = WATER_FLOW_TO_PROBES
     data[29] = 0x10  # Electrolyzer on
+    data[37] = 0x10  # algicide mode (SALT uses algicide, not flocculant)
     data[52] = 70  # required_ph = 7.0
     data[53] = 65  # required_redox = 650
     data[54] = 5  # required_algicide
@@ -85,6 +86,7 @@ def _make_salt_clf_bytes() -> bytearray:
     data[25:27] = (245).to_bytes(2, "big")  # water_temperature = 24.5
     data[28] = WATER_FLOW_TO_PROBES
     data[29] = 0x50  # filtration_pump_running + Electrolyzer LEFT
+    data[37] = 0x10  # algicide mode (SALT uses algicide, not flocculant)
     data[52] = 70  # required_ph = 7.0
     data[53] = 30  # required_cl = 3.0
     data[54] = 5  # required_algicide
@@ -182,9 +184,10 @@ def _make_profi_clf_redox_bytes() -> bytearray:
     data[25:27] = (245).to_bytes(2, "big")  # water_temperature = 24.5
     data[28] = WATER_FLOW_TO_PROBES
     data[29] = 0x08  # filtration_pump_running
+    data[37] = 0x00  # flocculant mode (PROFI uses flocculant, not algicide)
     data[52] = 70  # required_ph = 7.0
     data[53] = 30  # required_cl = 3.0
-    data[54] = 5  # required_algicide
+    data[54] = 5  # required dosing rate (byte 54; flocculant mode → required_floc)
     data[55] = 28  # required_water_temperature
     data[56] = 8  # start1 hour
     data[57] = 0  # start1 min
@@ -446,9 +449,10 @@ async def test_async_setup_net_clf(hass) -> None:
         getattr(e.device, "serial_number", None) == device.serial_number
         for e in added_entities
     )
-    # 9 sensors + 3 binary (water_flow, cl_pump, ph_minus_pump – NET has no filtration output)
+    # 8 sensors + 3 binary (water_flow, cl_pump, ph_minus_pump – NET has no filtration output)
     # + 4 consumption (ph_minus canister + total, cl canister + total)
-    assert len(added_entities) == 16
+    # note: required_algicide/required_floc are absent because byte[37]=0xFF (undefined)
+    assert len(added_entities) == 15
     assert any(
         getattr(e.entity_description, "key", None) == "free_chlorine"
         for e in added_entities
@@ -468,7 +472,7 @@ async def test_async_setup_net_clf(hass) -> None:
         getattr(e.entity_description, "key", None) != "required_rx"
         for e in added_entities
     )
-    assert any(
+    assert not any(
         getattr(e.entity_description, "key", None) == "required_algicide"
         for e in added_entities
     )
@@ -549,6 +553,6 @@ async def test_async_setup_profi_clf_redox(hass) -> None:
         for e in added_entities
     )
     assert any(
-        getattr(e.entity_description, "key", None) == "required_algicide"
+        getattr(e.entity_description, "key", None) == "required_floc"
         for e in added_entities
     )

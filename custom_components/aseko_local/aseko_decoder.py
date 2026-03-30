@@ -219,13 +219,17 @@ class AsekoDecoder:
 
     @staticmethod
     def _fill_flowrate_data(unit: AsekoDevice, data: bytes) -> None:
-        # Read all known flowrate bytes unconditionally.
-        # _normalize_value returns None for 0xFF (= pump not configured on this device).
-        # The resulting values are used as pump-presence indicators in _fill_consumable_data.
+        # Bytes 95 and 99 are unconditional: pH− pump and Cl pump.
         unit.flowrate_ph_minus = AsekoDecoder._normalize_value(data[95], int)
         unit.flowrate_chlor = AsekoDecoder._normalize_value(data[99], int)
-        unit.flowrate_floc = AsekoDecoder._normalize_value(data[101], int)
-        # flowrate_ph_plus (byte 97) and flowrate_algicide: byte mapping not yet confirmed
+        # byte[101]: shared "third pump slot" — algicide OR flocculant per byte[37].
+        # bit 0x10 in byte[37] = algicide (ml/m³/day); not set = flocculant (ml/h).
+        # 0xFF (UNSPECIFIED) → configuration unknown → leave both as None.
+        if data[37] != UNSPECIFIED_VALUE and bool(data[37] & ALGICIDE_CONFIGURED):
+            unit.flowrate_algicide = AsekoDecoder._normalize_value(data[101], int)
+        elif data[37] != UNSPECIFIED_VALUE:
+            unit.flowrate_floc = AsekoDecoder._normalize_value(data[101], int)
+        # flowrate_ph_plus (byte 97): mapping unconfirmed
 
     @staticmethod
     def _fill_consumable_data(unit: AsekoDevice, data: bytes) -> None:
@@ -269,10 +273,11 @@ class AsekoDecoder:
             water_temperature=int.from_bytes(data[25:27], "big") / 10,
             water_flow_to_probes=(data[28] == WATER_FLOW_TO_PROBES),
             required_algicide=AsekoDecoder._normalize_value(data[54], int)
-            if data[37] & ALGICIDE_CONFIGURED
+            if data[37] != UNSPECIFIED_VALUE and bool(data[37] & ALGICIDE_CONFIGURED)
             else None,
             required_floc=AsekoDecoder._normalize_value(data[54], int)
-            if not data[37] & ALGICIDE_CONFIGURED
+            if data[37] != UNSPECIFIED_VALUE
+            and not bool(data[37] & ALGICIDE_CONFIGURED)
             else None,
             required_water_temperature=AsekoDecoder._normalize_value(data[55], int),
             start1=AsekoDecoder._time(data[56:58]),
