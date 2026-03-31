@@ -46,7 +46,7 @@ Sensors that cannot be mapped reliably are **not shown** by default to avoid mis
 
 ### Help wanted — expanding device support
 
-If you own an Aqua HOME, Aqua PROFI, Aqua NET+ or any other Aseko device that is not listed above as fully supported, you can help by sharing a diagnostics snapshot:
+If you own an Aseko device that is not listed above as fully supported, you can help by sharing a diagnostics snapshot:
 
 1. In Home Assistant go to **Settings → Devices & Services → Aseko Local**
 2. Click on your device, then click **Download Diagnostics**
