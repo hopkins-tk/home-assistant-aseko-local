@@ -43,6 +43,8 @@ class AsekoLocalDataUpdateCoordinator(DataUpdateCoordinator[AsekoData]):
         self._trackers: dict[int, AsekoConsumptionTracker] = {}
         # Last raw frame per device serial number (for diagnostics)
         self._last_raw_frames: dict[int, bytes] = {}
+        # Last partial (incomplete) raw frame per serial number
+        self._last_partial_frames: dict[int, bytes] = {}
 
     def devices_update_callback(self, device: AsekoDevice) -> None:
         """Receive callback with device update."""
@@ -104,14 +106,29 @@ class AsekoLocalDataUpdateCoordinator(DataUpdateCoordinator[AsekoData]):
                 self.hass.loop.create_task(self.cb_new_device(device))
 
     def store_raw_frame(self, raw_frame: bytes) -> None:
-        """Cache the last raw frame, keyed by serial number (bytes 0-3)."""
-        if len(raw_frame) >= 4:
-            serial = int.from_bytes(raw_frame[0:4], "big")
+        """Cache the last raw frame, keyed by serial number (bytes 0-3).
+
+        Frames shorter than MESSAGE_SIZE are stored as partial frames so users
+        with unknown device variants can share the raw data via the Diagnostics
+        download without needing to enable debug logging.
+        """
+        if len(raw_frame) < 4:
+            return
+        serial = int.from_bytes(raw_frame[0:4], "big")
+        from .const import MESSAGE_SIZE  # noqa: PLC0415
+
+        if len(raw_frame) < MESSAGE_SIZE:
+            self._last_partial_frames[serial] = bytes(raw_frame)
+        else:
             self._last_raw_frames[serial] = bytes(raw_frame)
 
     def get_raw_frame(self, serial_number: int) -> bytes | None:
-        """Return the last raw frame for a given device serial number."""
+        """Return the last full raw frame for a given device serial number."""
         return self._last_raw_frames.get(serial_number)
+
+    def get_partial_frame(self, serial_number: int) -> bytes | None:
+        """Return the last partial (incomplete) raw frame, if any."""
+        return self._last_partial_frames.get(serial_number)
 
     def get_tracker(self, serial_number: int) -> AsekoConsumptionTracker | None:
         """Return the consumption tracker for a given device serial number."""

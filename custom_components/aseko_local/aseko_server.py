@@ -126,8 +126,17 @@ class AsekoDeviceServer:
                     )
                     break
 
-                except asyncio.IncompleteReadError:
-                    _LOGGER.error("Client %s closed the connection", addr)
+                except asyncio.IncompleteReadError as exc:
+                    _LOGGER.error(
+                        "Client %s closed the connection after %d bytes (expected %d):\n%s",
+                        addr,
+                        len(exc.partial),
+                        MESSAGE_SIZE,
+                        exc.partial.hex(" ", 1),
+                    )
+                    # Store partial frame for diagnostics so users with non-standard
+                    # frame lengths can share the raw data without enabling debug logging.
+                    await self._call_raw_sink(exc.partial)
                     break
 
                 # Try to decode the frame
@@ -143,7 +152,7 @@ class AsekoDeviceServer:
 
                     # 🔎 Plausibility check before decoding: pH values must be between 0 and 14
                     ph_value = int.from_bytes(rewound_frame[14:16], "big") / 100
-                    if not (0 <= ph_value <= 14):
+                    if not (0 <= ph_value <= 14 or ph_value == 655.35):
                         _LOGGER.error(
                             "Unreasonable pH value (%s) received from %s → closing connection",
                             ph_value,
