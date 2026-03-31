@@ -38,7 +38,7 @@ def _make_salt_redox_bytes() -> bytearray:
     data[25:27] = (245).to_bytes(2, "big")  # water_temperature = 24.5
     data[28] = WATER_FLOW_TO_PROBES
     data[29] = 0x10  # Electrolyzer on
-    data[37] = 0x10  # algicide mode (SALT uses algicide, not flocculant)
+    data[37] = 0xB3  # algicide mode (bit 7 set; confirmed by @hopkins-tk)
     data[52] = 70  # required_ph = 7.0
     data[53] = 65  # required_redox = 650
     data[54] = 5  # required_algicide
@@ -86,7 +86,7 @@ def _make_salt_clf_bytes() -> bytearray:
     data[25:27] = (245).to_bytes(2, "big")  # water_temperature = 24.5
     data[28] = WATER_FLOW_TO_PROBES
     data[29] = 0x50  # filtration_pump_running + Electrolyzer LEFT
-    data[37] = 0x10  # algicide mode (SALT uses algicide, not flocculant)
+    data[37] = 0xB3  # algicide mode (bit 7 set; confirmed by @hopkins-tk)
     data[52] = 70  # required_ph = 7.0
     data[53] = 30  # required_cl = 3.0
     data[54] = 5  # required_algicide
