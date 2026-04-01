@@ -49,7 +49,7 @@ Sensors that cannot be mapped reliably are **not shown** by default to avoid mis
 If you own an Aseko device that is not listed above as fully supported, you can help by sharing a diagnostics snapshot:
 
 1. In Home Assistant go to **Settings → Devices & Services → Aseko Local**
-2. Click on your device, then click **Download Diagnostics**
+2. Click on your device, then click **Download Diagnostics** (3-dots menu beside settings symbol)
 3. Open a new issue at [github.com/hopkins-tk/home-assistant-aseko-local](https://github.com/hopkins-tk/home-assistant-aseko-local/issues/new) and attach the downloaded JSON file
 
 The diagnostics file contains an annotated table of every byte in the raw data frame sent by your device.
