@@ -467,7 +467,9 @@ def test_decode_salt_flocculant_pump_running() -> None:
     data[29] = 0x28  # 0x08 | 0x20 — confirmed by live frame 2026-04-03
     device = AsekoDecoder.decode(bytes(data))
     assert device.floc_pump_running is True
-    assert device.algicide_pump_running is None  # flocculant configured → alg slot vacant
+    assert (
+        device.algicide_pump_running is None
+    )  # flocculant configured → alg slot vacant
 
     # Flocculant pump not running
     data[29] = 0x08  # baseline; confirmed 2026-04-03 (immediate stop, no linger)
@@ -665,9 +667,9 @@ def test_decode_oxy_normal_frame() -> None:
     assert device.floc_pump_running is False
 
     # Flow rates (sub-frame 3)
-    assert device.flowrate_ph_minus == 60   # byte[95] = 0x3c
-    assert device.flowrate_chlor == 60      # byte[99] = 0x3c (OXY Pure pump slot)
-    assert device.flowrate_floc == 10       # byte[101] = 0x0a
+    assert device.flowrate_ph_minus == 60  # byte[95] = 0x3c
+    assert device.flowrate_chlor == 60  # byte[99] = 0x3c (OXY Pure pump slot)
+    assert device.flowrate_floc == 10  # byte[101] = 0x0a
 
     # Basic data
     assert device.serial_number == 110_157_165

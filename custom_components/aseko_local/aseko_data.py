@@ -137,7 +137,9 @@ class AsekoDevice:
     required_redox: int | None = None  # byte 53*10
     required_cl_free: float | None = None  # byte 53/10 mg/L
     required_oxy_dose: int | None = None  # byte 53 raw ml/m³/day – OXY Pure device only
-    required_cl_dose: int | None = None  # byte 53 raw ml/m³/h – DOSE mode (volume-based Cl dosing)
+    required_cl_dose: int | None = (
+        None  # byte 53 raw ml/m³/h – DOSE mode (volume-based Cl dosing)
+    )
 
     # algicide/flocculant based on byte 37: bit 0x80 set = algicide, 0 = flocculant, 0xFF = undefined
     required_algicide: int | None = None  # byte 54

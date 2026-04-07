@@ -84,7 +84,9 @@ class AsekoDecoder:
         return None
 
     @staticmethod
-    def _configuration(data: bytes, device_type: AsekoDeviceType | None = None) -> set[AsekoProbeType]:
+    def _configuration(
+        data: bytes, device_type: AsekoDeviceType | None = None
+    ) -> set[AsekoProbeType]:
         """Determine types of probes installed from the binary data."""
 
         # OXY has no CLF/REDOX probe hardware. The SANOSIL (OXY Pure) probe
