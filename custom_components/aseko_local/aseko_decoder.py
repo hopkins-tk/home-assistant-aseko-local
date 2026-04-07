@@ -17,9 +17,10 @@ from .const import (
     PROBE_CLF_MISSING,
     PROBE_DOSE_MISSING,
     PROBE_REDOX_MISSING,
-    PROBE_SANOSIL_MISSING,
+    PROBE_OXY_MISSING,
     UNIT_TYPE_HOME,
     UNIT_TYPE_NET,
+    UNIT_TYPE_OXY,
     UNIT_TYPE_PROFI,
     UNIT_TYPE_SALT,
     UNSPECIFIED_VALUE,
@@ -64,6 +65,9 @@ class AsekoDecoder:
     def _unit_type(data: bytes) -> AsekoDeviceType | None:
         """Determine the Aseko device type. Returns None until a reliable detection is possible."""
 
+        if data[4] == UNIT_TYPE_OXY:
+            return AsekoDeviceType.OXY
+
         if data[4] == UNIT_TYPE_PROFI:
             return AsekoDeviceType.PROFI
 
@@ -76,13 +80,18 @@ class AsekoDecoder:
         if bool(data[4] & UNIT_TYPE_NET):
             return AsekoDeviceType.NET
 
-        error = f"Unknown unit type: {data[4]}"
-        _LOGGER.warning(error)
-        raise ValueError(error)
+        _LOGGER.warning("Unknown unit type: %s", data[4])
+        return None
 
     @staticmethod
-    def _configuration(data: bytes) -> set[AsekoProbeType]:
+    def _configuration(data: bytes, device_type: AsekoDeviceType | None = None) -> set[AsekoProbeType]:
         """Determine types of probes installed from the binary data."""
+
+        # OXY has no CLF/REDOX probe hardware. The SANOSIL (OXY Pure) probe
+        # occupies the CLF slot physically, so PROBE_CLF_MISSING bit is 0 –
+        # which would incorrectly add CLF without this guard.
+        if device_type == AsekoDeviceType.OXY:
+            return {AsekoProbeType.PH, AsekoProbeType.OXY}
 
         probe_info = data[4]
 
@@ -98,8 +107,8 @@ class AsekoDecoder:
         if not bool(probe_info & PROBE_CLF_MISSING):
             probes.add(AsekoProbeType.CLF)
 
-        if not bool(probe_info & PROBE_SANOSIL_MISSING):
-            probes.add(AsekoProbeType.SANOSIL)
+        if not bool(probe_info & PROBE_OXY_MISSING):
+            probes.add(AsekoProbeType.OXY)
 
         if not bool(probe_info & PROBE_DOSE_MISSING):
             probes.add(AsekoProbeType.DOSE)
@@ -222,6 +231,16 @@ class AsekoDecoder:
         # Bytes 95 and 99 are unconditional: pH− pump and Cl pump.
         unit.flowrate_ph_minus = AsekoDecoder._normalize_value(data[95], int)
         unit.flowrate_chlor = AsekoDecoder._normalize_value(data[99], int)
+
+        if unit.device_type == AsekoDeviceType.OXY:
+            # OXY has independent pump slots (not a single shared slot like SALT).
+            # byte[101] = flocculant flowrate, byte[103] = algicide flowrate (unconfirmed).
+            # byte[37] routing logic does NOT apply to OXY.
+            unit.flowrate_floc = AsekoDecoder._normalize_value(data[101], int)
+            # byte[103] as algicide flowrate is unconfirmed – leave as None until
+            # a frame with algicide running is captured.
+            return
+
         # byte[101]: shared "third pump slot" — algicide OR flocculant per byte[37].
         # bit 0x80 in byte[37] = algicide (ml/m³/day); not set = flocculant (ml/h).
         # 0xFF (UNSPECIFIED) → configuration unknown → leave both as None.
@@ -260,7 +279,7 @@ class AsekoDecoder:
     @staticmethod
     def decode(data: bytes) -> AsekoDevice:
         unit_type = AsekoDecoder._unit_type(data)
-        probes = AsekoDecoder._configuration(data)
+        probes = AsekoDecoder._configuration(data, unit_type)
 
         ts = AsekoDecoder._timestamp(data)
         _LOGGER.debug("Decoded timestamp = %s (raw: %s)", ts, data[6:12].hex())
@@ -295,10 +314,24 @@ class AsekoDecoder:
 
         if AsekoProbeType.PH in device.configuration:
             AsekoDecoder._fill_ph_data(device, data)
-        if AsekoProbeType.REDOX in device.configuration:
-            AsekoDecoder._fill_redox_data(device, data)
-        if AsekoProbeType.CLF in device.configuration:
-            AsekoDecoder._fill_clf_data(device, data)
+        if unit_type == AsekoDeviceType.OXY:
+            # OXY uses byte[53] for required OXY Pure dosage (ml/m³/day), not CLF/REDOX setpoint.
+            # CLF/REDOX slots contain firmware placeholder 0x001E – skip them entirely.
+            device.required_oxy_dose = data[53]
+        else:
+            if AsekoProbeType.REDOX in device.configuration:
+                AsekoDecoder._fill_redox_data(device, data)
+            if AsekoProbeType.CLF in device.configuration:
+                AsekoDecoder._fill_clf_data(device, data)
+            if (
+                AsekoProbeType.DOSE in device.configuration
+                and AsekoProbeType.CLF not in device.configuration
+            ):
+                # Pure DOSE mode: CLF probe disabled, timed volume dosing active.
+                # byte[53] is the required chlorine/disinfectant dose in ml/m³/h.
+                # When CLF IS present, _fill_clf_data() already reads byte[53] as
+                # required_cl_free — the two interpretations are mutually exclusive.
+                device.required_cl_dose = data[53]
         if unit_type == AsekoDeviceType.SALT:
             AsekoDecoder._fill_salt_unit_data(device, data)
 

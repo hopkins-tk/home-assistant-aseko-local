@@ -284,6 +284,22 @@ SENSORS: list[AsekoSensorEntityDescription] = [
         value_fn=lambda device: device.required_algicide,
     ),
     AsekoSensorEntityDescription(
+        key="required_oxy_dose",
+        translation_key="required_oxy_dose",
+        native_unit_of_measurement="mL/m³/day",
+        state_class=SensorStateClass.MEASUREMENT,
+        icon="mdi:pool",
+        value_fn=lambda device: device.required_oxy_dose,
+    ),
+    AsekoSensorEntityDescription(
+        key="required_cl_dose",
+        translation_key="required_cl_dose",
+        native_unit_of_measurement="mL/m³/h",
+        state_class=SensorStateClass.MEASUREMENT,
+        icon="mdi:pool",
+        value_fn=lambda device: device.required_cl_dose,
+    ),
+    AsekoSensorEntityDescription(
         key="required_floc",
         translation_key="required_floc",
         device_class=SensorDeviceClass.VOLUME_FLOW_RATE,

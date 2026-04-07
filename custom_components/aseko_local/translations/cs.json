@@ -102,6 +102,14 @@
         "name": "Požadovaná dávka algicidu",
         "unit_of_measurement": "ml/m³/den"
       },
+      "required_oxy_dose": {
+        "name": "Požadovaná dávka OXY Pure",
+        "unit_of_measurement": "ml/m³/den"
+      },
+      "required_cl_dose": {
+        "name": "Požadovaná dávka chloru",
+        "unit_of_measurement": "ml/m³/h"
+      },
       "required_floc": {
         "name": "Požadovaná dávka flokulantu"
       },

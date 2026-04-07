@@ -102,6 +102,14 @@
         "name": "Benötigte Dosis Algizid",
         "unit_of_measurement": "ml/m³/Tag"
       },
+      "required_oxy_dose": {
+        "name": "Benötigte Dosis OXY Pure",
+        "unit_of_measurement": "ml/m³/Tag"
+      },
+      "required_cl_dose": {
+        "name": "Benötigte Chlordosis",
+        "unit_of_measurement": "ml/m³/h"
+      },
       "required_floc": {
         "name": "Benötigte Dosis Flockungsmittel"
       },

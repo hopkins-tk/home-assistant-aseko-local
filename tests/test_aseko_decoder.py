@@ -254,7 +254,7 @@ def test_decode_net_120_bytes() -> None:
 
 
 def test_decode_unknown_unit_type() -> None:
-    """Test decoding of data for unknown unit type."""
+    """Unknown unit type must not raise – connection must stay open for cloud forwarding."""
 
     data = bytearray.fromhex(
         "0690ffff0001ffffffffffff0000027300caffff0140ff0c3c0120ffaa000d340000000000ff007f"
@@ -262,11 +262,9 @@ def test_decode_unknown_unit_type() -> None:
         "0690ffff0002ffffffffffff0026003cffff003cffff010183ff012c0502581e28ffffffff0047a2"
     )
 
-    try:
-        AsekoDecoder.decode(bytes(data))
-        pytest.fail("Expected ValueError for unknown unit type")
-    except ValueError:
-        pass
+    # Must not raise – decoder returns a device with device_type=None
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.device_type is None
 
 
 def test_decode_issue_17() -> None:
@@ -540,7 +538,7 @@ def test_available_probes_combinations() -> None:
         PROBE_CLF_MISSING,
         PROBE_DOSE_MISSING,
         PROBE_REDOX_MISSING,
-        PROBE_SANOSIL_MISSING,
+        PROBE_OXY_MISSING,
     )
 
     # All probes present
@@ -552,7 +550,7 @@ def test_available_probes_combinations() -> None:
         AsekoProbeType.CLF,
         AsekoProbeType.REDOX,
         AsekoProbeType.DOSE,
-        AsekoProbeType.SANOSIL,
+        AsekoProbeType.OXY,
     }
 
     # Just CLF is missing
@@ -565,10 +563,10 @@ def test_available_probes_combinations() -> None:
     probes = AsekoDecoder._configuration(data)
     assert AsekoProbeType.REDOX not in probes
 
-    # Just SANOSIL is missing
-    data[4] = PROBE_SANOSIL_MISSING
+    # Just OXY is missing
+    data[4] = PROBE_OXY_MISSING
     probes = AsekoDecoder._configuration(data)
-    assert AsekoProbeType.SANOSIL not in probes
+    assert AsekoProbeType.OXY not in probes
 
     # Just DOSE is missing
     data[4] = PROBE_DOSE_MISSING
@@ -605,3 +603,96 @@ def test_available_probes_combinations() -> None:
 #    data[29] = 0x00
 #    device = AsekoDecoder.decode(bytes(data))
 #    assert device.active_pump == 0
+
+
+# ── ASIN AQUA Oxygen ────────────────────────────────────────────────────────
+
+# Real frames captured 2026-04-02, serial 0x0690DD6D (= 110_157_165)
+# Normal frame: no pump running except filtration (19:33:38)
+_OXY_NORMAL_HEX = (
+    "0690dd6d05011a04021715"
+    "0a00000 2cd001e001efd9d80fe70005ffe"
+    "aa0800000000000000030835"
+    "0690dd6d05031a04021715"
+    "0a4808011908001000120016000 2c0005f000c"
+    "1e0a0128 00f00e10aa3f"
+    "0690dd6d05021a04021715"
+    "0a00290 03c003c003c000a1e3c6e960078"
+    "0802580f2b0f1e1eaacb003a"
+)
+
+# Flocculant pump running frame (19:33:52): byte[29] 0x08 → 0x28
+_OXY_FLOC_HEX = (
+    "0690dd6d05011a04021715"
+    "1700000 2cd001e001efd9d80fe70005ffe"
+    "aa2800000000000000030808"
+    "0690dd6d05031a04021715"
+    "1748080119080010001200160002c0005f000c"
+    "1e0a012800f00e10aa2f"
+    "0690dd6d05021a04021715"
+    "170029003c003c003c000a1e3c6e960078"
+    "0802580f2b0f1e1eaacb0027"
+)
+
+
+def _oxy_bytes(hex_str: str) -> bytes:
+    """Strip whitespace and convert hex string to bytes."""
+    return bytes.fromhex(hex_str.replace(" ", ""))
+
+
+def test_decode_oxy_normal_frame() -> None:
+    """Decode the OXY normal frame: filtration only, no floc pump.
+
+    Real frame captured 2026-04-02 19:33:38 from ASIN AQUA Oxygen (serial 110_157_165).
+    """
+    device = AsekoDecoder.decode(_oxy_bytes(_OXY_NORMAL_HEX))
+
+    # Device type and probes
+    assert device.device_type == AsekoDeviceType.OXY
+    assert device.configuration == {AsekoProbeType.PH, AsekoProbeType.OXY}
+
+    # CLF/REDOX must be None – firmware placeholder 0x001E must not be decoded
+    assert device.cl_free is None
+    assert device.redox is None
+    assert device.required_cl_free is None
+    assert device.required_redox is None
+
+    # OXY-specific setpoint (byte[53] = 0x08 = 8)
+    assert device.required_oxy_dose == 8
+
+    # Pumps
+    assert device.filtration_pump_running is True
+    assert device.floc_pump_running is False
+
+    # Flow rates (sub-frame 3)
+    assert device.flowrate_ph_minus == 60   # byte[95] = 0x3c
+    assert device.flowrate_chlor == 60      # byte[99] = 0x3c (OXY Pure pump slot)
+    assert device.flowrate_floc == 10       # byte[101] = 0x0a
+
+    # Basic data
+    assert device.serial_number == 110_157_165
+    assert device.ph == pytest.approx(7.17, abs=0.01)
+    assert device.water_temperature == pytest.approx(9.5, abs=0.1)
+    assert device.water_flow_to_probes is True
+    assert device.required_ph == pytest.approx(7.2, abs=0.01)
+    assert device.required_water_temperature == 25
+    assert device.pool_volume == 41
+
+
+def test_decode_oxy_floc_pump_running() -> None:
+    """Decode the OXY frame where the flocculant pump is running.
+
+    Real frame captured 2026-04-02 19:33:52. Only change vs normal frame:
+    byte[29] 0x08 → 0x28 (bit 0x20 set = flocculant pump confirmed).
+    """
+    device = AsekoDecoder.decode(_oxy_bytes(_OXY_FLOC_HEX))
+
+    assert device.device_type == AsekoDeviceType.OXY
+    assert device.filtration_pump_running is True
+    assert device.floc_pump_running is True
+
+    # All other OXY fields still intact
+    assert device.cl_free is None
+    assert device.redox is None
+    assert device.required_oxy_dose == 8
+    assert device.flowrate_floc == 10

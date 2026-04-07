@@ -102,6 +102,14 @@
         "name": "Required algicide dose",
         "unit_of_measurement": "ml/m³/day"
       },
+      "required_oxy_dose": {
+        "name": "Required OXY Pure dose",
+        "unit_of_measurement": "ml/m³/day"
+      },
+      "required_cl_dose": {
+        "name": "Required chlorine dose",
+        "unit_of_measurement": "ml/m³/h"
+      },
       "required_floc": {
         "name": "Required flocculant dose"
       },
