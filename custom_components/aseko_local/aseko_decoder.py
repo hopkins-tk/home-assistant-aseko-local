@@ -223,7 +223,7 @@ class AsekoDecoder:
         unit.flowrate_ph_minus = AsekoDecoder._normalize_value(data[95], int)
         unit.flowrate_chlor = AsekoDecoder._normalize_value(data[99], int)
         # byte[101]: shared "third pump slot" — algicide OR flocculant per byte[37].
-        # bit 0x10 in byte[37] = algicide (ml/m³/day); not set = flocculant (ml/h).
+        # bit 0x80 in byte[37] = algicide (ml/m³/day); not set = flocculant (ml/h).
         # 0xFF (UNSPECIFIED) → configuration unknown → leave both as None.
         if data[37] != UNSPECIFIED_VALUE and bool(data[37] & ALGICIDE_CONFIGURED):
             unit.flowrate_algicide = AsekoDecoder._normalize_value(data[101], int)

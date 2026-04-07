@@ -424,6 +424,59 @@ def test_decode_salt_pump_states() -> None:
     assert device.electrolyzer_direction == AsekoElectrolyzerDirection.WAITING
 
 
+def test_decode_salt_algicide_pump_running() -> None:
+    """Test algicide pump running detection for SALT.
+
+    Confirmed by @hopkins-tk 2026-04-04 (19 consecutive frames w/o electrolyzer, PR #87):
+    algicide running → byte[29]=0x28 (bit 5 / 0x20), same mask as flocculant.
+    not running → byte[29]=0x08. Routing via byte[37] bit 7 (0x80) = algicide configured.
+    """
+
+    data = _make_base_bytes()
+    data[4] = 0x0E  # SALT
+    data[37] = 0xB3  # algicide configured (bit 7 set); 0xB3 = real Hopkins value
+    data[54] = 10  # required_algicide = 10 ml/m³/day (non-FF → not None)
+    data[101] = 60  # flowrate_algicide = 60 ml/min
+
+    # Algicide pump running: byte[29] bit 5 (0x20) set
+    data[29] = 0x28  # 0x08 | 0x20 — confirmed by 19 live frames 2026-04-04
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.algicide_pump_running is True
+    assert device.floc_pump_running is None  # algicide configured → floc slot vacant
+
+    # Algicide pump not running
+    data[29] = 0x08  # baseline; confirmed 2026-04-04
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.algicide_pump_running is False
+    assert device.floc_pump_running is None
+
+
+def test_decode_salt_flocculant_pump_running() -> None:
+    """Test flocculant pump running detection for SALT.
+
+    Confirmed by @hopkins-tk 2026-04-03 (PR #87): flocculant running → byte[29]=0x28
+    (bit 5 / 0x20), not running → byte[29]=0x08 (immediate stop, no linger).
+    Byte[37] bit 7 (0x80) clear = flocculant configured.
+    """
+
+    data = _make_base_bytes()
+    data[4] = 0x0E  # SALT
+    data[37] = 0x33  # flocculant configured (bit 7 clear); 0x33 = real Hopkins value
+    data[54] = 1  # required_floc placeholder (not used for type check)
+    data[101] = 60  # flowrate_floc = 60 ml/min
+
+    # Flocculant pump running: byte[29] bit 5 (0x20) set
+    data[29] = 0x28  # 0x08 | 0x20 — confirmed by live frame 2026-04-03
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.floc_pump_running is True
+    assert device.algicide_pump_running is None  # flocculant configured → alg slot vacant
+
+    # Flocculant pump not running
+    data[29] = 0x08  # baseline; confirmed 2026-04-03 (immediate stop, no linger)
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.floc_pump_running is False
+
+
 # test combinations of different methodes like date, time, normalize, probe types etc.
 
 

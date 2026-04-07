@@ -58,7 +58,12 @@ ACTUATOR_MASKS: dict[AsekoDeviceType, AsekoActuatorMasks] = {
     AsekoDeviceType.SALT: AsekoActuatorMasks(
         filtration=0x08,  # uncertain
         ph_minus=0x80,  # uncertain
-        algicide=0x20,  # uncertain – SALT has algicide, not flocculant (confirmed by product page)
+        # SALT third-pump slot: one physical pump, configured as algicide OR flocculant.
+        # Both chemicals use the same bit: byte[29] bit 5 (0x20) when running.
+        # Routing: byte[37] & 0x80 set = algicide; clear = flocculant.
+        # Confirmed by @hopkins-tk 2026-04-04 (19 algicide frames w/o electrolyzer, PR #87).
+        algicide=0x20,
+        flocculant=0x20,
         electrolyzer_running=0x10,
         electrolyzer_running_right=0x10,
         electrolyzer_running_left=0x50,
@@ -106,15 +111,17 @@ class AsekoDevice:
     ph_plus_pump_running: bool | None = (
         None  # byte 29 (unknown - 7-th bit for all except PROFI?)
     )
-    algicide_pump_running: bool | None = None  # byte 29 (5-th bit)
-    floc_pump_running: bool | None = None  # byte 29 (5-th bit)
+    algicide_pump_running: bool | None = (
+        None  # byte 29 bit 4 (0x10) on SALT; uncertain on other types
+    )
+    floc_pump_running: bool | None = None  # byte 29 bit 5 (0x20)
 
     # NEW: flow rates (bytes 95, 97, 99, 101)
     flowrate_chlor: int | None = None
     flowrate_ph_minus: int | None = None
     flowrate_ph_plus: int | None = None
 
-    # algicide/flocculant based on byte 37: bit 0x10 set = algicide, 0 = flocculant, 0xFF = undefined
+    # algicide/flocculant based on byte 37: bit 0x80 set = algicide, 0 = flocculant, 0xFF = undefined
     flowrate_algicide: int | None = None
     flowrate_floc: int | None = None
 
@@ -122,7 +129,7 @@ class AsekoDevice:
     required_redox: int | None = None  # byte 53*10
     required_cl_free: float | None = None  # byte 53*10?
 
-    # algicide/flocculant based on byte 37: bit 0x10 set = algicide, 0 = flocculant, 0xFF = undefined
+    # algicide/flocculant based on byte 37: bit 0x80 set = algicide, 0 = flocculant, 0xFF = undefined
     required_algicide: int | None = None  # byte 54
     required_floc: int | None = None  # byte 54
 
