@@ -106,7 +106,9 @@ def test_decode_home() -> None:
     data = _make_base_bytes()
     data[4] = 0x03  # HOME with CL probe
     data[14:16] = (720).to_bytes(2, "big")  # ph
-    data[37] = 0xB3  # required_ph
+    data[37] = (
+        0xB3  # pump presence/config byte (HOME has independent ports, not routed)
+    )
     data[52] = 72  # required_ph
 
     device = AsekoDecoder.decode(bytes(data))
@@ -128,7 +130,10 @@ def test_decode_home() -> None:
     assert device.backwash_every_n_days == 3
     assert device.backwash_time == time(2, 30)
     assert device.backwash_duration == 20
-    assert device.required_algicide == 5
+    # HOME has 4 independent pump ports — byte[37] routing does not apply.
+    # Setpoint byte positions for algicide/floc are unconfirmed; both must be None.
+    assert device.required_algicide is None
+    assert device.required_floc is None
     assert device.required_water_temperature == 28
     assert device.timestamp is not None
     assert device.timestamp.year == YEAR_OFFSET + 24
@@ -658,6 +663,11 @@ def test_decode_oxy_normal_frame() -> None:
     assert device.redox is None
     assert device.required_cl_free is None
     assert device.required_redox is None
+
+    # byte[37]=0x03 on OXY must NOT trigger SALT-style algicide/floc routing.
+    # Both stay None until byte[54] semantics for OXY are confirmed.
+    assert device.required_algicide is None
+    assert device.required_floc is None
 
     # OXY-specific setpoint (byte[53] = 0x08 = 8)
     assert device.required_oxy_dose == 8

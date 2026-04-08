@@ -21,12 +21,6 @@ READ_TIMEOUT = 30.0
 
 # Bit masks
 WATER_FLOW_TO_PROBES = 0xAA
-# byte 37: third pump slot type indicator.
-# 0x80 (bit 7) = algicide on SALT firmware confirmed by @hopkins-tk (frames 2025).
-# 0x10 (bit 4) = algicide on a different SALT firmware variant (Issue #84 / @jmnemonic).
-# No single mask covers both variants reliably — awaiting further data.
-# See docs/byte37_algicide_floc_analysis.md
-ALGICIDE_CONFIGURED = 0x80
 
 # Probe missing flags
 PROBE_REDOX_MISSING = 0x01

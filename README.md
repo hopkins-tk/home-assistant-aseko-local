@@ -19,7 +19,7 @@ The Aseko unit and your Home Assistant need to run on the same network or traffi
 | Device | Firmware | Sensors | Pump state | Chemical consumption |
 |---|---|---|---|---|
 | ASIN Aqua Net | ≤ 7.x | ✅ | ✅ cl, PH− | ✅ cl, PH− |
-| ASIN Aqua Salt | ≤ 7.x | ✅ | ✅ PH-, ⚠️ Algicide, Flocculant (bitmask unconfirmed) | ✅ PH-, ⚠️ pH− (bitmask unconfirmed) |
+| ASIN Aqua Salt | ≤ 7.x | ✅ | ✅ Filtration, Electrolyzer, Algicide, Flocculant ⚠️ pH− (bitmask unconfirmed) | ✅ Algicide, Flocculant ⚠️ pH− (bitmask unconfirmed) |
 
 > **Firmware note:** This integration supports the **120-byte binary protocol** used by firmware ≤ 7.x. Aseko devices typically send to port **47524** by default; the port can be changed in the integration settings to match your device.
 > Devices with newer firmware (e.g. those reporting port **51050**) transmit a different 463-byte record format that is not yet supported — see [issue #49](https://github.com/hopkins-tk/home-assistant-aseko-local/issues/49) for progress.

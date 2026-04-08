@@ -10,10 +10,10 @@ from .aseko_data import (
     AsekoDeviceType,
     AsekoElectrolyzerDirection,
     AsekoProbeType,
+    AsekoThirdPumpSlot,
     ACTUATOR_MASKS,
 )
 from .const import (
-    ALGICIDE_CONFIGURED,
     PROBE_CLF_MISSING,
     PROBE_DOSE_MISSING,
     PROBE_REDOX_MISSING,
@@ -246,7 +246,9 @@ class AsekoDecoder:
         # byte[101]: shared "third pump slot" — algicide OR flocculant per byte[37].
         # bit 0x80 in byte[37] = algicide (ml/m³/day); not set = flocculant (ml/h).
         # 0xFF (UNSPECIFIED) → configuration unknown → leave both as None.
-        if data[37] != UNSPECIFIED_VALUE and bool(data[37] & ALGICIDE_CONFIGURED):
+        if data[37] != UNSPECIFIED_VALUE and bool(
+            data[37] & AsekoThirdPumpSlot.SALT_ALGICIDE_ROUTING
+        ):
             unit.flowrate_algicide = AsekoDecoder._normalize_value(data[101], int)
         elif data[37] != UNSPECIFIED_VALUE:
             unit.flowrate_floc = AsekoDecoder._normalize_value(data[101], int)
@@ -269,7 +271,7 @@ class AsekoDecoder:
             unit.ph_minus_pump_running = bool(data[29] & masks.ph_minus)
 
         # Algicide and flocculant share bit 0x20 on some device types and byte 37
-        # (ALGICIDE_CONFIGURED) is unreliable (0xFF = unspecified) on several devices.
+        # (AsekoThirdPumpSlot.SALT_ALGICIDE_ROUTING) is unreliable (0xFF = unspecified) on several devices.
         # Instead, use flowrate presence (non-0xFF in the respective flowrate byte) as
         # the pump-existence discriminator. _fill_flowrate_data must run first.
         if masks.algicide and unit.flowrate_algicide is not None:
@@ -286,6 +288,25 @@ class AsekoDecoder:
         ts = AsekoDecoder._timestamp(data)
         _LOGGER.debug("Decoded timestamp = %s (raw: %s)", ts, data[6:12].hex())
 
+        _masks = ACTUATOR_MASKS.get(unit_type)
+
+        # byte[37] routes the setpoint in byte[54] on most device types:
+        # AsekoThirdPumpSlot.SALT_ALGICIDE_ROUTING (0x80) set → algicide dose;
+        # clear → flocculant dose. Both stay None when byte[37] is unspecified
+        # or when the device uses byte[37] for a different purpose (e.g. OXY,
+        # where it is a pump-presence bitmap — see AsekoThirdPumpSlot).
+        _required_algicide = None
+        _required_floc = None
+        if (
+            _masks is not None
+            and _masks.byte37_routes_pump_type
+            and data[37] != UNSPECIFIED_VALUE
+        ):
+            if bool(data[37] & AsekoThirdPumpSlot.SALT_ALGICIDE_ROUTING):
+                _required_algicide = AsekoDecoder._normalize_value(data[54], int)
+            else:
+                _required_floc = AsekoDecoder._normalize_value(data[54], int)
+
         device = AsekoDevice(
             serial_number=int.from_bytes(data[0:4], "big"),
             device_type=unit_type,
@@ -293,13 +314,8 @@ class AsekoDecoder:
             timestamp=AsekoDecoder._timestamp(data),
             water_temperature=int.from_bytes(data[25:27], "big") / 10,
             water_flow_to_probes=(data[28] == WATER_FLOW_TO_PROBES),
-            required_algicide=AsekoDecoder._normalize_value(data[54], int)
-            if data[37] != UNSPECIFIED_VALUE and bool(data[37] & ALGICIDE_CONFIGURED)
-            else None,
-            required_floc=AsekoDecoder._normalize_value(data[54], int)
-            if data[37] != UNSPECIFIED_VALUE
-            and not bool(data[37] & ALGICIDE_CONFIGURED)
-            else None,
+            required_algicide=_required_algicide,
+            required_floc=_required_floc,
             required_water_temperature=AsekoDecoder._normalize_value(data[55], int),
             start1=AsekoDecoder._time(data[56:58]),
             stop1=AsekoDecoder._time(data[58:60]),

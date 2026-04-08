@@ -530,9 +530,11 @@ async def test_async_setup_profi_clf_redox(hass) -> None:
         getattr(e.device, "serial_number", None) == device.serial_number
         for e in added_entities
     )
-    # 11 sensors + 5 binary (water_flow, filtration, cl_pump, ph_minus_pump, floc_pump)
+    # 10 sensors + 5 binary (water_flow, filtration, cl_pump, ph_minus_pump, floc_pump)
     # + 6 consumption (cl, ph_minus, floc × canister + total)
-    assert len(added_entities) == 22
+    # required_floc is intentionally absent: PROFI has independent pump ports (4+) so
+    # byte[37] routing does not apply. The exact setpoint byte position is unconfirmed.
+    assert len(added_entities) == 21
     assert any(
         getattr(e.entity_description, "key", None) == "free_chlorine"
         for e in added_entities
@@ -552,7 +554,7 @@ async def test_async_setup_profi_clf_redox(hass) -> None:
         getattr(e.entity_description, "key", None) != "required_rx"
         for e in added_entities
     )
-    assert any(
+    assert not any(
         getattr(e.entity_description, "key", None) == "required_floc"
         for e in added_entities
     )
