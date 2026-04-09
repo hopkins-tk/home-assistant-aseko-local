@@ -196,30 +196,31 @@ class AsekoDecoder:
 
     @staticmethod
     def _fill_ph_data(unit: AsekoDevice, data: bytes) -> None:
+        if AsekoProbeType.PH not in unit.configuration:
+            return
         unit.ph = int.from_bytes(data[14:16], "big") / 100
-        unit.required_ph = data[52] / 10
 
     @staticmethod
     def _fill_redox_data(unit: AsekoDevice, data: bytes) -> None:
+        if AsekoProbeType.REDOX not in unit.configuration:
+            return
         if data[18] == UNSPECIFIED_VALUE and data[19] == UNSPECIFIED_VALUE:
             unit.redox = int.from_bytes(data[16:18], "big")
         else:
             unit.redox = int.from_bytes(data[18:20], "big")
 
-        if unit.device_type != AsekoDeviceType.PROFI:
-            unit.required_redox = data[53] * 10
-        else:
-            unit.required_redox = None
-
     @staticmethod
     def _fill_clf_data(unit: AsekoDevice, data: bytes) -> None:
+        if AsekoProbeType.CLF not in unit.configuration:
+            return
         unit.cl_free = int.from_bytes(data[16:18], "big") / 100
-        unit.required_cl_free = data[53] / 10
         if unit.device_type != AsekoDeviceType.SALT:
             unit.cl_free_mv = int.from_bytes(data[20:22], "big")
 
     @staticmethod
     def _fill_salt_unit_data(unit: AsekoDevice, data: bytes) -> None:
+        if unit.device_type != AsekoDeviceType.SALT:
+            return
         masks = ACTUATOR_MASKS[AsekoDeviceType.SALT]
         unit.salinity = data[20] / 10
         unit.electrolyzer_power = (
@@ -227,6 +228,53 @@ class AsekoDecoder:
         )
         unit.electrolyzer_active = bool(data[29] & masks.electrolyzer_running)
         unit.electrolyzer_direction = AsekoDecoder._electrolyzer_direction(data, masks)
+
+    @staticmethod
+    def _fill_required_data(unit: AsekoDevice, data: bytes) -> None:
+        """Fill all required setpoint fields.
+
+        byte[52] → required_ph        (PH probe)
+        byte[53] → one of (mutually exclusive, evaluated in priority order):
+            required_oxy_dose         OXY device
+            required_cl_free          CLF probe
+            required_cl_dose          DOSE probe without CLF (pure dosing mode)
+            required_redox            REDOX probe, not on PROFI (× 10)
+        byte[54] → required_algicide or required_floc
+                   (byte[37] routing, only on devices with a shared pump port)
+        """
+        # byte[52]: pH setpoint — present on all devices with a pH probe.
+        if AsekoProbeType.PH in unit.configuration:
+            unit.required_ph = data[52] / 10
+
+        # byte[53]: mutually exclusive interpretations determined by probe/device type.
+        # OXY firmware fills CLF/REDOX slots with placeholder 0x001E — skip them.
+        if unit.device_type == AsekoDeviceType.OXY:
+            unit.required_oxy_dose = data[53]
+        elif AsekoProbeType.CLF in unit.configuration:
+            unit.required_cl_free = data[53] / 10
+        elif (
+            AsekoProbeType.REDOX in unit.configuration
+            and unit.device_type != AsekoDeviceType.PROFI
+        ):
+            unit.required_redox = data[53] * 10
+        elif AsekoProbeType.DOSE in unit.configuration:
+            # Pure DOSE mode: no CLF and no REDOX probe. Timed volume dosing active.
+            # byte[53] = required chlorine/disinfectant dose in ml/m³/h.
+            unit.required_cl_dose = data[53]
+
+        # byte[54]: algicide or flocculant setpoint, routed by byte[37].
+        # Only applies to devices with a single shared physical pump port (e.g. SALT).
+        # Devices with 4+ independent ports (OXY, HOME, PROFI) use byte37_routes_pump_type=False.
+        masks = ACTUATOR_MASKS.get(unit.device_type)
+        if (
+            masks is not None
+            and masks.byte37_routes_pump_type
+            and data[37] != UNSPECIFIED_VALUE
+        ):
+            if bool(data[37] & AsekoThirdPumpSlot.SALT_ALGICIDE_ROUTING):
+                unit.required_algicide = AsekoDecoder._normalize_value(data[54], int)
+            else:
+                unit.required_floc = AsekoDecoder._normalize_value(data[54], int)
 
     @staticmethod
     def _fill_flowrate_data(unit: AsekoDevice, data: bytes) -> None:
@@ -284,38 +332,16 @@ class AsekoDecoder:
     def decode(data: bytes) -> AsekoDevice:
         unit_type = AsekoDecoder._unit_type(data)
         probes = AsekoDecoder._configuration(data, unit_type)
-
         ts = AsekoDecoder._timestamp(data)
         _LOGGER.debug("Decoded timestamp = %s (raw: %s)", ts, data[6:12].hex())
-
-        _masks = ACTUATOR_MASKS.get(unit_type)
-
-        # byte[37] routes the setpoint in byte[54] on most device types:
-        # AsekoThirdPumpSlot.SALT_ALGICIDE_ROUTING (0x80) set → algicide dose;
-        # clear → flocculant dose. Both stay None when byte[37] is unspecified
-        # or when the device uses byte[37] for a different purpose (e.g. OXY,
-        # where it is a pump-presence bitmap — see AsekoThirdPumpSlot).
-        _required_algicide = None
-        _required_floc = None
-        if (
-            _masks is not None
-            and _masks.byte37_routes_pump_type
-            and data[37] != UNSPECIFIED_VALUE
-        ):
-            if bool(data[37] & AsekoThirdPumpSlot.SALT_ALGICIDE_ROUTING):
-                _required_algicide = AsekoDecoder._normalize_value(data[54], int)
-            else:
-                _required_floc = AsekoDecoder._normalize_value(data[54], int)
 
         device = AsekoDevice(
             serial_number=int.from_bytes(data[0:4], "big"),
             device_type=unit_type,
             configuration=probes,
-            timestamp=AsekoDecoder._timestamp(data),
+            timestamp=ts,
             water_temperature=int.from_bytes(data[25:27], "big") / 10,
             water_flow_to_probes=(data[28] == WATER_FLOW_TO_PROBES),
-            required_algicide=_required_algicide,
-            required_floc=_required_floc,
             required_water_temperature=AsekoDecoder._normalize_value(data[55], int),
             start1=AsekoDecoder._time(data[56:58]),
             stop1=AsekoDecoder._time(data[58:60]),
@@ -330,29 +356,11 @@ class AsekoDecoder:
             delay_after_dose=int.from_bytes(data[106:108], "big"),
         )
 
-        if AsekoProbeType.PH in device.configuration:
-            AsekoDecoder._fill_ph_data(device, data)
-        if unit_type == AsekoDeviceType.OXY:
-            # OXY uses byte[53] for required OXY Pure dosage (ml/m³/day), not CLF/REDOX setpoint.
-            # CLF/REDOX slots contain firmware placeholder 0x001E – skip them entirely.
-            device.required_oxy_dose = data[53]
-        else:
-            if AsekoProbeType.REDOX in device.configuration:
-                AsekoDecoder._fill_redox_data(device, data)
-            if AsekoProbeType.CLF in device.configuration:
-                AsekoDecoder._fill_clf_data(device, data)
-            if (
-                AsekoProbeType.DOSE in device.configuration
-                and AsekoProbeType.CLF not in device.configuration
-            ):
-                # Pure DOSE mode: CLF probe disabled, timed volume dosing active.
-                # byte[53] is the required chlorine/disinfectant dose in ml/m³/h.
-                # When CLF IS present, _fill_clf_data() already reads byte[53] as
-                # required_cl_free — the two interpretations are mutually exclusive.
-                device.required_cl_dose = data[53]
-        if unit_type == AsekoDeviceType.SALT:
-            AsekoDecoder._fill_salt_unit_data(device, data)
-
+        AsekoDecoder._fill_ph_data(device, data)
+        AsekoDecoder._fill_redox_data(device, data)
+        AsekoDecoder._fill_clf_data(device, data)
+        AsekoDecoder._fill_salt_unit_data(device, data)
+        AsekoDecoder._fill_required_data(device, data)
         # Flowrate must be decoded before consumable data: pump presence for
         # algicide/flocculant is determined by whether the flowrate byte is set (≠ 0xFF).
         AsekoDecoder._fill_flowrate_data(device, data)
