@@ -213,11 +213,15 @@ class AsekoDevice:
     delay_after_dose: int | None = None  # byte 107 & 108 ? (seconds)
     delay_after_startup: int | None = None  # byte 74 & 75 (seconds)
 
+    # Server-side receive timestamp – set by the coordinator on every incoming frame.
+    # Independent of the device clock (which can be wrong or missing on some models).
+    last_seen: datetime | None = None
+
     def online(self) -> bool:
-        """Check if the device is online."""
-        return self.timestamp is not None and self.timestamp > datetime.now(
+        """Return True if a frame was received within the last 60 seconds."""
+        return self.last_seen is not None and self.last_seen > datetime.now(
             tz=homeassistant.util.dt.get_default_time_zone()
-        ) - timedelta(seconds=20)
+        ) - timedelta(seconds=60)
 
 
 @dataclass

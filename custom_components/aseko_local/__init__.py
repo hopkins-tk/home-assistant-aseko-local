@@ -109,6 +109,8 @@ async def async_setup_entry(
     if not server.running:
         raise ConfigEntryNotReady
 
+    coordinator.async_start_stale_check()
+
     # Optional: Cloud Mirror Forwarder to Aseko Cloud
     mirror_instance = None
     if config_entry.options.get(CONF_FORWARDER_ENABLED):
@@ -168,6 +170,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if unload_ok:
         # Stop server and mirror if they exist
         if getattr(entry, "runtime_data", None):
+            entry.runtime_data.coordinator.async_stop_stale_check()
             if entry.runtime_data.server:
                 await entry.runtime_data.server.stop()
             if entry.runtime_data.mirror:

@@ -140,6 +140,16 @@
       "flowrate_oxy": {
         "name": "Durchflussrate OXY Pure"
       },
+      "connection_status": {
+        "name": "Verbindungsstatus",
+        "state": {
+          "online": "Online",
+          "offline": "Offline"
+        }
+      },
+      "last_seen": {
+        "name": "Letzter Datenstand"
+      },
       "chlor_consumed": {
         "name": "Chlor verbraucht (seit Nachfüllung)"
       },

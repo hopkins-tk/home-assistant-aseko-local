@@ -426,6 +426,25 @@ SENSORS: list[AsekoSensorEntityDescription] = [
     ),
 ]
 
+# ---------- Connection status sensor ----------
+
+CONNECTION_STATUS_SENSOR = AsekoSensorEntityDescription(
+    key="connection_status",
+    translation_key="connection_status",
+    device_class=SensorDeviceClass.ENUM,
+    options=["online", "offline"],
+    icon="mdi:lan-connect",
+    value_fn=lambda device: "online" if device.online() else "offline",
+)
+
+LAST_SEEN_SENSOR = AsekoSensorEntityDescription(
+    key="last_seen",
+    translation_key="last_seen",
+    device_class=SensorDeviceClass.TIMESTAMP,
+    icon="mdi:clock-outline",
+    value_fn=lambda device: device.last_seen,
+)
+
 # ---------- Setup ----------
 
 
@@ -495,6 +514,13 @@ async def async_setup_entry(
                 description.key,
                 entity.unique_id,
             )
+
+        # Connection status sensor – always added, overrides available to show offline state
+        entities.append(
+            AsekoConnectionStatusSensorEntity(
+                device, coordinator, CONNECTION_STATUS_SENSOR
+            )
+        )
 
     _LOGGER.debug(">>> [sensor] Adding %s sensors", len(entities))
     async_add_entities(entities)
@@ -566,3 +592,16 @@ class AsekoLocalSensorEntity(AsekoLocalEntity, SensorEntity):
             val,
         )
         return val
+
+
+class AsekoConnectionStatusSensorEntity(AsekoLocalSensorEntity):
+    """Connection status sensor: always available, shows 'online' or 'offline'.
+
+    Overrides the base available property so the sensor remains visible even
+    when the device is offline – instead of going unavailable it shows 'offline'.
+    """
+
+    @property
+    def available(self) -> bool:
+        """Always available: reports 'offline' rather than becoming unavailable."""
+        return True

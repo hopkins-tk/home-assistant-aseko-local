@@ -2,13 +2,15 @@
 
 import logging
 from collections.abc import Callable
+from datetime import timedelta
 from types import CoroutineType
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, CONF_PORT
 from homeassistant.core import DOMAIN as HOMEASSISTANT_DOMAIN
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import dt as dt_util
 
@@ -45,6 +47,8 @@ class AsekoLocalDataUpdateCoordinator(DataUpdateCoordinator[AsekoData]):
         self._last_raw_frames: dict[int, bytes] = {}
         # Last partial (incomplete) raw frame per serial number
         self._last_partial_frames: dict[int, bytes] = {}
+        # Unsubscribe handle for the periodic stale-check
+        self._stale_check_unsub: Callable[[], None] | None = None
 
     def devices_update_callback(self, device: AsekoDevice) -> None:
         """Receive callback with device update."""
@@ -77,6 +81,11 @@ class AsekoLocalDataUpdateCoordinator(DataUpdateCoordinator[AsekoData]):
             )
 
             new_data.set(device.serial_number, device)
+
+            # Stamp server-side receive time (independent of device clock)
+            stored = new_data.get(device.serial_number)
+            if stored is not None:
+                stored.last_seen = dt_util.now()
 
             # Update consumption tracker for this device
             if device.serial_number not in self._trackers:
@@ -152,3 +161,23 @@ class AsekoLocalDataUpdateCoordinator(DataUpdateCoordinator[AsekoData]):
             [d.serial_number for d in devices],
         )
         return devices
+
+    def async_start_stale_check(self) -> None:
+        """Start a periodic task that pushes updates so entities detect offline state."""
+        self._stale_check_unsub = async_track_time_interval(
+            self.hass,
+            self._async_check_stale,
+            timedelta(seconds=30),
+        )
+
+    @callback
+    def _async_check_stale(self, _now: object) -> None:
+        """Re-push current data so entities re-evaluate device.online()."""
+        if self.data is not None:
+            self.async_set_updated_data(self.data)
+
+    def async_stop_stale_check(self) -> None:
+        """Stop the periodic stale check."""
+        if self._stale_check_unsub is not None:
+            self._stale_check_unsub()
+            self._stale_check_unsub = None
