@@ -53,6 +53,12 @@ RESET_BUTTONS: list[AsekoResetButtonEntityDescription] = [
         icon="mdi:cup-water",
         pump_key="floc",
     ),
+    AsekoResetButtonEntityDescription(
+        key="oxy_refill_reset",
+        translation_key="oxy_refill_reset",
+        icon="mdi:cup-water",
+        pump_key="oxy",
+    ),
 ]
 
 

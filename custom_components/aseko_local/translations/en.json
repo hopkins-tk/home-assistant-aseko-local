@@ -58,6 +58,9 @@
       "floc_pump_running": {
         "name": "Flocculant pump running"
       },
+      "oxy_pump_running": {
+        "name": "OXY Pure pump running"
+      },
       "water_flow_to_probes": {
         "name": "Water flow to probes"
       }
@@ -134,6 +137,9 @@
       "flowrate_floc": {
         "name": "Flow rate flocculant"
       },
+      "flowrate_oxy": {
+        "name": "Flow rate OXY Pure"
+      },
       "chlor_consumed": {
         "name": "Chlorine consumed (since refill)"
       },
@@ -178,7 +184,12 @@
       },
       "floc_remaining": {
         "name": "Flocculant remaining"
-      }
+      }      "oxy_consumed": {
+        "name": "OXY Pure consumed (since refill)"
+      },
+      "oxy_total_consumed": {
+        "name": "OXY Pure consumed (total)"
+      },
     },
     "number": {
       "chlor_last_filled_quantity": {
@@ -212,6 +223,9 @@
       },
       "floc_refill_reset": {
         "name": "Flocculant refill"
+      },
+      "oxy_refill_reset": {
+        "name": "OXY Pure refill"
       }
     }
   }

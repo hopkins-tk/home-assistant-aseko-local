@@ -75,6 +75,12 @@ BINARY_SENSORS: tuple[AsekoLocalBinarySensorEntityDescription, ...] = (
         icon="mdi:water-pump",
         value_fn=lambda device: device.floc_pump_running,
     ),
+    AsekoLocalBinarySensorEntityDescription(
+        key="oxy_pump_running",
+        translation_key="oxy_pump_running",
+        icon="mdi:water-pump",
+        value_fn=lambda device: device.oxy_pump_running,
+    ),
 )
 
 

@@ -20,6 +20,7 @@ reset_consumption:
             - ph_plus
             - algicide
             - floc
+            - oxy
     counter:
       name: Counter
       description: >

@@ -73,6 +73,7 @@ class AsekoActuatorMasks:
     ph_minus: int = 0x00
     algicide: int = 0x00
     flocculant: int = 0x00
+    oxy: int = 0x00  # unconfirmed – awaiting frame with OXY Pure pump active
     electrolyzer_running: int = 0x00
     electrolyzer_running_right: int = 0x00
     electrolyzer_running_left: int = 0x00
@@ -115,11 +116,15 @@ ACTUATOR_MASKS: dict[AsekoDeviceType, AsekoActuatorMasks] = {
     ),
     AsekoDeviceType.HOME: AsekoActuatorMasks(
         filtration=0x08,  # uncertain
-        cl=0x40,  # uncertain
+        # HOME "chlorine" pump port can be configured as Chlorine OR OXY Pure
+        # (same physical port, same bit in byte[29] – routing by an unknown byte).
+        # TODO: confirm which byte carries the cl/oxy routing and add oxy mask once known.
+        #       Waiting for a frame with OXY pump running from a HOME device.
+        cl=0x40,  # uncertain – assumed same bit for both cl and oxy variants
         ph_minus=0x80,  # uncertain
         algicide=0x20,  # uncertain
         flocculant=0x20,  # uncertain
-        byte37_routes_pump_type=False,  # HOME has 4 independent pump ports (cl, ph-, alg, floc)
+        byte37_routes_pump_type=False,  # HOME has independent pump ports (cl/oxy, ph-, alg, floc)
     ),
     AsekoDeviceType.PROFI: AsekoActuatorMasks(
         filtration=0x08,  # uncertain
@@ -162,11 +167,17 @@ class AsekoDevice:
         None  # byte 29 bit 4 (0x10) on SALT; uncertain on other types
     )
     floc_pump_running: bool | None = None  # byte 29 bit 5 (0x20)
+    oxy_pump_running: bool | None = (
+        None  # byte 29 bit unconfirmed – OXY Pure device only
+    )
 
     # NEW: flow rates (bytes 95, 97, 99, 101)
     flowrate_chlor: int | None = None
     flowrate_ph_minus: int | None = None
     flowrate_ph_plus: int | None = None
+    flowrate_oxy: int | None = (
+        None  # byte 99 on OXY Pure device (same slot as flowrate_chlor)
+    )
 
     # algicide/flocculant based on byte 37: bit 0x80 set = algicide, 0 = flocculant, 0xFF = undefined
     flowrate_algicide: int | None = None

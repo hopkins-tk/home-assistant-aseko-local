@@ -278,18 +278,21 @@ class AsekoDecoder:
 
     @staticmethod
     def _fill_flowrate_data(unit: AsekoDevice, data: bytes) -> None:
-        # Bytes 95 and 99 are unconditional: pH− pump and Cl pump.
+        # byte[95] = pH− flowrate (all devices).
         unit.flowrate_ph_minus = AsekoDecoder._normalize_value(data[95], int)
-        unit.flowrate_chlor = AsekoDecoder._normalize_value(data[99], int)
 
         if unit.device_type == AsekoDeviceType.OXY:
-            # OXY has independent pump slots (not a single shared slot like SALT).
-            # byte[101] = flocculant flowrate, byte[103] = algicide flowrate (unconfirmed).
+            # OXY Pure: byte[99] = OXY chemical pump flowrate (shared byte with chlorine
+            # on other devices, but semantically different).
+            # byte[101] = flocculant flowrate (confirmed).
+            # byte[103] as algicide flowrate is unconfirmed – leave as None.
             # byte[37] routing logic does NOT apply to OXY.
+            unit.flowrate_oxy = AsekoDecoder._normalize_value(data[99], int)
             unit.flowrate_floc = AsekoDecoder._normalize_value(data[101], int)
-            # byte[103] as algicide flowrate is unconfirmed – leave as None until
-            # a frame with algicide running is captured.
             return
+
+        # Non-OXY devices: byte[99] = chlorine pump flowrate.
+        unit.flowrate_chlor = AsekoDecoder._normalize_value(data[99], int)
 
         # byte[101]: shared "third pump slot" — algicide OR flocculant per byte[37].
         # bit 0x80 in byte[37] = algicide (ml/m³/day); not set = flocculant (ml/h).
@@ -327,6 +330,9 @@ class AsekoDecoder:
 
         if masks.flocculant and unit.flowrate_floc is not None:
             unit.floc_pump_running = bool(data[29] & masks.flocculant)
+
+        if masks.oxy and unit.flowrate_oxy is not None:
+            unit.oxy_pump_running = bool(data[29] & masks.oxy)
 
     @staticmethod
     def decode(data: bytes) -> AsekoDevice:

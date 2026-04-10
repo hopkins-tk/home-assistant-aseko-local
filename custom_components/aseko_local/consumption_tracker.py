@@ -12,7 +12,7 @@ from .const import READ_TIMEOUT
 _LOGGER = logging.getLogger(__name__)
 
 # All chemical pump types tracked
-PUMP_KEYS = ("cl", "ph_minus", "ph_plus", "algicide", "floc")
+PUMP_KEYS = ("cl", "ph_minus", "ph_plus", "algicide", "floc", "oxy")
 
 # Maximum credible ON→ON interval to prevent runaway accumulation after connection loss
 MAX_PUMP_INTERVAL = timedelta(seconds=READ_TIMEOUT)
@@ -67,6 +67,7 @@ class AsekoConsumptionTracker:
             "ph_plus": (device.ph_plus_pump_running, device.flowrate_ph_plus),
             "algicide": (device.algicide_pump_running, device.flowrate_algicide),
             "floc": (device.floc_pump_running, device.flowrate_floc),
+            "oxy": (device.oxy_pump_running, device.flowrate_oxy),
         }
 
         for key, (is_on, flowrate_per_min) in pump_states.items():

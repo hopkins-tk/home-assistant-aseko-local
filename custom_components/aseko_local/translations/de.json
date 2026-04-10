@@ -58,6 +58,9 @@
       "floc_pump_running": {
         "name": "Flockungsmittel-Pumpe läuft"
       },
+      "oxy_pump_running": {
+        "name": "OXY Pure-Pumpe läuft"
+      },
       "water_flow_to_probes": {
         "name": "Wasserfluss zu den Sensoren"
       }
@@ -134,6 +137,9 @@
       "flowrate_floc": {
         "name": "Durchflussrate Flockungsmittel"
       },
+      "flowrate_oxy": {
+        "name": "Durchflussrate OXY Pure"
+      },
       "chlor_consumed": {
         "name": "Chlor verbraucht (seit Nachfüllung)"
       },
@@ -178,7 +184,12 @@
       },
       "floc_remaining": {
         "name": "Flockungsmittel verbleibend"
-      }
+      }      "oxy_consumed": {
+        "name": "OXY Pure verbraucht (seit Nachfüllung)"
+      },
+      "oxy_total_consumed": {
+        "name": "OXY Pure verbraucht (gesamt)"
+      },
     },
     "number": {
       "chlor_last_filled_quantity": {
@@ -212,6 +223,9 @@
       },
       "floc_refill_reset": {
         "name": "Flockungsmittel nachfüllen"
+      },
+      "oxy_refill_reset": {
+        "name": "OXY Pure nachfüllen"
       }
     }
   }

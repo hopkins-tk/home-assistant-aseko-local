@@ -54,6 +54,7 @@ PUMP_MASK_FIELD: dict[str, str | None] = {
     "ph_plus": None,  # byte position unknown — disabled until confirmed
     "algicide": "algicide",
     "floc": "flocculant",
+    "oxy": "oxy",  # byte position unconfirmed — enabled once mask is set in ACTUATOR_MASKS
 }
 
 # Maps pump_key to the corresponding *_pump_running attribute on AsekoDevice.
@@ -65,6 +66,7 @@ PUMP_RUNNING_ATTR: dict[str, str] = {
     "ph_plus": "ph_plus_pump_running",
     "algicide": "algicide_pump_running",
     "floc": "floc_pump_running",
+    "oxy": "oxy_pump_running",
 }
 
 CONSUMPTION_SENSORS: list[AsekoConsumptionSensorEntityDescription] = [
@@ -153,6 +155,24 @@ CONSUMPTION_SENSORS: list[AsekoConsumptionSensorEntityDescription] = [
         key="floc_total_consumed",
         translation_key="floc_total_consumed",
         pump_key="floc",
+        counter="total",
+        native_unit_of_measurement=UnitOfVolume.LITERS,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        icon="mdi:cup-water",
+    ),
+    AsekoConsumptionSensorEntityDescription(
+        key="oxy_consumed",
+        translation_key="oxy_consumed",
+        pump_key="oxy",
+        counter="canister",
+        native_unit_of_measurement=UnitOfVolume.LITERS,
+        state_class=SensorStateClass.TOTAL,
+        icon="mdi:cup-water",
+    ),
+    AsekoConsumptionSensorEntityDescription(
+        key="oxy_total_consumed",
+        translation_key="oxy_total_consumed",
+        pump_key="oxy",
         counter="total",
         native_unit_of_measurement=UnitOfVolume.LITERS,
         state_class=SensorStateClass.TOTAL_INCREASING,
@@ -384,6 +404,22 @@ SENSORS: list[AsekoSensorEntityDescription] = [
             if device.floc_pump_running
             else 0
             if device.flowrate_floc is not None
+            else None
+        ),
+        entity_registry_visible_default=False,
+    ),
+    AsekoSensorEntityDescription(
+        key="flowrate_oxy",
+        translation_key="flowrate_oxy",
+        device_class=SensorDeviceClass.VOLUME_FLOW_RATE,
+        native_unit_of_measurement="mL/min",
+        state_class=SensorStateClass.MEASUREMENT,
+        icon="mdi:water-pump",
+        value_fn=lambda device: (
+            device.flowrate_oxy
+            if device.oxy_pump_running
+            else 0
+            if device.flowrate_oxy is not None
             else None
         ),
         entity_registry_visible_default=False,

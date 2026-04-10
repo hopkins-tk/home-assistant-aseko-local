@@ -678,7 +678,8 @@ def test_decode_oxy_normal_frame() -> None:
 
     # Flow rates (sub-frame 3)
     assert device.flowrate_ph_minus == 60  # byte[95] = 0x3c
-    assert device.flowrate_chlor == 60  # byte[99] = 0x3c (OXY Pure pump slot)
+    assert device.flowrate_oxy == 60  # byte[99] = 0x3c (OXY Pure pump slot)
+    assert device.flowrate_chlor is None  # not set on OXY devices
     assert device.flowrate_floc == 10  # byte[101] = 0x0a
 
     # Basic data

@@ -58,6 +58,9 @@
       "floc_pump_running": {
         "name": "Čerpadlo flokulantu běží"
       },
+      "oxy_pump_running": {
+        "name": "Čerpadlo OXY Pure běží"
+      },
       "water_flow_to_probes": {
         "name": "Průtok vody k sondám"
       }
@@ -134,6 +137,9 @@
       "flowrate_floc": {
         "name": "Průtok flokulantu"
       },
+      "flowrate_oxy": {
+        "name": "Průtok OXY Pure"
+      },
       "chlor_consumed": {
         "name": "Spotřeba chloru (od doplnění)"
       },
@@ -178,7 +184,12 @@
       },
       "floc_remaining": {
         "name": "Zbývající flokulant"
-      }
+      }      "oxy_consumed": {
+        "name": "Spotřeba OXY Pure (od doplnění)"
+      },
+      "oxy_total_consumed": {
+        "name": "Spotřeba OXY Pure (celkem)"
+      },
     },
     "number": {
       "chlor_last_filled_quantity": {
@@ -212,6 +223,9 @@
       },
       "floc_refill_reset": {
         "name": "Doplnění flokulantu"
+      },
+      "oxy_refill_reset": {
+        "name": "Doplnění OXY Pure"
       }
     }
   }
