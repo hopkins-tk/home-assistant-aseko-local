@@ -184,12 +184,13 @@
       },
       "floc_remaining": {
         "name": "Zbývající flokulant"
-      }      "oxy_consumed": {
+      },
+      "oxy_consumed": {
         "name": "Spotřeba OXY Pure (od doplnění)"
       },
       "oxy_total_consumed": {
         "name": "Spotřeba OXY Pure (celkem)"
-      },
+      }
     },
     "number": {
       "chlor_last_filled_quantity": {

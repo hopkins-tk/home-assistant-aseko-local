@@ -184,12 +184,13 @@
       },
       "floc_remaining": {
         "name": "Flockungsmittel verbleibend"
-      }      "oxy_consumed": {
+      },
+      "oxy_consumed": {
         "name": "OXY Pure verbraucht (seit Nachfüllung)"
       },
       "oxy_total_consumed": {
         "name": "OXY Pure verbraucht (gesamt)"
-      },
+      }
     },
     "number": {
       "chlor_last_filled_quantity": {

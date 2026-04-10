@@ -184,12 +184,13 @@
       },
       "floc_remaining": {
         "name": "Flocculant remaining"
-      }      "oxy_consumed": {
+      },
+      "oxy_consumed": {
         "name": "OXY Pure consumed (since refill)"
       },
       "oxy_total_consumed": {
         "name": "OXY Pure consumed (total)"
-      },
+      }
     },
     "number": {
       "chlor_last_filled_quantity": {
