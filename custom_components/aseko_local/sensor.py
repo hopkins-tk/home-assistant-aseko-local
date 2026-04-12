@@ -306,7 +306,6 @@ SENSORS: list[AsekoSensorEntityDescription] = [
     AsekoSensorEntityDescription(
         key="required_oxy_dose",
         translation_key="required_oxy_dose",
-        native_unit_of_measurement="mL/m³/day",
         state_class=SensorStateClass.MEASUREMENT,
         icon="mdi:pool",
         value_fn=lambda device: device.required_oxy_dose,
@@ -314,7 +313,6 @@ SENSORS: list[AsekoSensorEntityDescription] = [
     AsekoSensorEntityDescription(
         key="required_cl_dose",
         translation_key="required_cl_dose",
-        native_unit_of_measurement="mL/m³/h",
         state_class=SensorStateClass.MEASUREMENT,
         icon="mdi:pool",
         value_fn=lambda device: device.required_cl_dose,
@@ -322,7 +320,6 @@ SENSORS: list[AsekoSensorEntityDescription] = [
     AsekoSensorEntityDescription(
         key="required_floc",
         translation_key="required_floc",
-        device_class=SensorDeviceClass.VOLUME_FLOW_RATE,
         native_unit_of_measurement="mL/h",
         state_class=SensorStateClass.MEASUREMENT,
         icon="mdi:pool",
@@ -331,7 +328,6 @@ SENSORS: list[AsekoSensorEntityDescription] = [
     AsekoSensorEntityDescription(
         key="flowrate_chlor",
         translation_key="flowrate_chlor",
-        device_class=SensorDeviceClass.VOLUME_FLOW_RATE,
         native_unit_of_measurement="mL/min",
         state_class=SensorStateClass.MEASUREMENT,
         icon="mdi:water-pump",
@@ -347,7 +343,6 @@ SENSORS: list[AsekoSensorEntityDescription] = [
     AsekoSensorEntityDescription(
         key="flowrate_ph_minus",
         translation_key="flowrate_ph_minus",
-        device_class=SensorDeviceClass.VOLUME_FLOW_RATE,
         native_unit_of_measurement="mL/min",
         state_class=SensorStateClass.MEASUREMENT,
         icon="mdi:water-pump",
@@ -363,7 +358,6 @@ SENSORS: list[AsekoSensorEntityDescription] = [
     AsekoSensorEntityDescription(
         key="flowrate_ph_plus",
         translation_key="flowrate_ph_plus",
-        device_class=SensorDeviceClass.VOLUME_FLOW_RATE,
         native_unit_of_measurement="mL/min",
         state_class=SensorStateClass.MEASUREMENT,
         icon="mdi:water-pump",
@@ -379,7 +373,6 @@ SENSORS: list[AsekoSensorEntityDescription] = [
     AsekoSensorEntityDescription(
         key="flowrate_algicide",
         translation_key="flowrate_algicide",
-        device_class=SensorDeviceClass.VOLUME_FLOW_RATE,
         native_unit_of_measurement="mL/min",
         state_class=SensorStateClass.MEASUREMENT,
         icon="mdi:water-pump",
@@ -395,7 +388,6 @@ SENSORS: list[AsekoSensorEntityDescription] = [
     AsekoSensorEntityDescription(
         key="flowrate_floc",
         translation_key="flowrate_floc",
-        device_class=SensorDeviceClass.VOLUME_FLOW_RATE,
         native_unit_of_measurement="mL/min",
         state_class=SensorStateClass.MEASUREMENT,
         icon="mdi:water-pump",
@@ -411,7 +403,6 @@ SENSORS: list[AsekoSensorEntityDescription] = [
     AsekoSensorEntityDescription(
         key="flowrate_oxy",
         translation_key="flowrate_oxy",
-        device_class=SensorDeviceClass.VOLUME_FLOW_RATE,
         native_unit_of_measurement="mL/min",
         state_class=SensorStateClass.MEASUREMENT,
         icon="mdi:water-pump",
