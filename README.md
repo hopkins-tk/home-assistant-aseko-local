@@ -115,24 +115,29 @@ Supported devices report how much chemical each dosing pump has dispensed. The i
 
 - **Since last reset** (`*_since_reset`) — resets to zero when you refill the canister and trigger a reset.
 - **Total** (`*_total`) — a running lifetime total that never resets automatically.
+- **Reset Button** — a dashboard button to reset the *since last reset* counter after refilling a canister.
+- **Pump state** — the integration also decodes pump states (on/off) from the raw data, so you can track when pumps are running in real time and you can analyze the history like how often and how long running.
+- **Other information** like canister fill-up volume and remaining volume can be tracked using standard Home Assistant helpers and templates — see below for details.
 
-![Consumption dashboard example](images/aseko_dashboard_consum_example.png)
+Here is an example of the consumption sensors and canister settings in Home Assistant:
+
+![Consumption dashboard example](images/aseko_dashboard_example.png)
 
 ### Resetting the canister counter
 
 After refilling a chemical canister trigger a reset so the *since last reset* counter starts from zero again.
 
-**Option 1 – Developer Tools**
+**Option 1 – Dashboard button**
 
-Go to **Developer Tools → Actions**, search for `aseko_local.reset_consumption` and call it with the pump you refilled (or `all`) and counter `canister`.
+Add a **button card** or an **entity card** and choose the button entity ***_refill_reset** (see image above).
+
+**Option 2 – Developer Tools**
+
+Go to **Developer Tools → Actions**, search for `aseko_local.reset_consumption` and call it with the pump you refilled (or `all`) and counter `canister`. With this method you can also reset the *total* counter, which is not possible with the dashboard button.
 
 ![Reset consumption via Developer Tools](images/aseko_action_reset.png)
 
-**Option 2 – Dashboard button**
 
-Add a **Button** card to your dashboard, set the tap action to **Perform action → Aseko Local: Reset consumption** and choose the pump and counter type. The button can be placed right next to the consumption sensor cards for a convenient one-tap refill workflow.
-
-![Button card configuration for reset](images/aseko_config_reset_button.png)
 
 ### Optional: Track remaining canister volume
 
@@ -169,9 +174,16 @@ Adjust the entity IDs to match your own helper and sensor names.
 
 ![Template sensor for remaining canister volume](images/aseko_template_sensor_remaining.png)
 
-**Step 3 – Add everything to a dashboard card**
+** Step 3 - Issue utility meter for periodic usage like daily/weekly/monthly consumption**
+Go to **Settings → Devices & Services → Helpers → Create helper → Utility Meter** and configure it as follows:
+- Name: PH minus daily usage
+- Meter type: Daily
+- Source entity: sensor.ph_minus_total (or sensor.ph_minus_since_reset, depending on your preference)
+- reset on: midnight (for daily), or the first day of the month (for monthly), etc.
+- Device class: Energy (or None, depending on your preference)
+- Unit of measurement: L
+
+**Step 4 – Add everything to a dashboard card**
 
 Combine the fill-up number input, the *since last reset* sensor, the remaining volume template sensor, and a reset button into a single dashboard card for a complete canister management view.
-
-![Dashboard canister management card](images/aseko_dashboard_canister_handling.png)
 
