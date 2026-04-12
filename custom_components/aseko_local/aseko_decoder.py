@@ -246,11 +246,18 @@ class AsekoDecoder:
         if AsekoProbeType.PH in unit.configuration:
             unit.required_ph = data[52] / 10
 
-        # byte[53]: mutually exclusive interpretations determined by probe/device type.
         # OXY firmware fills CLF/REDOX slots with placeholder 0x001E — skip them.
+        # All OXY setpoint bytes are independent of the non-OXY routing logic below.
         if unit.device_type == AsekoDeviceType.OXY:
             unit.required_oxy_dose = data[53]
-        elif AsekoProbeType.CLF in unit.configuration:
+            # byte[54] = required_floc (ml/h)           confirmed: 2026-04-11 value=10
+            # byte[72] = required_algicide (ml/m³/d)    confirmed: 2026-04-11 value=15
+            unit.required_floc = AsekoDecoder._normalize_value(data[54], int)
+            unit.required_algicide = AsekoDecoder._normalize_value(data[72], int)
+            return
+
+        # byte[53]: mutually exclusive interpretations determined by probe/device type.
+        if AsekoProbeType.CLF in unit.configuration:
             unit.required_cl_free = data[53] / 10
         elif (
             AsekoProbeType.REDOX in unit.configuration
@@ -262,9 +269,7 @@ class AsekoDecoder:
             # byte[53] = required chlorine/disinfectant dose in ml/m³/h.
             unit.required_cl_dose = data[53]
 
-        # byte[54]: algicide or flocculant setpoint, routed by byte[37].
-        # Only applies to devices with a single shared physical pump port (e.g. SALT).
-        # Devices with 4+ independent ports (OXY, HOME, PROFI) use byte37_routes_pump_type=False.
+        # byte[54]: algicide or flocculant setpoint, routed via byte[37] (SALT shared port).
         masks = ACTUATOR_MASKS.get(unit.device_type)
         if (
             masks is not None
@@ -282,13 +287,13 @@ class AsekoDecoder:
         unit.flowrate_ph_minus = AsekoDecoder._normalize_value(data[95], int)
 
         if unit.device_type == AsekoDeviceType.OXY:
-            # OXY Pure: byte[99] = OXY chemical pump flowrate (shared byte with chlorine
-            # on other devices, but semantically different).
+            # OXY Pure: independent pump ports, no byte[37] routing.
+            # byte[99]  = OXY chemical pump flowrate (confirmed).
             # byte[101] = flocculant flowrate (confirmed).
-            # byte[103] as algicide flowrate is unconfirmed – leave as None.
-            # byte[37] routing logic does NOT apply to OXY.
+            # byte[103] = algicide flowrate   (confirmed: 2026-04-11 value=60 ml/min).
             unit.flowrate_oxy = AsekoDecoder._normalize_value(data[99], int)
             unit.flowrate_floc = AsekoDecoder._normalize_value(data[101], int)
+            unit.flowrate_algicide = AsekoDecoder._normalize_value(data[103], int)
             return
 
         # Non-OXY devices: byte[99] = chlorine pump flowrate.

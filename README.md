@@ -19,8 +19,8 @@ The Aseko unit and your Home Assistant need to run on the same network or traffi
 | Device | Firmware | Sensors | Pump state | Chemical consumption |
 |---|---|---|---|---|
 | ASIN Aqua Net | ≤ 7.x | ✅ | ✅ cl, PH− | ✅ cl, PH− |
-| ASIN Aqua Salt | ≤ 7.x | ✅ | ✅ Filtration, Electrolyzer, Algicide, Flocculant ⚠️ pH− (bitmask unconfirmed) | ✅ Algicide, Flocculant ⚠️ pH− (bitmask unconfirmed) |
-
+| ASIN Aqua Salt | ≤ 7.x | ✅ | ✅ Filtration, Electrolyzer, Algicide, Flocculant, pH− | ✅ Algicide, Flocculant, pH− |
+| ASIN Aqua Oxy | ≤ 7.x | ✅ | ✅ Filtration, Oxy, Algicide, Flocculant, pH− | ✅ Oxy,Algicide, Flocculant, pH− |
 > **Firmware note:** This integration supports the **120-byte binary protocol** used by firmware ≤ 7.x. Aseko devices typically send to port **47524** by default; the port can be changed in the integration settings to match your device.
 > Devices with newer firmware (e.g. those reporting port **51050**) transmit a different 463-byte record format that is not yet supported — see [issue #49](https://github.com/hopkins-tk/home-assistant-aseko-local/issues/49) for progress.
 
@@ -39,6 +39,7 @@ The following devices are likely compatible but the byte mapping for pump states
 | ASIN Aqua Eox Pro (07.2026) | ⚠️ Untested | Pump state bits uncertain; pH+ pump bit position unknown |
 | ASIN Aqua Salt NET (01.2026) | ⚠️ Untested | Pump state bits uncertain; pH+ pump bit position unknown |
 | ASIN Aqua Net+  | ⚠️ Untested | Pump state bits uncertain; pH+ pump bit position unknown |
+| ASIN Aqua Net fw 8.x | ⚠️ Unsupported yet | New 463-byte frame format; byte mapping unknown |
 | ASIN Aqua  | ❌ Unsupported | No network connection |
 
 

@@ -90,10 +90,10 @@ class AsekoActuatorMasks:
 ACTUATOR_MASKS: dict[AsekoDeviceType, AsekoActuatorMasks] = {
     AsekoDeviceType.OXY: AsekoActuatorMasks(
         filtration=0x08,  # confirmed: all captured frames
+        algicide=0x10,  # confirmed: 2026-04-11 Winnetoux log – byte[29] 0x08→0x18 at algicide pump on
         flocculant=0x20,  # confirmed: toggles exactly at 19:33:52 floc event
-        # algicide=0x10    unconfirmed – awaiting frame with algicide running
-        # ph_minus=0x80    unconfirmed – awaiting frame with pH− running
-        # cl=0x40          unconfirmed – awaiting frame with OXY Pure pump running
+        oxy=0x40,  # confirmed: 2026-04-11 Winnetoux log – byte[29] 0x08→0x48 at OXY pump on
+        ph_minus=0x80,  # confirmed: 2026-04-12 Winnetoux log – byte[29] 0x08→0x88 at pH− pump on
         byte37_routes_pump_type=False,  # OXY byte[37] = pump-presence bitmap, not routing
     ),
     AsekoDeviceType.NET: AsekoActuatorMasks(
