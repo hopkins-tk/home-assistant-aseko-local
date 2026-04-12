@@ -12,6 +12,7 @@ from .const import (
     DEFAULT_BINDING_PORT,
     MESSAGE_SIZE,
     READ_TIMEOUT,
+    UNSPECIFIED_VALUE,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -151,14 +152,19 @@ class AsekoDeviceServer:
                     await self._call_forward_cb(rewound_frame)
 
                     # 🔎 Plausibility check before decoding: pH values must be between 0 and 14
-                    ph_value = int.from_bytes(rewound_frame[14:16], "big") / 100
-                    if not (0 <= ph_value <= 14 or ph_value == 655.35):
-                        _LOGGER.error(
-                            "Unreasonable pH value (%s) received from %s → closing connection",
-                            ph_value,
-                            addr,
-                        )
-                        break  # leave loop → connection will be closed
+                    # 0xFF 0xFF (UNSPECIFIED_VALUE) means the probe is absent — skip the check
+                    if (
+                        rewound_frame[14] != UNSPECIFIED_VALUE
+                        and rewound_frame[15] != UNSPECIFIED_VALUE
+                    ):
+                        ph_value = int.from_bytes(rewound_frame[14:16], "big") / 100
+                        if not (0 <= ph_value <= 14):
+                            _LOGGER.error(
+                                "Unreasonable pH value (%s) received from %s → closing connection",
+                                ph_value,
+                                addr,
+                            )
+                            break  # leave loop → connection will be closed
 
                     required_ph = rewound_frame[52] / 10
                     if not (6 <= required_ph <= 10):
