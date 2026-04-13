@@ -43,6 +43,24 @@
       "filtration_pump_running": {
         "name": "Filtrační čerpadlo běží"
       },
+      "cl_pump_running": {
+        "name": "Čerpadlo chloru běží"
+      },
+      "ph_minus_pump_running": {
+        "name": "Čerpadlo pH- běží"
+      },
+      "ph_plus_pump_running": {
+        "name": "Čerpadlo pH+ běží"
+      },
+      "algicide_pump_running": {
+        "name": "Čerpadlo algicidu běží"
+      },
+      "floc_pump_running": {
+        "name": "Čerpadlo flokulantu běží"
+      },
+      "oxy_pump_running": {
+        "name": "Čerpadlo OXY Pure běží"
+      },
       "water_flow_to_probes": {
         "name": "Průtok vody k sondám"
       }
@@ -87,6 +105,14 @@
         "name": "Požadovaná dávka algicidu",
         "unit_of_measurement": "ml/m³/den"
       },
+      "required_oxy_dose": {
+        "name": "Požadovaná dávka OXY Pure",
+        "unit_of_measurement": "ml/m³/den"
+      },
+      "required_cl_dose": {
+        "name": "Požadovaná dávka chloru",
+        "unit_of_measurement": "ml/m³/h"
+      },
       "required_floc": {
         "name": "Požadovaná dávka flokulantu"
       },
@@ -110,6 +136,19 @@
       },
       "flowrate_floc": {
         "name": "Průtok flokulantu"
+      },
+      "flowrate_oxy": {
+        "name": "Průtok OXY Pure"
+      },
+      "connection_status": {
+        "name": "Stav připojení",
+        "state": {
+          "online": "Online",
+          "offline": "Offline"
+        }
+      },
+      "last_seen": {
+        "name": "Poslední aktualizace dat"
       },
       "chlor_consumed": {
         "name": "Spotřeba chloru (od doplnění)"
@@ -155,6 +194,12 @@
       },
       "floc_remaining": {
         "name": "Zbývající flokulant"
+      },
+      "oxy_consumed": {
+        "name": "Spotřeba OXY Pure (od doplnění)"
+      },
+      "oxy_total_consumed": {
+        "name": "Spotřeba OXY Pure (celkem)"
       }
     },
     "number": {
@@ -189,6 +234,9 @@
       },
       "floc_refill_reset": {
         "name": "Doplnění flokulantu"
+      },
+      "oxy_refill_reset": {
+        "name": "Doplnění OXY Pure"
       }
     }
   }

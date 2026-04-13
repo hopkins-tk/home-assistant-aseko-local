@@ -46,6 +46,5 @@ class AsekoLocalEntity(CoordinatorEntity[AsekoLocalDataUpdateCoordinator]):
 
     @property
     def available(self) -> bool:
-        """Return True if entity is available."""
-
-        return super().available and self.device.online()
+        """Return True if the coordinator is available (last known values are kept)."""
+        return super().available

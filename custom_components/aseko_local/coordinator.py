@@ -2,16 +2,20 @@
 
 import logging
 from collections.abc import Callable
+from datetime import timedelta
 from types import CoroutineType
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, CONF_PORT
 from homeassistant.core import DOMAIN as HOMEASSISTANT_DOMAIN
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
+from homeassistant.util import dt as dt_util
 
 from .aseko_data import AsekoData, AsekoDevice
+from .consumption_tracker import AsekoConsumptionTracker
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -37,6 +41,14 @@ class AsekoLocalDataUpdateCoordinator(DataUpdateCoordinator[AsekoData]):
             _LOGGER,
             name=f"{HOMEASSISTANT_DOMAIN} ({config_entry.unique_id})",
         )
+        # One tracker per device serial number
+        self._trackers: dict[int, AsekoConsumptionTracker] = {}
+        # Last raw frame per device serial number (for diagnostics)
+        self._last_raw_frames: dict[int, bytes] = {}
+        # Last partial (incomplete) raw frame per serial number
+        self._last_partial_frames: dict[int, bytes] = {}
+        # Unsubscribe handle for the periodic stale-check
+        self._stale_check_unsub: Callable[[], None] | None = None
 
     def devices_update_callback(self, device: AsekoDevice) -> None:
         """Receive callback with device update."""
@@ -70,6 +82,16 @@ class AsekoLocalDataUpdateCoordinator(DataUpdateCoordinator[AsekoData]):
 
             new_data.set(device.serial_number, device)
 
+            # Stamp server-side receive time (independent of device clock)
+            stored = new_data.get(device.serial_number)
+            if stored is not None:
+                stored.last_seen = dt_util.now()
+
+            # Update consumption tracker for this device
+            if device.serial_number not in self._trackers:
+                self._trackers[device.serial_number] = AsekoConsumptionTracker()
+            self._trackers[device.serial_number].update(device, dt_util.now())
+
             _LOGGER.debug(
                 "✅ Stored device %s → known serials now: %s",
                 device.serial_number,
@@ -92,6 +114,41 @@ class AsekoLocalDataUpdateCoordinator(DataUpdateCoordinator[AsekoData]):
             if self.cb_new_device is not None:
                 self.hass.loop.create_task(self.cb_new_device(device))
 
+    def store_raw_frame(self, raw_frame: bytes) -> None:
+        """Cache the last raw frame, keyed by serial number (bytes 0-3).
+
+        Frames shorter than MESSAGE_SIZE are stored as partial frames so users
+        with unknown device variants can share the raw data via the Diagnostics
+        download without needing to enable debug logging.
+        """
+        if len(raw_frame) < 4:
+            return
+        serial = int.from_bytes(raw_frame[0:4], "big")
+        from .const import MESSAGE_SIZE  # noqa: PLC0415
+
+        if len(raw_frame) < MESSAGE_SIZE:
+            self._last_partial_frames[serial] = bytes(raw_frame)
+        else:
+            self._last_raw_frames[serial] = bytes(raw_frame)
+
+    def get_raw_frame(self, serial_number: int) -> bytes | None:
+        """Return the last full raw frame for a given device serial number."""
+        return self._last_raw_frames.get(serial_number)
+
+    def get_partial_frame(self, serial_number: int) -> bytes | None:
+        """Return the last partial (incomplete) raw frame, if any."""
+        return self._last_partial_frames.get(serial_number)
+
+    def get_tracker(self, serial_number: int) -> AsekoConsumptionTracker | None:
+        """Return the consumption tracker for a given device serial number."""
+        return self._trackers.get(serial_number)
+
+    def reset_consumption(self, pump_key: str, counter: str) -> None:
+        """Reset consumption counters for all tracked devices and notify listeners."""
+        for tracker in self._trackers.values():
+            tracker.reset(pump_key=pump_key, counter=counter)
+        self.async_update_listeners()
+
     def get_device(self, serial_number: int) -> AsekoDevice | None:
         _LOGGER.debug("get_device(%s) called", serial_number)
         return self.data.get(serial_number) if self.data is not None else None
@@ -104,3 +161,23 @@ class AsekoLocalDataUpdateCoordinator(DataUpdateCoordinator[AsekoData]):
             [d.serial_number for d in devices],
         )
         return devices
+
+    def async_start_stale_check(self) -> None:
+        """Start a periodic task that pushes updates so entities detect offline state."""
+        self._stale_check_unsub = async_track_time_interval(
+            self.hass,
+            self._async_check_stale,
+            timedelta(seconds=30),
+        )
+
+    @callback
+    def _async_check_stale(self, _now: object) -> None:
+        """Re-push current data so entities re-evaluate device.online()."""
+        if self.data is not None:
+            self.async_set_updated_data(self.data)
+
+    def async_stop_stale_check(self) -> None:
+        """Stop the periodic stale check."""
+        if self._stale_check_unsub is not None:
+            self._stale_check_unsub()
+            self._stale_check_unsub = None

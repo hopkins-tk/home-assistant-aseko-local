@@ -5,7 +5,6 @@ from datetime import time, datetime
 import pytest
 
 from custom_components.aseko_local.aseko_data import (
-    AsekoConsumableType,
     AsekoDeviceType,
     AsekoElectrolyzerDirection,
     AsekoProbeType,
@@ -32,7 +31,12 @@ def _make_base_bytes(size: int = 120) -> bytearray:
     data[25:27] = (245).to_bytes(2, "big")  # water_temperature = 24.5
     data[28] = WATER_FLOW_TO_PROBES
     data[29] = 0x08  # pump_running
-    data[54] = 5  # required_algicide
+    data[37] = (
+        0xFF  # UNSPECIFIED (0xFF) → byte[101] not routed; flowrate_algicide and flowrate_floc both None
+    )
+    data[54] = (
+        5  # required dosing rate (byte 54); algicide or floc depending on byte[37]
+    )
     data[55] = 28  # required_water_temperature
     data[56] = 8  # start1 hour
     data[57] = 0  # start1 min
@@ -87,6 +91,7 @@ def test_flowrates() -> None:
     """Test decoding of flowrate data."""
 
     data = _make_base_bytes()
+    data[37] = 0x00  # flocculant mode → byte[101] routes to flowrate_floc
 
     device = AsekoDecoder.decode(bytes(data))
     assert device.flowrate_chlor is None
@@ -101,7 +106,9 @@ def test_decode_home() -> None:
     data = _make_base_bytes()
     data[4] = 0x03  # HOME with CL probe
     data[14:16] = (720).to_bytes(2, "big")  # ph
-    data[37] = 0xB3  # required_ph
+    data[37] = (
+        0xB3  # pump presence/config byte (HOME has independent ports, not routed)
+    )
     data[52] = 72  # required_ph
 
     device = AsekoDecoder.decode(bytes(data))
@@ -123,7 +130,10 @@ def test_decode_home() -> None:
     assert device.backwash_every_n_days == 3
     assert device.backwash_time == time(2, 30)
     assert device.backwash_duration == 20
-    assert device.required_algicide == 5
+    # HOME has 4 independent pump ports — byte[37] routing does not apply.
+    # Setpoint byte positions for algicide/floc are unconfirmed; both must be None.
+    assert device.required_algicide is None
+    assert device.required_floc is None
     assert device.required_water_temperature == 28
     assert device.timestamp is not None
     assert device.timestamp.year == YEAR_OFFSET + 24
@@ -141,7 +151,7 @@ def test_decode_electrolyzer_data() -> None:
     data[4] = 0x0E  # SALT with REDOX probe
     data[20] = 32  # salinity = 3.2
     data[21] = 80  # electrolyzer_power
-    data[29] = AsekoConsumableType.ELECTROLYZER_RUNNING_RIGHT  # electrolyzer_active
+    data[29] = 0x10  # ELECTROLYZER_RUNNING_RIGHT
     data[16:18] = (50).to_bytes(2, "big")  # cl_free < MAX_CLF_LIMIT
     data[14:16] = (700).to_bytes(2, "big")  # ph
     data[52] = 70
@@ -161,7 +171,7 @@ def test_decode_electrolyzer_data_left_direction() -> None:
     data[4] = 0x0E  # SALT with REDOX probe
     data[20] = 32
     data[21] = 80
-    data[29] = AsekoConsumableType.ELECTROLYZER_RUNNING_LEFT
+    data[29] = 0x50  # ELECTROLYZER_RUNNING_LEFT
 
     device = AsekoDecoder.decode(bytes(data))
     assert device.electrolyzer_direction == AsekoElectrolyzerDirection.LEFT
@@ -249,7 +259,7 @@ def test_decode_net_120_bytes() -> None:
 
 
 def test_decode_unknown_unit_type() -> None:
-    """Test decoding of data for unknown unit type."""
+    """Unknown unit type must not raise – connection must stay open for cloud forwarding."""
 
     data = bytearray.fromhex(
         "0690ffff0001ffffffffffff0000027300caffff0140ff0c3c0120ffaa000d340000000000ff007f"
@@ -257,11 +267,9 @@ def test_decode_unknown_unit_type() -> None:
         "0690ffff0002ffffffffffff0026003cffff003cffff010183ff012c0502581e28ffffffff0047a2"
     )
 
-    try:
-        AsekoDecoder.decode(bytes(data))
-        pytest.fail("Expected ValueError for unknown unit type")
-    except ValueError:
-        pass
+    # Must not raise – decoder returns a device with device_type=None
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.device_type is None
 
 
 def test_decode_issue_17() -> None:
@@ -350,6 +358,133 @@ def test_decode_issue_61() -> None:
 # test combinations of different methodes like date, time, normalize, probe types etc.
 
 
+def test_decode_net_pump_states() -> None:
+    """Test pump state decoding for Aqua NET (confirmed byte 29 masks from Issue #66)."""
+
+    data = _make_base_bytes()
+    data[4] = 0x09  # NET with CLF probe
+
+    # Bit 0x08 is not mapped for NET – filtration_pump_running stays None
+    data[29] = 0x08
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.filtration_pump_running is None
+    assert device.cl_pump_running is False
+    assert device.ph_minus_pump_running is False
+
+    # CL pump only (0x02; bit 0x08 has no meaning on NET)
+    data[29] = 0x0A  # 0x08 | 0x02
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.filtration_pump_running is None
+    assert device.cl_pump_running is True
+    assert device.ph_minus_pump_running is False
+
+    # PH-minus pump only (0x01; bit 0x08 has no meaning on NET)
+    data[29] = 0x09  # 0x08 | 0x01
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.filtration_pump_running is None
+    assert device.cl_pump_running is False
+    assert device.ph_minus_pump_running is True
+
+    # No pump running
+    data[29] = 0x00
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.filtration_pump_running is None
+    assert device.cl_pump_running is False
+    assert device.ph_minus_pump_running is False
+
+    # SALT-specific fields must be None for NET
+    assert device.electrolyzer_active is None
+    assert device.electrolyzer_direction is None
+
+
+def test_decode_salt_pump_states() -> None:
+    """Test pump state decoding for Aqua SALT (electrolyzer, no CL pump)."""
+
+    data = _make_base_bytes()
+    data[4] = 0x0E  # SALT
+    data[20] = 32  # salinity
+    data[21] = 80  # electrolyzer_power
+
+    # Electrolyzer running, right direction (no filtration bit)
+    data[29] = 0x10  # ELECTROLYZER_RUNNING_RIGHT
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.filtration_pump_running is False
+    assert device.electrolyzer_active is True
+    assert device.electrolyzer_direction == AsekoElectrolyzerDirection.RIGHT
+    assert device.cl_pump_running is None  # SALT has no CL pump
+
+    # Electrolyzer running, left direction
+    data[29] = 0x58  # 0x50 | 0x08 (LEFT + FILTRATION)
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.filtration_pump_running is True
+    assert device.electrolyzer_active is True
+    assert device.electrolyzer_direction == AsekoElectrolyzerDirection.LEFT
+
+    # Electrolyzer off
+    data[29] = 0x08  # filtration only
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.electrolyzer_active is False
+    assert device.electrolyzer_direction == AsekoElectrolyzerDirection.WAITING
+
+
+def test_decode_salt_algicide_pump_running() -> None:
+    """Test algicide pump running detection for SALT.
+
+    Confirmed by @hopkins-tk 2026-04-04 (19 consecutive frames w/o electrolyzer, PR #87):
+    algicide running → byte[29]=0x28 (bit 5 / 0x20), same mask as flocculant.
+    not running → byte[29]=0x08. Routing via byte[37] bit 7 (0x80) = algicide configured.
+    """
+
+    data = _make_base_bytes()
+    data[4] = 0x0E  # SALT
+    data[37] = 0xB3  # algicide configured (bit 7 set); 0xB3 = real Hopkins value
+    data[54] = 10  # required_algicide = 10 ml/m³/day (non-FF → not None)
+    data[101] = 60  # flowrate_algicide = 60 ml/min
+
+    # Algicide pump running: byte[29] bit 5 (0x20) set
+    data[29] = 0x28  # 0x08 | 0x20 — confirmed by 19 live frames 2026-04-04
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.algicide_pump_running is True
+    assert device.floc_pump_running is None  # algicide configured → floc slot vacant
+
+    # Algicide pump not running
+    data[29] = 0x08  # baseline; confirmed 2026-04-04
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.algicide_pump_running is False
+    assert device.floc_pump_running is None
+
+
+def test_decode_salt_flocculant_pump_running() -> None:
+    """Test flocculant pump running detection for SALT.
+
+    Confirmed by @hopkins-tk 2026-04-03 (PR #87): flocculant running → byte[29]=0x28
+    (bit 5 / 0x20), not running → byte[29]=0x08 (immediate stop, no linger).
+    Byte[37] bit 7 (0x80) clear = flocculant configured.
+    """
+
+    data = _make_base_bytes()
+    data[4] = 0x0E  # SALT
+    data[37] = 0x33  # flocculant configured (bit 7 clear); 0x33 = real Hopkins value
+    data[54] = 1  # required_floc placeholder (not used for type check)
+    data[101] = 60  # flowrate_floc = 60 ml/min
+
+    # Flocculant pump running: byte[29] bit 5 (0x20) set
+    data[29] = 0x28  # 0x08 | 0x20 — confirmed by live frame 2026-04-03
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.floc_pump_running is True
+    assert (
+        device.algicide_pump_running is None
+    )  # flocculant configured → alg slot vacant
+
+    # Flocculant pump not running
+    data[29] = 0x08  # baseline; confirmed 2026-04-03 (immediate stop, no linger)
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.floc_pump_running is False
+
+
+# test combinations of different methodes like date, time, normalize, probe types etc.
+
+
 def test_normalize_value_edge_cases() -> None:
     """Test normalization of edge cases."""
 
@@ -410,7 +545,7 @@ def test_available_probes_combinations() -> None:
         PROBE_CLF_MISSING,
         PROBE_DOSE_MISSING,
         PROBE_REDOX_MISSING,
-        PROBE_SANOSIL_MISSING,
+        PROBE_OXY_MISSING,
     )
 
     # All probes present
@@ -422,7 +557,7 @@ def test_available_probes_combinations() -> None:
         AsekoProbeType.CLF,
         AsekoProbeType.REDOX,
         AsekoProbeType.DOSE,
-        AsekoProbeType.SANOSIL,
+        AsekoProbeType.OXY,
     }
 
     # Just CLF is missing
@@ -435,10 +570,10 @@ def test_available_probes_combinations() -> None:
     probes = AsekoDecoder._configuration(data)
     assert AsekoProbeType.REDOX not in probes
 
-    # Just SANOSIL is missing
-    data[4] = PROBE_SANOSIL_MISSING
+    # Just OXY is missing
+    data[4] = PROBE_OXY_MISSING
     probes = AsekoDecoder._configuration(data)
-    assert AsekoProbeType.SANOSIL not in probes
+    assert AsekoProbeType.OXY not in probes
 
     # Just DOSE is missing
     data[4] = PROBE_DOSE_MISSING
@@ -475,3 +610,125 @@ def test_available_probes_combinations() -> None:
 #    data[29] = 0x00
 #    device = AsekoDecoder.decode(bytes(data))
 #    assert device.active_pump == 0
+
+
+# ── ASIN AQUA Oxygen ────────────────────────────────────────────────────────
+
+# Real frames captured 2026-04-11, serial 0x0690DD6D (= 110_157_165)
+# Normal frame: no pump running except filtration (23:51:00 UTC+2)
+_OXY_NORMAL_HEX = (
+    "0690dd6d05011a040b173300000002d0001e001efd9d80fe7000c7feaa0800000000000000030895"
+    "0690dd6d05031a040b173300480c0a19080010001200160002c300c7000c1e0a0f2800f00e10aa8d"
+    "0690dd6d05021a040b1733000029003c003c003c000a1e3c6e9600780c02580f2b0f1e1eaacb001b"
+)
+
+# pH− pump running frame (2026-04-12 15:27:38 UTC+2): byte[29] 0x08 → 0x88
+_OXY_PH_MINUS_HEX = (
+    "06 90 dd 6d 05 01 1a 04 0c 0f 1b 26 00 00 02 cf 00 1e 00 1e fd 9d 80 fe 70 00 bc fe aa 88 00 00 00 00 00 00 00 03 08 60"
+    " 06 90 dd 6d 05 03 1a 04 0c 0f 1b 26 46 0c 0a 19 08 00 10 00 12 00 16 00 02 c2 00 bc 00 0c 1e 0a 0f 28 00 f0 0e 10 aa e8"
+    " 06 90 dd 6d 05 02 1a 04 0c 0f 1b 26 00 29 00 3c 00 3c 00 3c 00 0a 1e 3c 6e 96 00 78 0c 02 58 0f 2b 0f 1e 1e aa cb 00 0a"
+)
+
+# Flocculant pump running frame (23:51:25 UTC+2): byte[29] 0x08 → 0x28
+_OXY_FLOC_HEX = (
+    "0690dd6d05011a040b173319000002d0001e001efd9d80fe7000c7feaa280000000000000003 08ac"
+    "0690dd6d05031a040b173319480c0a19080010001200160002c300c7000c1e0a0f2800f00e10aa94"
+    "0690dd6d05021a040b1733190029003c003c003c000a1e3c6e9600780c02580f2b0f1e1eaacb0002"
+)
+
+
+def _oxy_bytes(hex_str: str) -> bytes:
+    """Strip whitespace and convert hex string to bytes."""
+    return bytes.fromhex(hex_str.replace(" ", ""))
+
+
+def test_decode_oxy_normal_frame() -> None:
+    """Decode the OXY normal frame: filtration only, no floc pump.
+
+    Real frame captured 2026-04-11 23:51:00 UTC+2 from ASIN AQUA Oxygen (serial 110_157_165).
+    """
+    device = AsekoDecoder.decode(_oxy_bytes(_OXY_NORMAL_HEX))
+
+    # Device type and probes
+    assert device.device_type == AsekoDeviceType.OXY
+    assert device.configuration == {AsekoProbeType.PH, AsekoProbeType.OXY}
+
+    # CLF/REDOX must be None – firmware placeholder 0x001E must not be decoded
+    assert device.cl_free is None
+    assert device.redox is None
+    assert device.required_cl_free is None
+    assert device.required_redox is None
+
+    # byte[37]=0x03 on OXY must NOT trigger SALT-style algicide/floc routing.
+    # OXY has two independent pump ports: byte[54]=required_floc, byte[72]=required_algicide.
+    # 2026-04-11 frame: floc=10 ml/h, algicide=15 ml/m³/d.
+    assert device.required_floc == 10  # byte[54] = 0x0a
+    assert device.required_algicide == 15  # byte[72] = 0x0f
+
+    # OXY-specific setpoint (byte[53] = 0x0c = 12)
+    assert device.required_oxy_dose == 12
+
+    # Pumps
+    assert device.filtration_pump_running is True
+    assert device.ph_minus_pump_running is False  # bit 0x80 clear
+    assert device.floc_pump_running is False
+    assert device.algicide_pump_running is False  # bit 0x10 clear
+    assert device.oxy_pump_running is False  # bit 0x40 clear
+
+    # Flow rates (sub-frame 3)
+    assert device.flowrate_ph_minus == 60  # byte[95] = 0x3c
+    assert device.flowrate_oxy == 60  # byte[99] = 0x3c (OXY Pure pump slot)
+    assert device.flowrate_chlor is None  # not set on OXY devices
+    assert device.flowrate_floc == 10  # byte[101] = 0x0a
+    assert device.flowrate_algicide == 60  # byte[103] = 0x3c
+
+    # Basic data
+    assert device.serial_number == 110_157_165
+    assert device.ph == pytest.approx(7.2, abs=0.01)
+    assert device.water_temperature == pytest.approx(19.9, abs=0.1)
+    assert device.water_flow_to_probes is True
+    assert device.required_ph == pytest.approx(7.2, abs=0.01)
+    assert device.required_water_temperature == 25
+    assert device.pool_volume == 41
+
+
+def test_decode_oxy_floc_pump_running() -> None:
+    """Decode the OXY frame where the flocculant pump is running.
+
+    Real frame captured 2026-04-11 23:51:25 UTC+2. Only change vs normal frame:
+    byte[29] 0x08 → 0x28 (bit 0x20 set = flocculant pump confirmed).
+    """
+    device = AsekoDecoder.decode(_oxy_bytes(_OXY_FLOC_HEX))
+
+    assert device.device_type == AsekoDeviceType.OXY
+    assert device.filtration_pump_running is True
+    assert device.floc_pump_running is True
+
+    # All other OXY fields still intact
+    assert device.cl_free is None
+    assert device.redox is None
+    assert device.required_oxy_dose == 12
+    assert device.flowrate_floc == 10
+
+
+def test_decode_oxy_ph_minus_pump_running() -> None:
+    """Decode the OXY frame where the pH− pump is running.
+
+    Real frame captured 2026-04-12 15:27:38 UTC+2. Only change vs normal frame:
+    byte[29] 0x08 → 0x88 (bit 0x80 set = pH− pump confirmed).
+    """
+    device = AsekoDecoder.decode(_oxy_bytes(_OXY_PH_MINUS_HEX))
+
+    assert device.device_type == AsekoDeviceType.OXY
+    assert device.filtration_pump_running is True
+    assert device.ph_minus_pump_running is True  # bit 0x80 set
+    assert device.floc_pump_running is False
+    assert device.algicide_pump_running is False
+    assert device.oxy_pump_running is False
+
+    # All other OXY fields intact
+    assert device.cl_free is None
+    assert device.redox is None
+    assert device.required_oxy_dose == 12
+    assert device.flowrate_ph_minus == 60
+    assert device.flowrate_floc == 10

@@ -43,6 +43,24 @@
       "filtration_pump_running": {
         "name": "Filtrationspumpe läuft"
       },
+      "cl_pump_running": {
+        "name": "Chlorpumpe läuft"
+      },
+      "ph_minus_pump_running": {
+        "name": "pH-Minus-Pumpe läuft"
+      },
+      "ph_plus_pump_running": {
+        "name": "pH-Plus-Pumpe läuft"
+      },
+      "algicide_pump_running": {
+        "name": "Algizid-Pumpe läuft"
+      },
+      "floc_pump_running": {
+        "name": "Flockungsmittel-Pumpe läuft"
+      },
+      "oxy_pump_running": {
+        "name": "OXY Pure-Pumpe läuft"
+      },
       "water_flow_to_probes": {
         "name": "Wasserfluss zu den Sensoren"
       }
@@ -87,6 +105,14 @@
         "name": "Benötigte Dosis Algizid",
         "unit_of_measurement": "ml/m³/Tag"
       },
+      "required_oxy_dose": {
+        "name": "Benötigte Dosis OXY Pure",
+        "unit_of_measurement": "ml/m³/Tag"
+      },
+      "required_cl_dose": {
+        "name": "Benötigte Chlordosis",
+        "unit_of_measurement": "ml/m³/h"
+      },
       "required_floc": {
         "name": "Benötigte Dosis Flockungsmittel"
       },
@@ -110,6 +136,19 @@
       },
       "flowrate_floc": {
         "name": "Durchflussrate Flockungsmittel"
+      },
+      "flowrate_oxy": {
+        "name": "Durchflussrate OXY Pure"
+      },
+      "connection_status": {
+        "name": "Verbindungsstatus",
+        "state": {
+          "online": "Online",
+          "offline": "Offline"
+        }
+      },
+      "last_seen": {
+        "name": "Letzter Datenstand"
       },
       "chlor_consumed": {
         "name": "Chlor verbraucht (seit Nachfüllung)"
@@ -155,6 +194,12 @@
       },
       "floc_remaining": {
         "name": "Flockungsmittel verbleibend"
+      },
+      "oxy_consumed": {
+        "name": "OXY Pure verbraucht (seit Nachfüllung)"
+      },
+      "oxy_total_consumed": {
+        "name": "OXY Pure verbraucht (gesamt)"
       }
     },
     "number": {
@@ -189,6 +234,9 @@
       },
       "floc_refill_reset": {
         "name": "Flockungsmittel nachfüllen"
+      },
+      "oxy_refill_reset": {
+        "name": "OXY Pure nachfüllen"
       }
     }
   }

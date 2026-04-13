@@ -1,0 +1,243 @@
+{
+    "config": {
+        "abort": {
+            "already_configured": "L'appareil est déjà configuré",
+            "reconfigure_successful": "Reconfiguration réussie"
+        },
+        "error": {
+            "cannot_connect": "Échec de la connexion",
+            "unknown": "Erreur inattendue"
+        },
+        "step": {
+            "user": {
+                "data": {
+                    "host": "Lier à l'adresse IP",
+                    "port": "Port"
+                },
+                "description": "Veuillez saisir le numéro de port. L'adresse IP peut généralement rester sur 0.0.0.0"
+            },
+            "reconfigure": {
+                "data": {
+                    "host": "Lier à l'adresse IP",
+                    "port": "Port"
+                }
+            }
+        }
+    },
+    "options": {
+        "step": {
+            "options_init": {
+                "data": {
+                    "forwarder_enabled": "Activer la transmission",
+                    "forwarder_host": "Hôte de destination",
+                    "forwarder_port": "Port de destination"
+                }
+            }
+        }
+    },
+    "entity": {
+        "binary_sensor": {
+            "electrolyzer_active": {
+                "name": "Électrolyseur actif"
+            },
+            "filtration_pump_running": {
+                "name": "Pompe de filtration en marche"
+            },
+            "cl_pump_running": {
+                "name": "Pompe à chlore en marche"
+            },
+            "ph_minus_pump_running": {
+                "name": "Pompe pH- en marche"
+            },
+            "ph_plus_pump_running": {
+                "name": "Pompe pH+ en marche"
+            },
+            "algicide_pump_running": {
+                "name": "Pompe algicide en marche"
+            },
+            "floc_pump_running": {
+                "name": "Pompe floculant en marche"
+            },
+            "oxy_pump_running": {
+                "name": "Pompe OXY Pure en marche"
+            },
+            "water_flow_to_probes": {
+                "name": "Circulation d'eau vers les sondes"
+            }
+        },
+        "sensor": {
+            "air_temperature": {
+                "name": "Température de l'air"
+            },
+            "electrolyzer_power": {
+                "name": "Puissance de l'électrolyseur"
+            },
+            "electrolyzer_direction": {
+                "name": "Direction de l'électrolyseur",
+                "state": {
+                    "left": "Gauche",
+                    "right": "Droite",
+                    "waiting": "En attente"
+                }
+            },
+            "free_chlorine": {
+                "name": "Chlore libre"
+            },
+            "ph": {
+                "name": "pH"
+            },
+            "redox": {
+                "name": "Potentiel redox"
+            },
+            "required_free_chlorine": {
+                "name": "Chlore libre requis"
+            },
+            "required_ph": {
+                "name": "Valeur pH requise"
+            },
+            "required_redox": {
+                "name": "Potentiel redox requis"
+            },
+            "required_water_temperature": {
+                "name": "Température de l'eau requise"
+            },
+            "required_algicide": {
+                "name": "Dose algicide requise",
+                "unit_of_measurement": "ml/m³/jour"
+            },
+            "required_oxy_dose": {
+                "name": "Dose OXY Pure requise",
+                "unit_of_measurement": "ml/m³/jour"
+            },
+            "required_cl_dose": {
+                "name": "Dose chlore requise",
+                "unit_of_measurement": "ml/m³/h"
+            },
+            "required_floc": {
+                "name": "Dose floculant requise"
+            },
+            "salinity": {
+                "name": "Salinité"
+            },
+            "water_temperature": {
+                "name": "Température de l'eau"
+            },
+            "flowrate_chlor": {
+                "name": "Débit chlore"
+            },
+            "flowrate_ph_minus": {
+                "name": "Débit pH-"
+            },
+            "flowrate_ph_plus": {
+                "name": "Débit pH+"
+            },
+            "flowrate_algicide": {
+                "name": "Débit algicide"
+            },
+            "flowrate_floc": {
+                "name": "Débit floculant"
+            },
+            "flowrate_oxy": {
+                "name": "Débit OXY Pure"
+            },
+            "connection_status": {
+                "name": "État de la connexion",
+                "state": {
+                    "online": "En ligne",
+                    "offline": "Hors ligne"
+                }
+            },
+            "last_seen": {
+                "name": "Dernière mise à jour des données"
+            },
+            "chlor_consumed": {
+                "name": "Chlore consommé (depuis le remplissage)"
+            },
+            "chlor_total_consumed": {
+                "name": "Chlore consommé (total)"
+            },
+            "chlor_remaining": {
+                "name": "Chlore restant"
+            },
+            "ph_minus_consumed": {
+                "name": "pH- consommé (depuis le remplissage)"
+            },
+            "ph_minus_total_consumed": {
+                "name": "pH- consommé (total)"
+            },
+            "ph_minus_remaining": {
+                "name": "pH- restant"
+            },
+            "ph_plus_consumed": {
+                "name": "pH+ consommé (depuis le remplissage)"
+            },
+            "ph_plus_total_consumed": {
+                "name": "pH+ consommé (total)"
+            },
+            "ph_plus_remaining": {
+                "name": "pH+ restant"
+            },
+            "algicide_consumed": {
+                "name": "Algicide consommé (depuis le remplissage)"
+            },
+            "algicide_total_consumed": {
+                "name": "Algicide consommé (total)"
+            },
+            "algicide_remaining": {
+                "name": "Algicide restant"
+            },
+            "floc_consumed": {
+                "name": "Floculant consommé (depuis le remplissage)"
+            },
+            "floc_total_consumed": {
+                "name": "Floculant consommé (total)"
+            },
+            "floc_remaining": {
+                "name": "Floculant restant"
+            },
+            "oxy_consumed": {
+                "name": "OXY Pure consommé (depuis le remplissage)"
+            },
+            "oxy_total_consumed": {
+                "name": "OXY Pure consommé (total)"
+            }
+        },
+        "number": {
+            "chlor_last_filled_quantity": {
+                "name": "Dernière quantité de chlore ajoutée"
+            },
+            "ph_minus_last_filled_quantity": {
+                "name": "Dernière quantité de pH- ajoutée"
+            },
+            "ph_plus_last_filled_quantity": {
+                "name": "Dernière quantité de pH+ ajoutée"
+            },
+            "algicide_last_filled_quantity": {
+                "name": "Dernière quantité d'algicide ajoutée"
+            },
+            "floc_last_filled_quantity": {
+                "name": "Dernière quantité de floculant ajoutée"
+            }
+        },
+        "button": {
+            "chlor_refill_reset": {
+                "name": "Remplir chlore"
+            },
+            "ph_minus_refill_reset": {
+                "name": "Remplir pH-"
+            },
+            "ph_plus_refill_reset": {
+                "name": "Remplir pH+"
+            },
+            "algicide_refill_reset": {
+                "name": "Remplir algicide"
+            },
+            "floc_refill_reset": {
+                "name": "Remplir floculant"
+            },
+            "oxy_refill_reset": {
+                "name": "Remplir OXY Pure"
+            }
+        }
+    }
+}

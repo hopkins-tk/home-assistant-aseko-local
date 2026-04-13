@@ -21,14 +21,14 @@ READ_TIMEOUT = 30.0
 
 # Bit masks
 WATER_FLOW_TO_PROBES = 0xAA
-ALGICIDE_CONFIGURED = 0x80
 
 # Probe missing flags
 PROBE_REDOX_MISSING = 0x01
 PROBE_CLF_MISSING = 0x02
 PROBE_DOSE_MISSING = 0x04
-PROBE_SANOSIL_MISSING = 0x08  # OXY Pure
+PROBE_OXY_MISSING = 0x08  # OXY Pure (H₂O₂) probe present on ASIN AQUA Oxygen
 
+UNIT_TYPE_OXY = 0x05  # ASIN AQUA Oxygen – exact match, no overlap with other types
 UNIT_TYPE_SALT = 0x0C  # SALT can be 0x0D or 0x0E
 UNIT_TYPE_HOME = 0x03  # HOME can be CLF or REDOX (CLF version code unknown)
 UNIT_TYPE_NET = 0x08  # NET can be 0x09 or 0x0A

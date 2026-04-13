@@ -12,6 +12,7 @@ from .const import (
     DEFAULT_BINDING_PORT,
     MESSAGE_SIZE,
     READ_TIMEOUT,
+    UNSPECIFIED_VALUE,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -126,30 +127,44 @@ class AsekoDeviceServer:
                     )
                     break
 
-                except asyncio.IncompleteReadError:
-                    _LOGGER.error("Client %s closed the connection", addr)
+                except asyncio.IncompleteReadError as exc:
+                    _LOGGER.error(
+                        "Client %s closed the connection after %d bytes (expected %d):\n%s",
+                        addr,
+                        len(exc.partial),
+                        MESSAGE_SIZE,
+                        exc.partial.hex(" ", 1),
+                    )
+                    # Store partial frame for diagnostics so users with non-standard
+                    # frame lengths can share the raw data without enabling debug logging.
+                    await self._call_raw_sink(exc.partial)
                     break
 
                 # Try to decode the frame
                 try:
-                    # Call raw_sink BEFORE rewind to capture truly raw data (for debugging)
-                    await self._call_raw_sink(frame)
-
                     # Rewind frame to correct byte offset if necessary
                     rewound_frame, offset = self._rewind_frame(frame)
+
+                    # Call raw_sink AFTER rewind so diagnostics see the correctly aligned frame
+                    await self._call_raw_sink(rewound_frame)
 
                     # Forward CORRECTED data to cloud (after rewind)
                     await self._call_forward_cb(rewound_frame)
 
                     # 🔎 Plausibility check before decoding: pH values must be between 0 and 14
-                    ph_value = int.from_bytes(rewound_frame[14:16], "big") / 100
-                    if not (0 <= ph_value <= 14):
-                        _LOGGER.error(
-                            "Unreasonable pH value (%s) received from %s → closing connection",
-                            ph_value,
-                            addr,
-                        )
-                        break  # leave loop → connection will be closed
+                    # 0xFF 0xFF (UNSPECIFIED_VALUE) means the probe is absent — skip the check
+                    if (
+                        rewound_frame[14] != UNSPECIFIED_VALUE
+                        and rewound_frame[15] != UNSPECIFIED_VALUE
+                    ):
+                        ph_value = int.from_bytes(rewound_frame[14:16], "big") / 100
+                        if not (0 <= ph_value <= 14):
+                            _LOGGER.error(
+                                "Unreasonable pH value (%s) received from %s → closing connection",
+                                ph_value,
+                                addr,
+                            )
+                            break  # leave loop → connection will be closed
 
                     required_ph = rewound_frame[52] / 10
                     if not (6 <= required_ph <= 10):
