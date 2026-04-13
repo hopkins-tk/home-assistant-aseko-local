@@ -174,7 +174,7 @@ Adjust the entity IDs to match your own helper and sensor names.
 
 ![Template sensor for remaining canister volume](images/aseko_template_sensor_remaining.png)
 
-** Step 3 - Issue utility meter for periodic usage like daily/weekly/monthly consumption**
+**Step 3 - Issue utility meter for periodic usage like daily/weekly/monthly consumption**
 Go to **Settings → Devices & Services → Helpers → Create helper → Utility Meter** and configure it as follows:
 - Name: PH minus daily usage
 - Meter type: Daily
