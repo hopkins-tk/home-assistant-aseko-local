@@ -128,16 +128,22 @@ class AsekoDeviceServer:
                     break
 
                 except asyncio.IncompleteReadError as exc:
-                    _LOGGER.error(
-                        "Client %s closed the connection after %d bytes (expected %d):\n%s",
-                        addr,
-                        len(exc.partial),
-                        MESSAGE_SIZE,
-                        exc.partial.hex(" ", 1),
-                    )
-                    # Store partial frame for diagnostics so users with non-standard
-                    # frame lengths can share the raw data without enabling debug logging.
-                    await self._call_raw_sink(exc.partial)
+                    if len(exc.partial) == 0:
+                        _LOGGER.debug(
+                            "Client %s closed the connection",
+                            addr,
+                        )
+                    else:
+                        _LOGGER.error(
+                            "Client %s closed the connection after %d bytes (expected %d):\n%s",
+                            addr,
+                            len(exc.partial),
+                            MESSAGE_SIZE,
+                            exc.partial.hex(" ", 1),
+                        )
+                        # Store partial frame for diagnostics so users with non-standard
+                        # frame lengths can share the raw data without enabling debug logging.
+                        await self._call_raw_sink(exc.partial)
                     break
 
                 # Try to decode the frame
