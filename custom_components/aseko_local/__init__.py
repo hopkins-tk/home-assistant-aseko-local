@@ -23,8 +23,9 @@ from .mirror_forwarder import AsekoCloudMirror
 from .const import (
     DOMAIN,
     CONF_FORWARDER_HOST,
-    CONF_FORWARDER_PORT,
     CONF_FORWARDER_ENABLED,
+    DEFAULT_FORWARDER_PORT_V7,
+    DEFAULT_FORWARDER_PORT_V8,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -53,6 +54,7 @@ class AsekoLocalRuntimeData:
     coordinator: AsekoLocalDataUpdateCoordinator
     device_discovered: bool = False
     mirror: AsekoCloudMirror | None = None
+    mirror_v8: AsekoCloudMirror | None = None
     server: AsekoDeviceServer | None = None
 
 
@@ -92,6 +94,7 @@ async def async_setup_entry(
         coordinator=coordinator,
         device_discovered=False,
         mirror=None,
+        mirror_v8=None,
         server=None,
     )
 
@@ -113,27 +116,36 @@ async def async_setup_entry(
 
     # Optional: Cloud Mirror Forwarder to Aseko Cloud
     mirror_instance = None
+    mirror_v8_instance = None
     if config_entry.options.get(CONF_FORWARDER_ENABLED):
         forwarder_host = config_entry.options.get(CONF_FORWARDER_HOST)
-        forwarder_port = config_entry.options.get(CONF_FORWARDER_PORT)
-        if forwarder_host and forwarder_port:
+        if forwarder_host:
             mirror_instance = AsekoCloudMirror(
-                cloud_host=forwarder_host, cloud_port=int(forwarder_port)
+                cloud_host=forwarder_host, cloud_port=DEFAULT_FORWARDER_PORT_V7
             )
             await mirror_instance.start()
             server.set_forward_callback(mirror_instance.enqueue)
+
+            mirror_v8_instance = AsekoCloudMirror(
+                cloud_host=forwarder_host, cloud_port=DEFAULT_FORWARDER_PORT_V8
+            )
+            await mirror_v8_instance.start()
+            server.set_forward_v8_callback(mirror_v8_instance.enqueue)
+
             _LOGGER.info(
-                "Cloud forwarding enabled to %s:%s", forwarder_host, forwarder_port
+                "Cloud forwarding enabled to %s (v7:%d, v8:%d)",
+                forwarder_host,
+                DEFAULT_FORWARDER_PORT_V7,
+                DEFAULT_FORWARDER_PORT_V8,
             )
         else:
-            _LOGGER.warning(
-                "Forwarder enabled but host/port not set — skipping mirror."
-            )
+            _LOGGER.warning("Forwarder enabled but host not set — skipping mirror.")
 
     # Add to runtime_data
     rd = config_entry.runtime_data
     rd.server = server
     rd.mirror = mirror_instance
+    rd.mirror_v8 = mirror_v8_instance
 
     # Register domain service once (shared across all config entries)
     if not hass.services.has_service(DOMAIN, SERVICE_RESET_CONSUMPTION):
@@ -175,6 +187,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 await entry.runtime_data.server.stop()
             if entry.runtime_data.mirror:
                 await entry.runtime_data.mirror.stop()
+            if entry.runtime_data.mirror_v8:
+                await entry.runtime_data.mirror_v8.stop()
 
         # Remove domain service when the last entry is unloaded
         remaining = [

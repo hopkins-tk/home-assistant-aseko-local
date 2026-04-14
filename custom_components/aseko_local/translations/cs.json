@@ -29,8 +29,7 @@
       "options_init": {
         "data": {
           "forwarder_enabled": "Povolit přeposílání",
-          "forwarder_host": "Cílová adresa",
-          "forwarder_port": "Cílový port"
+          "forwarder_host": "Cílová adresa"
         }
       }
     }
