@@ -343,9 +343,9 @@ def test_decode_issue_61() -> None:
     """Test decoding data from issue #61."""
 
     data = bytearray.fromhex(
-        "0690cf4a0301190a12103232000402cb015201520152a3fe700099fe000800000000000000130267"
-        "0690cf4a0303190a121032324842011d080f122d15001737027600a9000c1e0a012801e00e10a202"
-        "0690cf4a03 02190a1210 3232002d00 3c003c003c 000a1e3c6e 9600f00802 580f0f0f1e 14ffbf0297"
+        "0690cafe0301190a12103232000402cb015201520152a3fe700099fe000800000000000000130267"
+        "0690cafe0303190a121032324842011d080f122d15001737027600a9000c1e0a012801e00e10a202"
+        "0690cafe03 02190a1210 3232002d00 3c003c003c 000a1e3c6e 9600f00802 580f0f0f1e 14ffbf0297"
     )
 
     device = AsekoDecoder.decode(bytes(data))
@@ -614,26 +614,26 @@ def test_available_probes_combinations() -> None:
 
 # ── ASIN AQUA Oxygen ────────────────────────────────────────────────────────
 
-# Real frames captured 2026-04-11, serial 0x0690DD6D (= 110_157_165)
+# Test frames for OXY device (anonymized serial: 0x0690DEAD)
 # Normal frame: no pump running except filtration (23:51:00 UTC+2)
 _OXY_NORMAL_HEX = (
-    "0690dd6d05011a040b173300000002d0001e001efd9d80fe7000c7feaa0800000000000000030895"
-    "0690dd6d05031a040b173300480c0a19080010001200160002c300c7000c1e0a0f2800f00e10aa8d"
-    "0690dd6d05021a040b1733000029003c003c003c000a1e3c6e9600780c02580f2b0f1e1eaacb001b"
+    "0690dead05011a040b173300000002d0001e001efd9d80fe7000c7feaa0800000000000000030895"
+    "0690dead05031a040b173300480c0a19080010001200160002c300c7000c1e0a0f2800f00e10aa8d"
+    "0690dead05021a040b1733000029003c003c003c000a1e3c6e9600780c02580f2b0f1e1eaacb001b"
 )
 
 # pH− pump running frame (2026-04-12 15:27:38 UTC+2): byte[29] 0x08 → 0x88
 _OXY_PH_MINUS_HEX = (
-    "06 90 dd 6d 05 01 1a 04 0c 0f 1b 26 00 00 02 cf 00 1e 00 1e fd 9d 80 fe 70 00 bc fe aa 88 00 00 00 00 00 00 00 03 08 60"
-    " 06 90 dd 6d 05 03 1a 04 0c 0f 1b 26 46 0c 0a 19 08 00 10 00 12 00 16 00 02 c2 00 bc 00 0c 1e 0a 0f 28 00 f0 0e 10 aa e8"
-    " 06 90 dd 6d 05 02 1a 04 0c 0f 1b 26 00 29 00 3c 00 3c 00 3c 00 0a 1e 3c 6e 96 00 78 0c 02 58 0f 2b 0f 1e 1e aa cb 00 0a"
+    "06 90 de ad 05 01 1a 04 0c 0f 1b 26 00 00 02 cf 00 1e 00 1e fd 9d 80 fe 70 00 bc fe aa 88 00 00 00 00 00 00 00 03 08 60"
+    " 06 90 de ad 05 03 1a 04 0c 0f 1b 26 46 0c 0a 19 08 00 10 00 12 00 16 00 02 c2 00 bc 00 0c 1e 0a 0f 28 00 f0 0e 10 aa e8"
+    " 06 90 de ad 05 02 1a 04 0c 0f 1b 26 00 29 00 3c 00 3c 00 3c 00 0a 1e 3c 6e 96 00 78 0c 02 58 0f 2b 0f 1e 1e aa cb 00 0a"
 )
 
 # Flocculant pump running frame (23:51:25 UTC+2): byte[29] 0x08 → 0x28
 _OXY_FLOC_HEX = (
-    "0690dd6d05011a040b173319000002d0001e001efd9d80fe7000c7feaa280000000000000003 08ac"
-    "0690dd6d05031a040b173319480c0a19080010001200160002c300c7000c1e0a0f2800f00e10aa94"
-    "0690dd6d05021a040b1733190029003c003c003c000a1e3c6e9600780c02580f2b0f1e1eaacb0002"
+    "0690dead05011a040b173319000002d0001e001efd9d80fe7000c7feaa280000000000000003 08ac"
+    "0690dead05031a040b173319480c0a19080010001200160002c300c7000c1e0a0f2800f00e10aa94"
+    "0690dead05021a040b1733190029003c003c003c000a1e3c6e9600780c02580f2b0f1e1eaacb0002"
 )
 
 
@@ -645,7 +645,7 @@ def _oxy_bytes(hex_str: str) -> bytes:
 def test_decode_oxy_normal_frame() -> None:
     """Decode the OXY normal frame: filtration only, no floc pump.
 
-    Real frame captured 2026-04-11 23:51:00 UTC+2 from ASIN AQUA Oxygen (serial 110_157_165).
+    Test frame for ASIN AQUA Oxygen (anonymized serial).
     """
     device = AsekoDecoder.decode(_oxy_bytes(_OXY_NORMAL_HEX))
 
@@ -683,7 +683,7 @@ def test_decode_oxy_normal_frame() -> None:
     assert device.flowrate_algicide == 60  # byte[103] = 0x3c
 
     # Basic data
-    assert device.serial_number == 110_157_165
+    assert device.serial_number == 110_157_485
     assert device.ph == pytest.approx(7.2, abs=0.01)
     assert device.water_temperature == pytest.approx(19.9, abs=0.1)
     assert device.water_flow_to_probes is True

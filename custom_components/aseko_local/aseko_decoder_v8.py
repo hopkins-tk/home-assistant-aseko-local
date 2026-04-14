@@ -15,6 +15,11 @@ _LOGGER = logging.getLogger(__name__)
 # Matches "sectionname: <values>" up to the next section keyword or end of string.
 _SECTION_RE = re.compile(r"(\w+):\s*(.*?)(?=\s+\w+:|$)", re.DOTALL)
 
+# Maps the header type field (f2) to the corresponding device type.
+_V8_DEVICE_TYPE_BY_HEADER: dict[int, AsekoDeviceType] = {
+    804: AsekoDeviceType.NET,
+}
+
 
 def _parse_int_list(text: str) -> list[int]:
     """Parse a space-separated list of integers."""
@@ -69,6 +74,10 @@ class AsekoV8Decoder:
         if not header_match:
             raise ValueError(f"v8 frame header not recognised: {body[:60]!r}")
         serial_number = int(header_match.group(1))
+        header_type = int(header_match.group(2))
+        device_type = _V8_DEVICE_TYPE_BY_HEADER.get(header_type)
+        if device_type is None:
+            raise ValueError(f"v8 frame: unknown device type {header_type}")
 
         # Parse all sections into a dict of {name: [int, ...]}
         sections: dict[str, list[int]] = {}
@@ -130,7 +139,7 @@ class AsekoV8Decoder:
 
         return AsekoDevice(
             serial_number=serial_number,
-            device_type=AsekoDeviceType.NET,
+            device_type=device_type,
             configuration=configuration,
             timestamp=timestamp,
             water_temperature=water_temperature,

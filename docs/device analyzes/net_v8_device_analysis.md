@@ -6,7 +6,6 @@
 |---|---|
 | Model | ASIN AQUA NET |
 | Firmware | 8.x (text frame) |
-| Serial | `110203680` |
 | Source | Two production frames (Sep 16 2025, Apr 13 2026) + Aseko Pool Live app screenshots |
 | Decoded by | `AsekoV8Decoder` in `aseko_decoder_v8.py` |
 

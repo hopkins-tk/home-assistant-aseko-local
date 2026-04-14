@@ -6,7 +6,6 @@
 |---|---|
 | Model | ASIN AQUA Salt |
 | Firmware | 5.x – 7.x |
-| Serial | `0x0000000E` (cleared in PR #87 frames) |
 | Source | PR #87 live captures 2026-04-04; earlier frames 2026-04-02, 2026-04-03; Issue #84 |
 | byte[4] | `0x0E` or `0x0D` → `(data[4] & 0x0C) == 0x0C` → **SALT** |
 

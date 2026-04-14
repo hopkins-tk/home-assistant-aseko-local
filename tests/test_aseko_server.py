@@ -119,9 +119,9 @@ async def test_issue_61_shifted_frame(monkeypatch) -> None:
     """Test: Shifted frame from issue 61."""
 
     BYTE_FRAME = hexstr_to_bytes(
-        "0f0f1e14ffbf02970690cf4a0301190a12103232000402cb015201520152a3fe700099fe00080000"
-        "00000000001302670690cf4a0303190a121032324842011d080f122d15001737027600a9000c1e0a"
-        "012801e00e10a2020690cf4a0302190a12103232002d003c003c003c000a1e3c6e9600f00802580f"
+        "0f0f1e14ffbf02970690cafe0301190a12103232000402cb015201520152a3fe700099fe00080000"
+        "00000000001302670690cafe0303190a121032324842011d080f122d15001737027600a9000c1e0a"
+        "012801e00e10a2020690cafe0302190a12103232002d003c003c003c000a1e3c6e9600f00802580f"
     )
 
     called = {}
@@ -146,7 +146,7 @@ async def test_issue_61_shifted_frame(monkeypatch) -> None:
     assert server.running
     # Serial number should be captured
     assert "serial" in called
-    assert called["serial"] == 110153546
+    assert called["serial"] == 110152446
     await server.stop()
 
 
@@ -192,7 +192,7 @@ async def test_v8_frame_forwarded_before_decode() -> None:
 
 # Real parseable v8 frame — same as REFERENCE_FRAME in test_aseko_decoder_v8.py
 _V8_REAL_FRAME = (
-    b"{v1 110203680 804 0 27 "
+    b"{v1 123456789 804 0 27 "
     b"ins: 314 -500 -500 -500 0 0 0 0 1 -500 -500 -500 0 24 6 29 22 27 0 "
     b"ains: 708 708 774 7790 0 0 779 779 0 0 0 0 0 0 0 0 "
     b"outs: 0 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 "
@@ -227,7 +227,7 @@ async def test_v8_frame_decoded_and_delivered() -> None:
     await server._handle_client(reader, writer)
 
     assert "device" in received
-    assert received["device"].serial_number == 110203680
+    assert received["device"].serial_number == 123456789
 
 
 @pytest.mark.asyncio
@@ -282,9 +282,9 @@ async def test_sync_frame_binary_shifted() -> None:
     # This is the issue-61 frame: 8 bytes of a previous frame's tail precede
     # the actual aligned frame content.
     SHIFTED_BINARY = hexstr_to_bytes(
-        "0f0f1e14ffbf02970690cf4a0301190a12103232000402cb015201520152a3fe700099fe00080000"
-        "00000000001302670690cf4a0303190a121032324842011d080f122d15001737027600a9000c1e0a"
-        "012801e00e10a2020690cf4a0302190a12103232002d003c003c003c000a1e3c6e9600f00802580f"
+        "0f0f1e14ffbf02970690cafe0301190a12103232000402cb015201520152a3fe700099fe00080000"
+        "00000000001302670690cafe0303190a121032324842011d080f122d15001737027600a9000c1e0a"
+        "012801e00e10a2020690cafe0302190a12103232002d003c003c003c000a1e3c6e9600f00802580f"
     )
 
     server = AsekoDeviceServer.__new__(AsekoDeviceServer)

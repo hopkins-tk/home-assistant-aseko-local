@@ -17,7 +17,7 @@ from custom_components.aseko_local.aseko_decoder_v8 import AsekoV8Decoder
 # against a second frame (Apr 13, 2026, 12:27 CEST) and Aseko app screenshots.
 # ---------------------------------------------------------------------------
 REFERENCE_FRAME = (
-    b"{v1 110203680 804 0 27 "
+    b"{v1 123456789 804 0 27 "
     b"ins: 314 -500 -500 -500 0 0 0 0 1 -500 -500 -500 0 24 6 29 22 27 0 "
     b"ains: 708 708 774 7790 0 0 779 779 0 0 0 0 0 0 0 0 "
     b"outs: 0 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 "
@@ -32,7 +32,7 @@ REFERENCE_FRAME = (
 
 # Second reference frame (Apr 13, 2026, 12:27 CEST) — used as cross-check fixture.
 REFERENCE_FRAME_APR = (
-    b"{v1 110203680 804 0 27 "
+    b"{v1 123456789 804 0 27 "
     b"ins: 180 -500 -500 -500 0 0 0 0 1 -500 -500 -500 0 25 1 24 12 27 0 "
     b"ains: 649 649 804 8090 0 0 809 809 0 0 0 0 0 0 0 0 "
     b"outs: 0 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 "
@@ -61,7 +61,7 @@ def device_apr():
 # ---------------------------------------------------------------------------
 
 def test_serial_number(device_sep):
-    assert device_sep.serial_number == 110203680
+    assert device_sep.serial_number == 123456789
 
 
 def test_device_type_is_net(device_sep):
