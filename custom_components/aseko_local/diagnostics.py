@@ -13,6 +13,7 @@ GitHub issue to help developers reverse-engineer unknown byte positions
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from homeassistant.components.diagnostics import async_redact_data
@@ -100,6 +101,58 @@ _BYTE_LABELS: dict[int, str] = {
     107: "delay_after_dose[lo]",
 }
 
+# Known field labels for v8 text frame sections
+_V8_INS_LABELS: dict[int, str] = {
+    0: "water_temperature_raw (÷10 = °C)",
+    8: "water_flow_to_probes (1=flowing)",
+    13: "unknown",
+    14: "unknown",
+    15: "unknown",
+    16: "hour",
+    17: "minute",
+    18: "unknown",
+}
+
+_V8_AINS_LABELS: dict[int, str] = {
+    0: "pH × 100 (-500=absent; ÷100 = pH)",
+    1: "unknown (tracks pH)",
+    2: "unknown",
+    3: "unknown",
+    6: "redox (mV; -500=absent)",
+    7: "unknown (tracks redox)",
+}
+
+_V8_OUTS_LABELS: dict[int, str] = {
+    2: "filtration_pump_running (1=on)",
+    8: "ph_minus_pump_running (1=dosing)",
+}
+
+_V8_AREQS_LABELS: dict[int, str] = {
+    0: "required_pH × 10 (÷10 = pH)",
+    1: "required_redox / 10 (×10 = mV)",
+    2: "unknown",
+    3: "unknown",
+    4: "unknown",
+    5: "unknown",
+    6: "unknown",
+    10: "unknown",
+    12: "unknown",
+    14: "pool_volume (m³)",
+    15: "unknown",
+    16: "unknown",
+    17: "delay_after_startup (min)",
+    18: "delay_after_dose (min)",
+    19: "unknown",
+    21: "unknown",
+    25: "unknown",
+}
+
+_V8_REQS_LABELS: dict[int, str] = {
+    7: "filtration_hours_per_day (unconfirmed)",
+}
+
+_SECTION_RE = re.compile(r"(\w+):\s*(.*?)(?=\s+\w+:|$)", re.DOTALL)
+
 
 def _annotated_frame(raw: bytes) -> list[dict[str, Any]]:
     """Return a list of dicts describing every byte in the raw frame."""
@@ -116,6 +169,69 @@ def _annotated_frame(raw: bytes) -> list[dict[str, Any]]:
             }
         )
     return rows
+
+
+def _annotated_v8_section(
+    values: list[int], labels: dict[int, str]
+) -> list[dict[str, Any]]:
+    """Return annotated list for a single v8 section."""
+    return [
+        {"index": i, "value": v, "label": labels.get(i, "")}
+        for i, v in enumerate(values)
+    ]
+
+
+def _parse_v8_frame(raw: bytes) -> dict[str, Any] | None:
+    """Parse a v8 text frame into annotated sections. Returns None on failure."""
+    try:
+        text = raw.decode("ascii", errors="replace").strip()
+    except Exception:
+        return None
+
+    if not text.startswith("{") or not text.endswith("}"):
+        return None
+    body = text[1:-1].strip()
+
+    # Extract header tokens: v1 <serial> <f2> <f3> <f4>
+    header_match = re.match(r"^(v\d+)\s+(\d+)\s+(\d+)\s+(\S+)\s+(\S+)", body)
+    header: dict[str, Any] = {}
+    if header_match:
+        header = {
+            "version": header_match.group(1),
+            "serial_number": int(header_match.group(2)),
+            "device_type_raw": int(header_match.group(3)),
+            "f3": header_match.group(4),
+            "f4": header_match.group(5),
+        }
+
+    sections: dict[str, Any] = {}
+    section_labels = {
+        "ins": _V8_INS_LABELS,
+        "ains": _V8_AINS_LABELS,
+        "outs": _V8_OUTS_LABELS,
+        "areqs": _V8_AREQS_LABELS,
+        "reqs": _V8_REQS_LABELS,
+    }
+    for match in _SECTION_RE.finditer(body):
+        name = match.group(1)
+        raw_values_str = match.group(2).strip()
+        try:
+            values = [int(v) for v in raw_values_str.split()]
+        except ValueError:
+            sections[name] = {"raw": raw_values_str}
+            continue
+        labels = section_labels.get(name, {})
+        sections[name] = {
+            "values": values,
+            "annotated": _annotated_v8_section(values, labels),
+        }
+
+    return {
+        "raw_text": text,
+        "length_bytes": len(raw),
+        "header": header,
+        "sections": sections,
+    }
 
 
 async def async_get_config_entry_diagnostics(
@@ -176,7 +292,7 @@ async def async_get_config_entry_diagnostics(
                     "total_ml": round(tracker.get(key, "total"), 1),
                 }
 
-        # --- Raw frame ---
+        # --- Raw frame (v7 binary) ---
         raw_info: dict[str, Any] = {"available": False}
         if serial is not None:
             raw = coordinator.get_raw_frame(serial)
@@ -196,6 +312,22 @@ async def async_get_config_entry_diagnostics(
                     else "n/a",
                     "annotated_table": _annotated_frame(raw),
                 }
+
+        # --- Raw frame (v8 text) ---
+        v8_raw_info: dict[str, Any] = {"available": False}
+        if serial is not None:
+            v8_raw = coordinator.get_v8_frame(serial)
+            if v8_raw is not None:
+                parsed = _parse_v8_frame(v8_raw)
+                if parsed is not None:
+                    v8_raw_info = {"available": True, **parsed}
+                else:
+                    v8_raw_info = {
+                        "available": True,
+                        "raw_text": v8_raw.decode("ascii", errors="replace").strip(),
+                        "length_bytes": len(v8_raw),
+                        "parse_error": "Could not parse v8 frame structure",
+                    }
 
         # --- Partial frame (device sent fewer bytes than the expected 120) ---
         partial_info: dict[str, Any] = {"available": False}
@@ -218,7 +350,8 @@ async def async_get_config_entry_diagnostics(
             {
                 "device": device_state,
                 "consumption": consumption,
-                "raw_frame": raw_info,
+                "raw_frame_v7": raw_info,
+                "raw_frame_v8": v8_raw_info,
                 "partial_frame": partial_info,
             }
         )

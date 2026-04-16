@@ -38,11 +38,13 @@ class AsekoDeviceServer:
         port: int = DEFAULT_BINDING_PORT,
         on_data: Optional[Callable[[AsekoDevice], Any]] = None,
         raw_sink: Optional[Callable[[bytes], Any]] = None,
+        v8_raw_sink: Optional[Callable[[bytes], Any]] = None,
     ) -> None:
         self.host = host
         self.port = port
         self.on_data = on_data
         self._raw_sink = raw_sink
+        self._v8_raw_sink = v8_raw_sink
         self._forward_cb: Optional[Callable[[bytes], Any]] = None
         self._forward_v8_cb: Optional[Callable[[bytes], Any]] = None
         self._server: Optional[asyncio.AbstractServer] = None
@@ -91,6 +93,13 @@ class AsekoDeviceServer:
                 await self._maybe_await(self._raw_sink(data))
             except Exception:
                 _LOGGER.error("Raw sink raised an exception", exc_info=True)
+
+    async def _call_v8_raw_sink(self, data: bytes) -> None:
+        if self._v8_raw_sink:
+            try:
+                await self._maybe_await(self._v8_raw_sink(data))
+            except Exception:
+                _LOGGER.error("v8 raw sink raised an exception", exc_info=True)
 
     async def _call_forward_cb(self, data: bytes) -> None:
         if self._forward_cb:
@@ -180,6 +189,7 @@ class AsekoDeviceServer:
                     await self._call_forward_v8_cb(frame)
                     try:
                         device = AsekoV8Decoder.decode(frame)
+                        await self._call_v8_raw_sink(frame)
                     except ValueError as exc:
                         _LOGGER.error(
                             "v8 decode error from %s: %s → closing connection",
@@ -370,14 +380,17 @@ class AsekoDeviceServer:
         port: int = DEFAULT_BINDING_PORT,
         on_data: Optional[Callable[[AsekoDevice], Any]] = None,
         raw_sink: Optional[Callable[[bytes], Any]] = None,
+        v8_raw_sink: Optional[Callable[[bytes], Any]] = None,
     ) -> "AsekoDeviceServer":
         key = f"{host}:{port}"
         if key not in cls._instances:
-            cls._instances[key] = AsekoDeviceServer(host, port, on_data, raw_sink)
+            cls._instances[key] = AsekoDeviceServer(host, port, on_data, raw_sink, v8_raw_sink)
             await cls._instances[key].start()
         else:
             if raw_sink:
                 cls._instances[key]._raw_sink = raw_sink
+            if v8_raw_sink:
+                cls._instances[key]._v8_raw_sink = v8_raw_sink
             if on_data:
                 cls._instances[key].on_data = on_data
         return cls._instances[key]

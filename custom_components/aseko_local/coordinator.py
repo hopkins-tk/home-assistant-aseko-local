@@ -47,6 +47,8 @@ class AsekoLocalDataUpdateCoordinator(DataUpdateCoordinator[AsekoData]):
         self._last_raw_frames: dict[int, bytes] = {}
         # Last partial (incomplete) raw frame per serial number
         self._last_partial_frames: dict[int, bytes] = {}
+        # Last raw v8 text frame per device serial number (for diagnostics)
+        self._last_v8_frames: dict[int, bytes] = {}
         # Unsubscribe handle for the periodic stale-check
         self._stale_check_unsub: Callable[[], None] | None = None
 
@@ -138,6 +140,20 @@ class AsekoLocalDataUpdateCoordinator(DataUpdateCoordinator[AsekoData]):
     def get_partial_frame(self, serial_number: int) -> bytes | None:
         """Return the last partial (incomplete) raw frame, if any."""
         return self._last_partial_frames.get(serial_number)
+
+    def store_v8_frame(self, raw_frame: bytes) -> None:
+        """Cache the last v8 text frame, keyed by the serial number in the frame text."""
+        try:
+            text = raw_frame.decode("ascii", errors="replace").strip()
+            # Frame starts with "{v1 <serial> ..."
+            serial = int(text.lstrip("{").split()[1])
+            self._last_v8_frames[serial] = bytes(raw_frame)
+        except (ValueError, IndexError):
+            pass
+
+    def get_v8_frame(self, serial_number: int) -> bytes | None:
+        """Return the last raw v8 text frame for a given device serial number."""
+        return self._last_v8_frames.get(serial_number)
 
     def get_tracker(self, serial_number: int) -> AsekoConsumptionTracker | None:
         """Return the consumption tracker for a given device serial number."""

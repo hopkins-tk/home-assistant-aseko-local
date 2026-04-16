@@ -107,6 +107,7 @@ async def async_setup_entry(
         port=config_entry.data[CONF_PORT],
         on_data=coordinator.devices_update_callback,
         raw_sink=raw_sink,
+        v8_raw_sink=coordinator.store_v8_frame,
     )
 
     if not server.running:

@@ -151,6 +151,8 @@ class AsekoV8Decoder:
             redox=redox,
             filtration_pump_running=filtration_pump_running,
             ph_minus_pump_running=ph_minus_pump_running,
+            flowrate_ph_minus=60,
+            flowrate_chlor=60,
             required_ph=required_ph,
             required_redox=required_redox,
             pool_volume=pool_volume,
