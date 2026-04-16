@@ -113,6 +113,9 @@ class AsekoV8Decoder:
         outs2 = _get(outs, 2)
         filtration_pump_running = bool(outs2) if outs2 is not None else None
 
+        outs8 = _get(outs, 8)
+        ph_minus_pump_running = bool(outs8) if outs8 is not None else None
+
         # --- Configuration / setpoints ---
         areqs0 = _get(areqs, 0)
         required_ph = areqs0 / 10 if areqs0 is not None else None
@@ -147,6 +150,7 @@ class AsekoV8Decoder:
             ph=ph,
             redox=redox,
             filtration_pump_running=filtration_pump_running,
+            ph_minus_pump_running=ph_minus_pump_running,
             required_ph=required_ph,
             required_redox=required_redox,
             pool_volume=pool_volume,

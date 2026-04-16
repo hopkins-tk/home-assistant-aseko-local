@@ -113,6 +113,32 @@ def test_filtration_pump_running(device_sep):
     assert device_sep.filtration_pump_running is True
 
 
+def test_ph_minus_pump_not_running_baseline(device_sep):
+    """Baseline frame has outs[8] == 0 → ph_minus_pump_running is False."""
+    assert device_sep.ph_minus_pump_running is False
+
+
+def test_ph_minus_pump_running_when_dosing():
+    """Frame with outs[8] == 1 (pH− dosing event) → ph_minus_pump_running is True."""
+    dosing_frame = (
+        b"{v1 123456789 804 0 27 "
+        b"ins: 180 -500 -500 -500 0 0 0 0 1 -500 -500 -500 0 25 1 24 12 27 0 "
+        b"ains: 649 649 804 8090 0 0 809 809 0 0 0 0 0 0 0 0 "
+        b"outs: 0 0 1 0 0 0 0 0 1 0 0 0 0 0 0 0 0 0 0 "
+        b"areqs: 74 74 4 5 0 36 36 0 0 0 6 0 36 0 45 0 255 2 2 10 0 15 0 0 0 0 "
+        b"reqs: 0 0 0 0 0 0 0 24 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 "
+        b"0 10 10 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 "
+        b"fncs: 0 0 3 0 0 0 2 0 "
+        b"mods: 2 0 0 1 0 0 0 0 "
+        b"flags: 2 0 0 0 0 0 0 0 "
+        b"crc16: C3C8}\n"
+    )
+    device = AsekoV8Decoder.decode(dosing_frame)
+    assert device.ph_minus_pump_running is True
+    # Other pump states must be unaffected
+    assert device.filtration_pump_running is True
+
+
 # ---------------------------------------------------------------------------
 # Setpoints / configuration
 # ---------------------------------------------------------------------------
