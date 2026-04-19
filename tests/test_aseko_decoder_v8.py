@@ -60,6 +60,7 @@ def device_apr():
 # Identity
 # ---------------------------------------------------------------------------
 
+
 def test_serial_number(device_sep):
     assert device_sep.serial_number == 123456789
 
@@ -76,6 +77,7 @@ def test_configuration_contains_ph_and_redox(device_sep):
 # ---------------------------------------------------------------------------
 # Measurements
 # ---------------------------------------------------------------------------
+
 
 def test_water_temperature_sep(device_sep):
     assert device_sep.water_temperature == pytest.approx(31.4)
@@ -108,6 +110,7 @@ def test_water_flow_to_probes(device_sep):
 # ---------------------------------------------------------------------------
 # Pump states
 # ---------------------------------------------------------------------------
+
 
 def test_filtration_pump_running(device_sep):
     assert device_sep.filtration_pump_running is True
@@ -143,6 +146,7 @@ def test_ph_minus_pump_running_when_dosing():
 # Setpoints / configuration
 # ---------------------------------------------------------------------------
 
+
 def test_required_ph_sep(device_sep):
     assert device_sep.required_ph == pytest.approx(7.4)
 
@@ -177,6 +181,7 @@ def test_delay_after_dose(device_sep):
 # Timestamp
 # ---------------------------------------------------------------------------
 
+
 def test_timestamp_hour_minute(device_sep):
     assert device_sep.timestamp is not None
     assert device_sep.timestamp.hour == 22
@@ -192,6 +197,7 @@ def test_timestamp_hour_minute_apr(device_apr):
 # ---------------------------------------------------------------------------
 # Absent-probe sentinel (-500 → None)
 # ---------------------------------------------------------------------------
+
 
 def test_absent_probe_returns_none():
     """A frame where all ains are -500 must yield None for ph and redox."""
@@ -215,11 +221,67 @@ def test_absent_probe_returns_none():
 # Error handling
 # ---------------------------------------------------------------------------
 
+
 def test_missing_braces_raises():
     with pytest.raises(ValueError, match="braces"):
-        AsekoV8Decoder.decode(b"v1 110203680 804 0 27 ins: 0\n")
+        AsekoV8Decoder.decode(b"v1 999999999 804 0 27 ins: 0\n")
 
 
 def test_bad_header_raises():
     with pytest.raises(ValueError, match="header"):
         AsekoV8Decoder.decode(b"{not a valid v8 header}\n")
+
+
+# ---------------------------------------------------------------------------
+# Pump states — outs[] mapping
+# ---------------------------------------------------------------------------
+
+
+def test_cl_pump_running_false_in_reference_frame(device_sep):
+    """Baseline frames have outs[9] = 0 → cl_pump_running is False."""
+    assert device_sep.cl_pump_running is False
+
+
+def test_cl_pump_running_true_when_outs9_set():
+    """Frame with outs[9] = 1 → cl_pump_running is True (confirmed April 19 fekberg)."""
+    frame = (
+        b"{v1 999999999 804 0 27 "
+        b"ins: 214 -500 -500 -500 0 0 0 0 1 -500 -500 -500 0 25 1 30 18 23 0 "
+        b"ains: 740 688 734 7390 0 0 739 739 0 0 0 0 0 0 0 0 "
+        b"outs: 0 0 1 0 0 0 0 0 0 1 0 0 0 0 0 0 0 0 0 "
+        b"areqs: 74 74 4 5 0 36 36 0 0 0 6 0 36 0 45 0 255 2 2 10 0 15 0 0 0 0 "
+        b"crc16: 0000}\n"
+    )
+    device = AsekoV8Decoder.decode(frame)
+    assert device.cl_pump_running is True
+    assert device.ph_minus_pump_running is False
+
+
+def test_ph_minus_pump_running_true_when_outs8_set():
+    """Frame with outs[8] = 1 → ph_minus_pump_running is True (confirmed April 15 fekberg)."""
+    frame = (
+        b"{v1 999999999 804 0 27 "
+        b"ins: 183 -500 -500 -500 0 0 0 0 1 -500 -500 -500 0 25 1 27 2 14 0 "
+        b"ains: 741 689 789 7940 0 0 794 794 0 0 0 0 0 0 0 0 "
+        b"outs: 0 0 1 0 0 0 0 0 1 0 0 0 0 0 0 0 0 0 0 "
+        b"areqs: 74 74 4 5 0 36 36 0 0 0 6 0 36 0 45 0 255 2 2 10 0 15 0 0 0 0 "
+        b"crc16: 0000}\n"
+    )
+    device = AsekoV8Decoder.decode(frame)
+    assert device.ph_minus_pump_running is True
+    assert device.cl_pump_running is False
+
+
+def test_both_pumps_independent():
+    """outs[8] and outs[9] are independently decoded."""
+    frame = (
+        b"{v1 999999999 804 0 27 "
+        b"ins: 200 -500 -500 -500 0 0 0 0 1 -500 -500 -500 0 25 1 27 12 0 0 "
+        b"ains: 740 688 789 7940 0 0 794 794 0 0 0 0 0 0 0 0 "
+        b"outs: 0 0 1 0 0 0 0 0 1 1 0 0 0 0 0 0 0 0 0 "
+        b"areqs: 74 74 4 5 0 36 36 0 0 0 6 0 36 0 45 0 255 2 2 10 0 15 0 0 0 0 "
+        b"crc16: 0000}\n"
+    )
+    device = AsekoV8Decoder.decode(frame)
+    assert device.ph_minus_pump_running is True
+    assert device.cl_pump_running is True

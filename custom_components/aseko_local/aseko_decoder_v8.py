@@ -98,10 +98,14 @@ class AsekoV8Decoder:
 
         # --- Measurements ---
         water_temperature_raw = _probe_value(ins, 0)
-        water_temperature = water_temperature_raw / 10 if water_temperature_raw is not None else None
+        water_temperature = (
+            water_temperature_raw / 10 if water_temperature_raw is not None else None
+        )
 
         water_flow_raw = _get(ins, 8)
-        water_flow_to_probes = bool(water_flow_raw) if water_flow_raw is not None else None
+        water_flow_to_probes = (
+            bool(water_flow_raw) if water_flow_raw is not None else None
+        )
 
         ph_raw = _probe_value(ains, 0)
         ph = ph_raw / 100 if ph_raw is not None else None
@@ -115,6 +119,9 @@ class AsekoV8Decoder:
 
         outs8 = _get(outs, 8)
         ph_minus_pump_running = bool(outs8) if outs8 is not None else None
+
+        outs9 = _get(outs, 9)
+        cl_pump_running = bool(outs9) if outs9 is not None else None
 
         # --- Configuration / setpoints ---
         areqs0 = _get(areqs, 0)
@@ -151,6 +158,7 @@ class AsekoV8Decoder:
             redox=redox,
             filtration_pump_running=filtration_pump_running,
             ph_minus_pump_running=ph_minus_pump_running,
+            cl_pump_running=cl_pump_running,
             flowrate_ph_minus=60,
             flowrate_chlor=60,
             required_ph=required_ph,
@@ -171,7 +179,7 @@ class AsekoV8Decoder:
         try:
             return now.replace(hour=hour, minute=minute, second=0, microsecond=0)
         except ValueError as exc:
-            _LOGGER.warning(
+            _LOGGER.debug(
                 "v8 frame contains invalid time %02d:%02d (%s) — using now()",
                 hour,
                 minute,
