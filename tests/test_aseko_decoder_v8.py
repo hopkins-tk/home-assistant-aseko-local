@@ -1,8 +1,6 @@
 """Tests for AsekoV8Decoder."""
 
 import pytest
-from datetime import datetime
-from unittest.mock import patch
 
 from custom_components.aseko_local.aseko_data import (
     AsekoDeviceType,
