@@ -303,7 +303,9 @@ class AsekoDeviceServer:
 
         Scans the initial MESSAGE_SIZE bytes for the v8 signature b"{v1 ".
         If found, any bytes before it are discarded (logged as a warning when
-        offset > 0) and the remaining text frame is read until the closing '}'.
+        offset > 0) and the remaining text frame is read until its terminating
+        newline byte (``b"\\n"``), which is included in the returned frame when
+        present.
 
         For binary (v7) frames, the rewind check is applied to the initial
         MESSAGE_SIZE bytes and the corrected frame is returned together with
@@ -384,7 +386,9 @@ class AsekoDeviceServer:
     ) -> "AsekoDeviceServer":
         key = f"{host}:{port}"
         if key not in cls._instances:
-            cls._instances[key] = AsekoDeviceServer(host, port, on_data, raw_sink, v8_raw_sink)
+            cls._instances[key] = AsekoDeviceServer(
+                host, port, on_data, raw_sink, v8_raw_sink
+            )
             await cls._instances[key].start()
         else:
             if raw_sink:

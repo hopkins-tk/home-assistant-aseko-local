@@ -157,7 +157,9 @@ async def test_issue_61_shifted_frame(monkeypatch) -> None:
 # Minimal synthetic v8 frame: starts with '{v1 ', ends with '}'
 V8_INITIAL = b"{v1 12345678" + b" " * 108  # 120 bytes, starts with '{v1 '
 assert len(V8_INITIAL) == 120
-V8_REST = b" ins: 0000 outs: 0000 crc16: ABCD}\n"  # read by readuntil(b'\n'), includes \n
+V8_REST = (
+    b" ins: 0000 outs: 0000 crc16: ABCD}\n"  # read by readuntil(b'\n'), includes \n
+)
 V8_FULL_FRAME = V8_INITIAL + V8_REST  # exact bytes the device sends
 
 # Shifted v8 frame: 3 garbage prefix bytes before the '{v1 ' signature

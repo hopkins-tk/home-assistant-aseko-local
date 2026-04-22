@@ -42,7 +42,10 @@ class AsekoCloudMirror:
         """Stop worker task and close connection."""
         if self._task:
             self._task.cancel()
-            await self._task
+            try:
+                await self._task
+            except asyncio.CancelledError:
+                pass
             self._task = None
         if self._read_task:
             self._read_task.cancel()

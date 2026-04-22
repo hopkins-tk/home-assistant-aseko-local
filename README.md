@@ -85,19 +85,20 @@ You need to re-configure your Aseko unit to send data to your Home Assistant ins
 2. Go to **Serial Port** configuration
 
    ![Aseko unit initial configuration](images/aseko-init.png)
-   You can see the default **Remote Srver Address** is **pool.aseko.com** (or something similar) and **Local/Remote Port Number** is **47524** - make note of that if you would like to keep sending the data there as well - see [Optional: Keep data to Aseko Cloud](#optional-keep-data-to-aseko-cloud)
+   You can see the default **Remote Srver Address** is **pool.aseko.com** (or something similar) and **Local/Remote Port Number** is **47524** or **51050** - make note of that if you would like to keep sending the data there as well - see [Optional: Keep data to Aseko Cloud](#optional-keep-data-to-aseko-cloud)
 
    The port shown here tells you which firmware version your device is running:
    - **Port 47524** → firmware v7 or older (120-byte binary frame) — fully supported
-   - **Port 51050** → firmware v8 (463-byte text frame) — support in progress, see [issue #49](https://github.com/hopkins-tk/home-assistant-aseko-local/issues/49)
+   - **Port 51050** → firmware v8 (463-byte text frame) — supported
+   But you could change it to whatever you want as long as it matches the port you set in the integration settings.
 
 3. Change **Remote Server Addr** to the IP address or DNS record of your **Home Assistant** instance on your local network (or your TCP mirror - see [Optional: Keep data to Aseko Cloud](#optional-keep-data-to-aseko-cloud))
 
    ![Aseko unit changed configuration](images/aseko-changed.png)
 
-4. (Optional) Change **Remote Port Number** to the port on which the integration will be listening on your **Home Assistant** instance.
+4. Set **Remote Port Number** to the port on which the integration will be listening on your **Home Assistant** instance.
 
-   When adding the **Aseko Local** integration in Home Assistant, set the same port here. The default **47524** works for firmware v7 devices. For firmware v8 devices the default is **51050**.
+   When adding the **Aseko Local** integration in Home Assistant, set the same port as in your device. The default **47524** works for firmware v7 devices. For firmware v8 devices the default is **51050**.
 
    > **Mixed setup (two devices, different firmware):** Both devices must send to the **same** port on Home Assistant — the integration uses a single server. Choose one port, set both devices to use it, and set the same port when configuring the integration.
 
@@ -109,7 +110,7 @@ You need to re-configure your Aseko unit to send data to your Home Assistant ins
 
 If you want to keep sending the data to Aseko Cloud, you had to use a TCP proxy (like [goduplicator](https://github.com/hopkins-tk/home-assistant-aseko-local/issues/14#issuecomment-2897932015)) before release `1.3.0`. The installation and configuration of goduplicator proved trouble some for some of the users and goduplicator has not been updated for over 5 years.
 
-**Aseko Local** has a built in forwarder that can be enabled to forward the raw data received from Aseko Device to Aseko Cloud. To use it, open **Aseko Local** integration, klick on settings (see image) and enable the forwarder.
+**Aseko Local** has a built in forwarder that can be enabled to forward the raw data received from Aseko Device to Aseko Cloud. To use it, open **Aseko Local** integration, click on settings (see image) and enable the forwarder.
 
 > The forwarder automatically selects the correct destination port based on the frame type received:
 > - **Firmware v7 and older** (binary frame) → forwards to `pool.aseko.com` port **47524**
@@ -184,7 +185,7 @@ Adjust the entity IDs to match your own helper and sensor names.
 
 ![Template sensor for remaining canister volume](images/aseko_template_sensor_remaining.png)
 
-** Step 3 - Issue utility meter for periodic usage like daily/weekly/monthly consumption**
+**Step 3 - Issue utility meter for periodic usage like daily/weekly/monthly consumption**
 Go to **Settings → Devices & Services → Helpers → Create helper → Utility Meter** and configure it as follows:
 - Name: PH minus daily usage
 - Meter type: Daily
