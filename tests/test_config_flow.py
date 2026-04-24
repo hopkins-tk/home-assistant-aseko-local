@@ -11,9 +11,7 @@ from custom_components.aseko_local.aseko_server import ServerConnectionError
 from custom_components.aseko_local.const import (
     CONF_FORWARDER_ENABLED,
     CONF_FORWARDER_HOST,
-    CONF_FORWARDER_PORT,
     DEFAULT_FORWARDER_HOST,
-    DEFAULT_FORWARDER_PORT,
     DOMAIN,
 )
 
@@ -112,7 +110,6 @@ async def test_options_flow(
     options = {
         CONF_FORWARDER_ENABLED: True,
         CONF_FORWARDER_HOST: DEFAULT_FORWARDER_HOST,
-        CONF_FORWARDER_PORT: DEFAULT_FORWARDER_PORT,
     }
 
     with patch(

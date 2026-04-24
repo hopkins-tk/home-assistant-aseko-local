@@ -9,7 +9,8 @@ DEFAULT_BINDING_PORT = 47524
 
 # Proxy defaults
 DEFAULT_FORWARDER_HOST = "pool.aseko.com"
-DEFAULT_FORWARDER_PORT = 47524
+DEFAULT_FORWARDER_PORT_V7 = 47524
+DEFAULT_FORWARDER_PORT_V8 = 51050
 
 # Year offset and message sizes
 YEAR_OFFSET = 2000
@@ -35,6 +36,7 @@ UNIT_TYPE_NET = 0x08  # NET can be 0x09 or 0x0A
 UNIT_TYPE_PROFI = 0x08  # PROFI is 0x08
 
 UNSPECIFIED_VALUE = 0xFF
+UNSPECIFIED_V8 = -500  # v8 text frame sentinel for absent/unavailable probe readings
 
 # Config / option keys
 CONF_ENABLE_RAW_LOGGING = "enable_raw_logging"

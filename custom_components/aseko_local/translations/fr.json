@@ -29,8 +29,7 @@
             "options_init": {
                 "data": {
                     "forwarder_enabled": "Activer la transmission",
-                    "forwarder_host": "Hôte de destination",
-                    "forwarder_port": "Port de destination"
+                    "forwarder_host": "Hôte de destination"
                 }
             }
         }

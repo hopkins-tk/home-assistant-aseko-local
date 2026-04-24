@@ -5,7 +5,6 @@
 | Field | Value |
 |---|---|
 | Model | ASIN AQUA Oxygen |
-| Serial | `0x0690DD6D` (decimal 110_157_165) |
 | Source | Log `oxy_log.log`, 2026-04-02 18:20 – 19:34 |
 | byte[4] | `0x05` → **Unknown unit type: 5** (current decoder fails here) |
 

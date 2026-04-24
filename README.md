@@ -19,10 +19,10 @@ The Aseko unit and your Home Assistant need to run on the same network or traffi
 | Device | Firmware | Sensors | Pump state | Chemical consumption |
 |---|---|---|---|---|
 | ASIN Aqua Net | ≤ 7.x | ✅ | ✅ cl, PH− | ✅ cl, PH− |
+| ASIN Aqua Net | 8.x | ✅ | ✅ Filtration, cl, PH− | ✅ cl, PH− |
 | ASIN Aqua Salt | ≤ 7.x | ✅ | ✅ Filtration, Electrolyzer, Algicide, Flocculant, pH− | ✅ Algicide, Flocculant, pH− |
 | ASIN Aqua Oxy | ≤ 7.x | ✅ | ✅ Filtration, Oxy, Algicide, Flocculant, pH− | ✅ Oxy,Algicide, Flocculant, pH− |
-> **Firmware note:** This integration supports the **120-byte binary protocol** used by firmware ≤ 7.x. Aseko devices typically send to port **47524** by default; the port can be changed in the integration settings to match your device.
-> Devices with newer firmware (e.g. those reporting port **51050**) transmit a different 463-byte record format that is not yet supported — see [issue #49](https://github.com/hopkins-tk/home-assistant-aseko-local/issues/49) for progress.
+> **Firmware note:** This integration supports both the **120-byte binary protocol** (firmware ≤ 7.x, port **47524**) and the **text-frame protocol** (firmware 8.x, port **51050**). The port can be changed in the integration settings to match your device.
 
 ### Partially supported / untested devices
 
@@ -39,7 +39,6 @@ The following devices are likely compatible but the byte mapping for pump states
 | ASIN Aqua Eox Pro (07.2026) | ⚠️ Untested | Pump state bits uncertain; pH+ pump bit position unknown |
 | ASIN Aqua Salt NET (01.2026) | ⚠️ Untested | Pump state bits uncertain; pH+ pump bit position unknown |
 | ASIN Aqua Net+  | ⚠️ Untested | Pump state bits uncertain; pH+ pump bit position unknown |
-| ASIN Aqua Net fw 8.x | ⚠️ Unsupported yet | New 463-byte frame format; byte mapping unknown |
 | ASIN Aqua  | ❌ Unsupported | No network connection |
 
 
@@ -86,16 +85,22 @@ You need to re-configure your Aseko unit to send data to your Home Assistant ins
 2. Go to **Serial Port** configuration
 
    ![Aseko unit initial configuration](images/aseko-init.png)
-   You can see the default **Remote Srver Address** is **pool.aseko.com** (or something similar) and **Local/Remote Port Number** is **47524** - make note of that if you would like to keep sending the data there as well - see [Optional: Keep data to Aseko Cloud](#optional-keep-data-to-aseko-cloud)
+   You can see the default **Remote Srver Address** is **pool.aseko.com** (or something similar) and **Local/Remote Port Number** is **47524** or **51050** - make note of that if you would like to keep sending the data there as well - see [Optional: Keep data to Aseko Cloud](#optional-keep-data-to-aseko-cloud)
 
-   **WARNING:** In case you see in **Local/Remote Port Number** a different number than **47524** (e.g. **51050**) that meens you have a newer Firmware, which is using a different format of the messages sent to the Aseko, which is currently not supported.
-   You might try to check with your vendor if the format can be changed on your unit.
+   The port shown here tells you which firmware version your device is running:
+   - **Port 47524** → firmware v7 or older (120-byte binary frame) — fully supported
+   - **Port 51050** → firmware v8 (463-byte text frame) — supported
+   But you could change it to whatever you want as long as it matches the port you set in the integration settings.
 
 3. Change **Remote Server Addr** to the IP address or DNS record of your **Home Assistant** instance on your local network (or your TCP mirror - see [Optional: Keep data to Aseko Cloud](#optional-keep-data-to-aseko-cloud))
 
    ![Aseko unit changed configuration](images/aseko-changed.png)
 
-4. (Optional) Change **Remote Port Number** to the port on which the integration will be listening on your **Home Assistant** instance (in case it can not be the default port **47524**)
+4. Set **Remote Port Number** to the port on which the integration will be listening on your **Home Assistant** instance.
+
+   When adding the **Aseko Local** integration in Home Assistant, set the same port as in your device. The default **47524** works for firmware v7 devices. For firmware v8 devices the default is **51050**.
+
+   > **Mixed setup (two devices, different firmware):** Both devices must send to the **same** port on Home Assistant — the integration uses a single server. Choose one port, set both devices to use it, and set the same port when configuring the integration.
 
 5. Confirm the **Restart** of the module
 
@@ -105,7 +110,13 @@ You need to re-configure your Aseko unit to send data to your Home Assistant ins
 
 If you want to keep sending the data to Aseko Cloud, you had to use a TCP proxy (like [goduplicator](https://github.com/hopkins-tk/home-assistant-aseko-local/issues/14#issuecomment-2897932015)) before release `1.3.0`. The installation and configuration of goduplicator proved trouble some for some of the users and goduplicator has not been updated for over 5 years.
 
-**Aseko Local** has a built in forwarder that can be enabled to forward the raw data received from Aseko Device to Aseko Cloud (default `pool.aseko.com:47524`). To use it, open **Aseko Local** integration, klick on settings (see image) and enable the forwarder.
+**Aseko Local** has a built in forwarder that can be enabled to forward the raw data received from Aseko Device to Aseko Cloud. To use it, open **Aseko Local** integration, click on settings (see image) and enable the forwarder.
+
+> The forwarder automatically selects the correct destination port based on the frame type received:
+> - **Firmware v7 and older** (binary frame) → forwards to `pool.aseko.com` port **47524**
+> - **Firmware v8** (text frame) → forwards to `pool.aseko.com` port **51050**
+>
+> No additional configuration is needed.
 
 ![Aseko Local options](images/aseko-options.png)
 

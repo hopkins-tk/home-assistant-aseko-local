@@ -16,10 +16,8 @@ from .const import (
     DEFAULT_BINDING_ADDRESS,
     DEFAULT_BINDING_PORT,
     DEFAULT_FORWARDER_HOST,
-    DEFAULT_FORWARDER_PORT,
     CONF_FORWARDER_ENABLED,
     CONF_FORWARDER_HOST,
-    CONF_FORWARDER_PORT,
 )
 from .aseko_server import AsekoDeviceServer, ServerConnectionError
 
@@ -172,12 +170,6 @@ class AsekoLocalOptionsFlowHandler(OptionsFlow):
                         CONF_FORWARDER_HOST, DEFAULT_FORWARDER_HOST
                     ),
                 ): str,
-                vol.Optional(
-                    CONF_FORWARDER_PORT,
-                    default=config_entry.options.get(
-                        CONF_FORWARDER_PORT, DEFAULT_FORWARDER_PORT
-                    ),
-                ): int,
                 # vol.Optional(
                 #     CONF_ENABLE_RAW_LOGGING,
                 #     default=config_entry.options.get(CONF_ENABLE_RAW_LOGGING, False),

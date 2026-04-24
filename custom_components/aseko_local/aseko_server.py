@@ -3,10 +3,12 @@
 import asyncio
 import logging
 from collections.abc import Callable
+from enum import Enum, auto
 from typing import ClassVar, Optional, Any
 
 from .aseko_data import AsekoDevice
 from .aseko_decoder import AsekoDecoder
+from .aseko_decoder_v8 import AsekoV8Decoder
 from .const import (
     DEFAULT_BINDING_ADDRESS,
     DEFAULT_BINDING_PORT,
@@ -16,6 +18,13 @@ from .const import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+
+class FrameType(Enum):
+    """Aseko frame protocol type."""
+
+    BINARY = auto()  # Classic binary v7 frame (120 bytes)
+    V8 = auto()  # Text-based v8 frame starting with '{'
 
 
 class AsekoDeviceServer:
@@ -29,12 +38,15 @@ class AsekoDeviceServer:
         port: int = DEFAULT_BINDING_PORT,
         on_data: Optional[Callable[[AsekoDevice], Any]] = None,
         raw_sink: Optional[Callable[[bytes], Any]] = None,
+        v8_raw_sink: Optional[Callable[[bytes], Any]] = None,
     ) -> None:
         self.host = host
         self.port = port
         self.on_data = on_data
         self._raw_sink = raw_sink
+        self._v8_raw_sink = v8_raw_sink
         self._forward_cb: Optional[Callable[[bytes], Any]] = None
+        self._forward_v8_cb: Optional[Callable[[bytes], Any]] = None
         self._server: Optional[asyncio.AbstractServer] = None
         self._clients: set[asyncio.StreamWriter] = set()
 
@@ -82,6 +94,13 @@ class AsekoDeviceServer:
             except Exception:
                 _LOGGER.error("Raw sink raised an exception", exc_info=True)
 
+    async def _call_v8_raw_sink(self, data: bytes) -> None:
+        if self._v8_raw_sink:
+            try:
+                await self._maybe_await(self._v8_raw_sink(data))
+            except Exception:
+                _LOGGER.error("v8 raw sink raised an exception", exc_info=True)
+
     async def _call_forward_cb(self, data: bytes) -> None:
         if self._forward_cb:
             try:
@@ -89,6 +108,14 @@ class AsekoDeviceServer:
                 await self._maybe_await(self._forward_cb(data))
             except Exception:
                 _LOGGER.error("Forward callback raised an exception", exc_info=True)
+
+    async def _call_forward_v8_cb(self, data: bytes) -> None:
+        if self._forward_v8_cb:
+            try:
+                _LOGGER.debug("v8 forward callback called with %d bytes", len(data))
+                await self._maybe_await(self._forward_v8_cb(data))
+            except Exception:
+                _LOGGER.error("v8 forward callback raised an exception", exc_info=True)
 
     async def _maybe_call_on_data(self, device: AsekoDevice) -> None:
         if self.on_data:
@@ -107,16 +134,16 @@ class AsekoDeviceServer:
         try:
             while True:
                 try:
-                    # ✅ Read exactly MESSAGE_SIZE bytes per frame with timeout
-                    frame = await asyncio.wait_for(
+                    # Read the first MESSAGE_SIZE bytes to detect frame type
+                    initial = await asyncio.wait_for(
                         reader.readexactly(MESSAGE_SIZE), timeout=READ_TIMEOUT
                     )
 
                     _LOGGER.debug(
-                        "Frame received from %s (%d bytes):\n%s",
+                        "Initial bytes from %s (%d bytes):\n%s",
                         addr,
-                        len(frame),
-                        frame.hex(" ", 1),  # print as spaced hex string
+                        len(initial),
+                        initial.hex(" ", 1),  # print as spaced hex string
                     )
 
                 except asyncio.TimeoutError:
@@ -146,24 +173,56 @@ class AsekoDeviceServer:
                         await self._call_raw_sink(exc.partial)
                     break
 
-                # Try to decode the frame
+                # Detect frame type, assemble and rewind if necessary
                 try:
-                    # Rewind frame to correct byte offset if necessary
-                    rewound_frame, offset = self._rewind_frame(frame)
+                    frame, offset, frame_type = await self._sync_frame(reader, initial)
+                except Exception:
+                    _LOGGER.error(
+                        "Frame sync error from %s → closing connection",
+                        addr,
+                        exc_info=True,
+                    )
+                    break
 
-                    # Call raw_sink AFTER rewind so diagnostics see the correctly aligned frame
-                    await self._call_raw_sink(rewound_frame)
+                # v8 text frame: decode, forward, deliver to on_data
+                if frame_type == FrameType.V8:
+                    await self._call_forward_v8_cb(frame)
+                    try:
+                        device = AsekoV8Decoder.decode(frame)
+                        await self._call_v8_raw_sink(frame)
+                    except ValueError as exc:
+                        _LOGGER.error(
+                            "v8 decode error from %s: %s → closing connection",
+                            addr,
+                            exc,
+                        )
+                        break
+                    except Exception:
+                        _LOGGER.error(
+                            "v8 decode error from %s → closing connection",
+                            addr,
+                            exc_info=True,
+                        )
+                        break
+                    _LOGGER.debug("v8 decoded data from %s: %s", addr, device)
+                    await self._maybe_call_on_data(device)
+                    continue
 
-                    # Forward CORRECTED data to cloud (after rewind)
-                    await self._call_forward_cb(rewound_frame)
+                # BINARY path — frame is already rewound by _sync_frame
+                try:
+                    # Call raw_sink so diagnostics see the correctly aligned frame
+                    await self._call_raw_sink(frame)
+
+                    # Forward CORRECTED data to cloud
+                    await self._call_forward_cb(frame)
 
                     # 🔎 Plausibility check before decoding: pH values must be between 0 and 14
                     # 0xFF 0xFF (UNSPECIFIED_VALUE) means the probe is absent — skip the check
                     if (
-                        rewound_frame[14] != UNSPECIFIED_VALUE
-                        and rewound_frame[15] != UNSPECIFIED_VALUE
+                        frame[14] != UNSPECIFIED_VALUE
+                        and frame[15] != UNSPECIFIED_VALUE
                     ):
-                        ph_value = int.from_bytes(rewound_frame[14:16], "big") / 100
+                        ph_value = int.from_bytes(frame[14:16], "big") / 100
                         if not (0 <= ph_value <= 14):
                             _LOGGER.error(
                                 "Unreasonable pH value (%s) received from %s → closing connection",
@@ -172,7 +231,7 @@ class AsekoDeviceServer:
                             )
                             break  # leave loop → connection will be closed
 
-                    required_ph = rewound_frame[52] / 10
+                    required_ph = frame[52] / 10
                     if not (6 <= required_ph <= 10):
                         _LOGGER.error(
                             "Unreasonable required pH value (%s) received from %s → closing connection",
@@ -181,7 +240,7 @@ class AsekoDeviceServer:
                         )
                         break  # leave loop → connection will be closed
 
-                    device = AsekoDecoder.decode(rewound_frame)
+                    device = AsekoDecoder.decode(frame)
 
                 except ValueError as e:
                     _LOGGER.error(
@@ -200,7 +259,7 @@ class AsekoDeviceServer:
                 # Send decoded data to higher layer
                 await self._maybe_call_on_data(device)
 
-                # If frame had to be rewinded, close connection AFTER processing
+                # If frame had to be rewound, close connection AFTER processing
                 # to force realignment on reconnect
                 if offset > 0:
                     _LOGGER.info(
@@ -228,8 +287,60 @@ class AsekoDeviceServer:
         else:
             _LOGGER.debug("Forward callback removed")
 
-    def _rewind_frame(self, data: bytes) -> tuple[bytes, int]:
-        """Rewind missaligned frame to the start position for processing.
+    def set_forward_v8_callback(
+        self, callback: Optional[Callable[[bytes], Any]]
+    ) -> None:
+        self._forward_v8_cb = callback
+        if callback:
+            _LOGGER.debug("v8 forward callback registered")
+        else:
+            _LOGGER.debug("v8 forward callback removed")
+
+    async def _sync_frame(
+        self, reader: asyncio.StreamReader, initial: bytes
+    ) -> tuple[bytes, int, FrameType]:
+        """Detect frame type, assemble the complete frame, and rewind if necessary.
+
+        Scans the initial MESSAGE_SIZE bytes for the v8 signature b"{v1 ".
+        If found, any bytes before it are discarded (logged as a warning when
+        offset > 0) and the remaining text frame is read until its terminating
+        newline byte (``b"\\n"``), which is included in the returned frame when
+        present.
+
+        For binary (v7) frames, the rewind check is applied to the initial
+        MESSAGE_SIZE bytes and the corrected frame is returned together with
+        the rewind offset (0 if no rewind was needed).
+
+        Returns:
+            tuple[bytes, int, FrameType]: (clean_frame, rewind_offset, frame_type)
+        """
+        brace_pos = initial.find(b"{v1 ")
+        if brace_pos >= 0:
+            if brace_pos > 0:
+                prefix = initial[:brace_pos]
+                if all(b in b"\r\n\t\x00" for b in prefix):
+                    # Normal frame separator (e.g. \n between frames) — not a real shift
+                    _LOGGER.debug(
+                        "v8 frame: skipping %d separator byte(s) before '{'", brace_pos
+                    )
+                else:
+                    _LOGGER.warning(
+                        "v8 frame shifted by %d bytes — discarding prefix", brace_pos
+                    )
+            v8_data = initial[brace_pos:]
+            try:
+                rest = await asyncio.wait_for(
+                    reader.readuntil(b"\n"), timeout=READ_TIMEOUT
+                )
+                return v8_data + rest, brace_pos, FrameType.V8
+            except asyncio.IncompleteReadError as exc:
+                return v8_data + exc.partial, brace_pos, FrameType.V8
+        data, offset = self._rewind_binary(initial)
+        return data, offset, FrameType.BINARY
+
+    def _rewind_binary(self, data: bytes) -> tuple[bytes, int]:
+        """Rewind misaligned binary frame to the correct start position.
+
         Sometimes the TCP stream gets out of sync and the frame
         starts at an offset. This function searches for the correct
         start position and rewinds the frame accordingly.
@@ -271,14 +382,19 @@ class AsekoDeviceServer:
         port: int = DEFAULT_BINDING_PORT,
         on_data: Optional[Callable[[AsekoDevice], Any]] = None,
         raw_sink: Optional[Callable[[bytes], Any]] = None,
+        v8_raw_sink: Optional[Callable[[bytes], Any]] = None,
     ) -> "AsekoDeviceServer":
         key = f"{host}:{port}"
         if key not in cls._instances:
-            cls._instances[key] = AsekoDeviceServer(host, port, on_data, raw_sink)
+            cls._instances[key] = AsekoDeviceServer(
+                host, port, on_data, raw_sink, v8_raw_sink
+            )
             await cls._instances[key].start()
         else:
             if raw_sink:
                 cls._instances[key]._raw_sink = raw_sink
+            if v8_raw_sink:
+                cls._instances[key]._v8_raw_sink = v8_raw_sink
             if on_data:
                 cls._instances[key].on_data = on_data
         return cls._instances[key]

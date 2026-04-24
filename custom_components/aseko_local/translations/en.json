@@ -29,8 +29,7 @@
       "options_init": {
         "data": {
           "forwarder_enabled": "Enable forwarding",
-          "forwarder_host": "Forward to host",
-          "forwarder_port": "Forward to port"
+          "forwarder_host": "Forward to host"
         }
       }
     }

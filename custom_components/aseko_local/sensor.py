@@ -415,6 +415,13 @@ SENSORS: list[AsekoSensorEntityDescription] = [
         ),
         entity_registry_visible_default=False,
     ),
+    AsekoSensorEntityDescription(
+        key="last_seen",
+        translation_key="last_seen",
+        device_class=SensorDeviceClass.TIMESTAMP,
+        icon="mdi:clock-outline",
+        value_fn=lambda device: device.last_seen,
+    ),
 ]
 
 # ---------- Connection status sensor ----------
@@ -426,14 +433,6 @@ CONNECTION_STATUS_SENSOR = AsekoSensorEntityDescription(
     options=["online", "offline"],
     icon="mdi:lan-connect",
     value_fn=lambda device: "online" if device.online() else "offline",
-)
-
-LAST_SEEN_SENSOR = AsekoSensorEntityDescription(
-    key="last_seen",
-    translation_key="last_seen",
-    device_class=SensorDeviceClass.TIMESTAMP,
-    icon="mdi:clock-outline",
-    value_fn=lambda device: device.last_seen,
 )
 
 # ---------- Setup ----------

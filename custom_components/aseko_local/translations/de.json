@@ -29,8 +29,7 @@
       "options_init": {
         "data": {
           "forwarder_enabled": "Cloud-Weiterleitung aktivieren",
-          "forwarder_host": "Cloud-Host",
-          "forwarder_port": "Cloud-Port"
+          "forwarder_host": "Cloud-Host"
         }
       }
     }
