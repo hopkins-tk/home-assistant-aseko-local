@@ -16,7 +16,6 @@ from .aseko_data import (
 from .const import (
     PROBE_CLF_MISSING,
     PROBE_DOSE_MISSING,
-    PROBE_OXY_MISSING,
     PROBE_REDOX_MISSING,
     UNIT_TYPE_HOME,
     UNIT_TYPE_HOME_CLF,
