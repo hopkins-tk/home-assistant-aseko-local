@@ -744,7 +744,7 @@ def test_decode_oxy_ph_minus_pump_running() -> None:
 
 
 def test_decode_issue_99_home() -> None:
-    """Test decoding data from issue #99 (HOME with CLF - 0x02 - 0010)."""
+    """Test decoding data from issue #99 (HOME with CLF - 0x02)."""
 
     data = bytearray.fromhex(
         "06 90 ff ff 02 01 1a 04 19 0e 13 0a 00 00 02 b7 00 1e 00 1e 00 1f 90 fe 70 01 30 26 aa 08 00 00 00 00 00 00 00 43 0a b3"
@@ -762,7 +762,7 @@ def test_decode_issue_99_home() -> None:
 
 
 def test_decode_issue_99_salt() -> None:
-    """Test decoding data from issue #99 (SALT with CLF - 0x0d - 1101)."""
+    """Test decoding data from issue #99 (SALT with CLF - 0x0d)."""
 
     data = bytearray.fromhex(
         "06 8f ff ff 0d 01 1a 04 19 0e 2d 28 00 20 02 cd 00 00 00 01 1f 00 ff fd c4 00 dd 4e 00 00 00 00 00 00 00 00 00 57 00 3a"
