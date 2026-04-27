@@ -16,9 +16,11 @@ from .aseko_data import (
 from .const import (
     PROBE_CLF_MISSING,
     PROBE_DOSE_MISSING,
-    PROBE_REDOX_MISSING,
     PROBE_OXY_MISSING,
+    PROBE_REDOX_MISSING,
     UNIT_TYPE_HOME,
+    UNIT_TYPE_HOME_CLF,
+    UNIT_TYPE_HOME_REDOX,
     UNIT_TYPE_NET,
     UNIT_TYPE_OXY,
     UNIT_TYPE_PROFI,
@@ -65,20 +67,20 @@ class AsekoDecoder:
     def _unit_type(data: bytes) -> AsekoDeviceType | None:
         """Determine the Aseko device type. Returns None until a reliable detection is possible."""
 
+        if data[4] == UNIT_TYPE_PROFI:  # Uncertain
+            return AsekoDeviceType.PROFI
+
+        if data[4] > UNIT_TYPE_SALT:
+            return AsekoDeviceType.SALT
+
+        if data[4] > UNIT_TYPE_NET:
+            return AsekoDeviceType.NET
+
         if data[4] == UNIT_TYPE_OXY:
             return AsekoDeviceType.OXY
 
-        if data[4] == UNIT_TYPE_PROFI:
-            return AsekoDeviceType.PROFI
-
-        if (data[4] & UNIT_TYPE_SALT) == UNIT_TYPE_SALT:
-            return AsekoDeviceType.SALT
-
-        if (data[4] & UNIT_TYPE_HOME) == UNIT_TYPE_HOME:
+        if data[4] >= UNIT_TYPE_HOME:
             return AsekoDeviceType.HOME
-
-        if bool(data[4] & UNIT_TYPE_NET):
-            return AsekoDeviceType.NET
 
         _LOGGER.warning("Unknown unit type: %s", data[4])
         return None
@@ -89,33 +91,54 @@ class AsekoDecoder:
     ) -> set[AsekoProbeType]:
         """Determine types of probes installed from the binary data."""
 
+        # Let's try to read everything for unknown unit type
+        if device_type is None:
+            return {
+                AsekoProbeType.PH,
+                AsekoProbeType.CLF,
+                AsekoProbeType.CLT,
+                AsekoProbeType.REDOX,
+                AsekoProbeType.DOSE,
+                AsekoProbeType.OXY,
+            }
+
         # OXY has no CLF/REDOX probe hardware. The SANOSIL (OXY Pure) probe
         # occupies the CLF slot physically, so PROBE_CLF_MISSING bit is 0 –
         # which would incorrectly add CLF without this guard.
-        if device_type == AsekoDeviceType.OXY:
+        elif device_type == AsekoDeviceType.OXY:
             return {AsekoProbeType.PH, AsekoProbeType.OXY}
 
-        probe_info = data[4]
+        # HOME units have different bitmask logic, and the bits are not consistent across HOME vs. NET/SALT as initially hoped
+        # – instead, they seem to indicate specific HOME subtypes with fixed probe configurations.
+        # The CLF vs. REDOX distinction is determined by the unit type byte rather than a missing probe bit.
+        elif device_type == AsekoDeviceType.HOME:
+            if data[4] == UNIT_TYPE_HOME_CLF:
+                return {AsekoProbeType.PH, AsekoProbeType.CLF}
 
-        probes = set()
-        probes.add(AsekoProbeType.PH)
+            elif data[4] == UNIT_TYPE_HOME_REDOX:
+                return {AsekoProbeType.PH, AsekoProbeType.REDOX}
 
-        if (
-            not bool(probe_info & PROBE_REDOX_MISSING)
-            or (data[4] & UNIT_TYPE_HOME) == UNIT_TYPE_HOME
-        ):
-            probes.add(AsekoProbeType.REDOX)
+            else:
+                return {AsekoProbeType.PH, AsekoProbeType.DOSE}
 
-        if not bool(probe_info & PROBE_CLF_MISSING):
-            probes.add(AsekoProbeType.CLF)
+        else:
+            probe_info = data[4]
 
-        if not bool(probe_info & PROBE_OXY_MISSING):
-            probes.add(AsekoProbeType.OXY)
+            probes = set()
+            probes.add(AsekoProbeType.PH)
 
-        if not bool(probe_info & PROBE_DOSE_MISSING):
-            probes.add(AsekoProbeType.DOSE)
+            if not bool(probe_info & PROBE_REDOX_MISSING):
+                probes.add(AsekoProbeType.REDOX)
 
-        return probes
+            if not bool(probe_info & PROBE_CLF_MISSING):
+                probes.add(AsekoProbeType.CLF)
+
+            if device_type != AsekoDeviceType.PROFI and not bool(
+                probe_info & PROBE_DOSE_MISSING
+            ):
+                probes.add(AsekoProbeType.DOSE)
+
+            return probes
 
     @staticmethod
     def _timestamp(data: bytes) -> datetime | None:
@@ -214,8 +237,7 @@ class AsekoDecoder:
         if AsekoProbeType.CLF not in unit.configuration:
             return
         unit.cl_free = int.from_bytes(data[16:18], "big") / 100
-        if unit.device_type != AsekoDeviceType.SALT:
-            unit.cl_free_mv = int.from_bytes(data[20:22], "big")
+        unit.cl_free_mv = int.from_bytes(data[20:22], "big")
 
     @staticmethod
     def _fill_salt_unit_data(unit: AsekoDevice, data: bytes) -> None:

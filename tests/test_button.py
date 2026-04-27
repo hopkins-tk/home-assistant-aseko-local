@@ -11,7 +11,7 @@ from custom_components.aseko_local.button import (
 )
 from custom_components.aseko_local.aseko_decoder import AsekoDecoder
 from custom_components.aseko_local.aseko_data import AsekoDeviceType
-from custom_components.aseko_local.const import WATER_FLOW_TO_PROBES
+from custom_components.aseko_local.const import UNIT_TYPE_PROFI, WATER_FLOW_TO_PROBES
 
 
 # ── helpers ────────────────────────────────────────────────────────────────────
@@ -55,7 +55,7 @@ def _make_salt_bytes() -> bytearray:
 def _make_profi_bytes() -> bytearray:
     data = bytearray([0xFF] * 120)
     data[0:4] = (3003).to_bytes(4, "big")
-    data[4] = 0x08  # PROFI with CLF+REDOX
+    data[4] = UNIT_TYPE_PROFI  # PROFI with CLF+REDOX
     data[6:12] = [24, 6, 15, 12, 0, 0]
     data[14:16] = (700).to_bytes(2, "big")
     data[16:18] = (100).to_bytes(2, "big")

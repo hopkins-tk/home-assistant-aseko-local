@@ -24,16 +24,19 @@ READ_TIMEOUT = 30.0
 WATER_FLOW_TO_PROBES = 0xAA
 
 # Probe missing flags
+# (unfortunately seems not to be true for HOME)
 PROBE_REDOX_MISSING = 0x01
 PROBE_CLF_MISSING = 0x02
 PROBE_DOSE_MISSING = 0x04
 PROBE_OXY_MISSING = 0x08  # OXY Pure (H₂O₂) probe present on ASIN AQUA Oxygen
 
+UNIT_TYPE_HOME = 0x02  # HOME can be CLF (0x02) or REDOX (0x03) | posibly DOSE (0x04) - no examples for DOSE
+UNIT_TYPE_HOME_CLF = 0x02
+UNIT_TYPE_HOME_REDOX = 0x03
 UNIT_TYPE_OXY = 0x05  # ASIN AQUA Oxygen – exact match, no overlap with other types
-UNIT_TYPE_SALT = 0x0C  # SALT can be 0x0D or 0x0E
-UNIT_TYPE_HOME = 0x03  # HOME can be CLF or REDOX (CLF version code unknown)
-UNIT_TYPE_NET = 0x08  # NET can be 0x09 or 0x0A
-UNIT_TYPE_PROFI = 0x08  # PROFI is 0x08
+UNIT_TYPE_NET = 0x08  # NET can be CLF (0x09) or REDOX (0x0A) or DOSE (0x0B)
+UNIT_TYPE_SALT = 0x0C  # SALT can be CLF (0x0D) or REDOX (0x0E) or DOSE (0x0F)
+UNIT_TYPE_PROFI = 0x10  # PROFI is 0x10 - not confirmed
 
 UNSPECIFIED_VALUE = 0xFF
 UNSPECIFIED_V8 = -500  # v8 text frame sentinel for absent/unavailable probe readings

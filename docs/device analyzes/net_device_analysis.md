@@ -7,7 +7,7 @@
 | Model | ASIN AQUA NET |
 | Firmware | 7.x (120-byte frame); fw 8.x uses a different 463-byte frame structure (not yet implemented) |
 | Source | Issue #66; AquaNET log 2026-04-07 13:15–13:16 (probe-mode switch capture) |
-| byte[4] | `0x09` (CLF active) or `0x0b` (DOSE mode) → `bool(data[4] & 0x08)` → **NET** |
+| byte[4] | `0x09` (CLF active) or `0x0a` (Redox active) or `0x0b` (DOSE mode) → `bool(data[4] & 0x08)` → **NET** |
 
 ---
 

@@ -11,6 +11,7 @@ from custom_components.aseko_local.aseko_data import (
 )
 from custom_components.aseko_local.aseko_decoder import AsekoDecoder
 from custom_components.aseko_local.const import (
+    UNIT_TYPE_PROFI,
     WATER_FLOW_TO_PROBES,
     YEAR_OFFSET,
 )
@@ -104,7 +105,7 @@ def test_decode_home() -> None:
     """Test decoding of HOME device data."""
 
     data = _make_base_bytes()
-    data[4] = 0x03  # HOME with CL probe
+    data[4] = 0x03  # HOME with Redox probe
     data[14:16] = (720).to_bytes(2, "big")  # ph
     data[37] = (
         0xB3  # pump presence/config byte (HOME has independent ports, not routed)
@@ -194,7 +195,7 @@ def test_decode_profi() -> None:
     """Test decoding of PROFI device data."""
 
     data = _make_base_bytes()
-    data[4] = 0x08  # PROFI with Redox & CLF probe
+    data[4] = UNIT_TYPE_PROFI  # PROFI with Redox & CLF probe
     data[16:18] = (100).to_bytes(2, "big")
     data[18:20] = (650).to_bytes(2, "big")
     data[14:16] = (800).to_bytes(2, "big")
@@ -203,6 +204,11 @@ def test_decode_profi() -> None:
 
     device = AsekoDecoder.decode(bytes(data))
     assert device.device_type == AsekoDeviceType.PROFI
+    assert device.configuration == {
+        AsekoProbeType.PH,
+        AsekoProbeType.CLF,
+        AsekoProbeType.REDOX,
+    }
     assert device.ph == 8.0
     assert device.redox == 650
     assert device.cl_free == 1.0
@@ -349,7 +355,9 @@ def test_decode_issue_61() -> None:
     )
 
     device = AsekoDecoder.decode(bytes(data))
+    print(device)
     assert device.device_type == AsekoDeviceType.HOME
+    assert device.configuration == {AsekoProbeType.PH, AsekoProbeType.REDOX}
     assert device.ph is not None
     assert device.redox is not None
     assert device.cl_free is None
@@ -541,7 +549,7 @@ def test_time_invalid() -> None:
 
 
 def test_available_probes_combinations() -> None:
-    from custom_components.aseko_local.aseko_decoder import (
+    from custom_components.aseko_local.const import (
         PROBE_CLF_MISSING,
         PROBE_DOSE_MISSING,
         PROBE_REDOX_MISSING,
@@ -555,6 +563,7 @@ def test_available_probes_combinations() -> None:
     assert probes == {
         AsekoProbeType.PH,
         AsekoProbeType.CLF,
+        AsekoProbeType.CLT,
         AsekoProbeType.REDOX,
         AsekoProbeType.DOSE,
         AsekoProbeType.OXY,
@@ -562,22 +571,22 @@ def test_available_probes_combinations() -> None:
 
     # Just CLF is missing
     data[4] = PROBE_CLF_MISSING
-    probes = AsekoDecoder._configuration(data)
+    probes = AsekoDecoder._configuration(data, AsekoDeviceType.PROFI)
     assert AsekoProbeType.CLF not in probes
 
     # Just REDOX is missing
     data[4] = PROBE_REDOX_MISSING
-    probes = AsekoDecoder._configuration(data)
+    probes = AsekoDecoder._configuration(data, AsekoDeviceType.PROFI)
     assert AsekoProbeType.REDOX not in probes
 
     # Just OXY is missing
     data[4] = PROBE_OXY_MISSING
-    probes = AsekoDecoder._configuration(data)
+    probes = AsekoDecoder._configuration(data, AsekoDeviceType.PROFI)
     assert AsekoProbeType.OXY not in probes
 
     # Just DOSE is missing
     data[4] = PROBE_DOSE_MISSING
-    probes = AsekoDecoder._configuration(data)
+    probes = AsekoDecoder._configuration(data, AsekoDeviceType.PROFI)
     assert AsekoProbeType.DOSE not in probes
 
 
@@ -732,3 +741,38 @@ def test_decode_oxy_ph_minus_pump_running() -> None:
     assert device.required_oxy_dose == 12
     assert device.flowrate_ph_minus == 60
     assert device.flowrate_floc == 10
+
+
+def test_decode_issue_99_home() -> None:
+    """Test decoding data from issue #99 (HOME with CLF - 0x02 - 0010)."""
+
+    data = bytearray.fromhex(
+        "06 90 ff ff 02 01 1a 04 19 0e 13 0a 00 00 02 b7 00 1e 00 1e 00 1f 90 fe 70 01 30 26 aa 08 00 00 00 00 00 00 00 43 0a b3"
+        "06 90 ff ff 02 03 1a 04 19 0e 13 0a 46 03 0a 19 08 00 10 00 12 00 16 00 02 be 01 30 03 15 00 0c 00 28 01 e0 2a 30 a2 55"
+        "06 90 ff ff 02 02 1a 04 19 0e 13 0a 00 3c 00 3c 00 3c 00 3c 00 0a 0d 21 37 64 00 f0 14 02 58 0f 0f 0f 1e 14 ff bc 02 77"
+    )
+
+    device = AsekoDecoder.decode(bytes(data))
+    print(device)
+    assert device.device_type == AsekoDeviceType.HOME
+    assert device.configuration == {AsekoProbeType.PH, AsekoProbeType.CLF}
+    assert device.cl_free is not None
+    assert device.cl_free_mv is not None
+    assert device.redox is None
+
+
+def test_decode_issue_99_salt() -> None:
+    """Test decoding data from issue #99 (SALT with CLF - 0x0d - 1101)."""
+
+    data = bytearray.fromhex(
+        "06 8f ff ff 0d 01 1a 04 19 0e 2d 28 00 20 02 cd 00 00 00 01 1f 00 ff fd c4 00 dd 4e 00 00 00 00 00 00 00 00 00 57 00 3a"
+        "06 8f ff ff 0d 03 1a 04 19 0e 2d 28 49 05 08 19 0a 1e 0e 1e 17 37 01 0a 02 b1 00 dd 07 0a 1e 0a ff 28 01 e0 0e 10 01 e7"
+        "06 8f ff ff 0d 02 1a 04 19 0e 2d 28 00 41 00 3c 19 4c db ff 00 3c 1e 2d 4b 96 00 f0 0a 0b b8 0f 0f 01 7b ff ff 9a 01 bc"
+    )
+
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.device_type == AsekoDeviceType.SALT
+    assert device.configuration == {AsekoProbeType.PH, AsekoProbeType.CLF}
+    assert device.cl_free is not None
+    assert device.cl_free_mv is not None
+    assert device.redox is None
