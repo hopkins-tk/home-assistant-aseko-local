@@ -7,7 +7,7 @@
 | Model | ASIN AQUA Salt |
 | Firmware | 5.x – 7.x |
 | Source | PR #87 live captures 2026-04-04; earlier frames 2026-04-02, 2026-04-03; Issue #84 |
-| byte[4] | `0x0E` or `0x0D` → `(data[4] & 0x0C) == 0x0C` → **SALT** |
+| byte[4] | `0x0E` (Redox) or `0x0D` (CLF) or `0x0f` (DOSE) → `(data[4] & 0x0C) == 0x0C` → **SALT** |
 
 ---
 

@@ -14,7 +14,7 @@ from custom_components.aseko_local.sensor import (
 )
 from custom_components.aseko_local.aseko_decoder import AsekoDecoder
 
-from custom_components.aseko_local.const import WATER_FLOW_TO_PROBES
+from custom_components.aseko_local.const import UNIT_TYPE_PROFI, WATER_FLOW_TO_PROBES
 from custom_components.aseko_local.aseko_data import AsekoDeviceType
 
 
@@ -170,7 +170,7 @@ def _make_profi_clf_redox_bytes() -> bytearray:
 
     data = bytearray([0xFF] * 120)
     data[0:4] = (1234).to_bytes(4, "big")  # serial_number
-    data[4] = 0x08  # PROFI with CL and REDOX probe
+    data[4] = UNIT_TYPE_PROFI  # PROFI with CL and REDOX probe
     data[6] = 24  # year (2024)
     data[7] = 6  # month
     data[8] = 15  # day
@@ -339,8 +339,6 @@ async def test_async_setup_salt_clf(hass) -> None:
     await async_setup_entry(hass, dummy_entry, mock_add_entities)
     await binary_async_setup_entry(hass, dummy_entry, mock_add_entities)
 
-    print(device.device_type)
-
     for entity in added_entities:
         name = getattr(entity.entity_description, "key", "unknown")
         value = (
@@ -361,9 +359,9 @@ async def test_async_setup_salt_clf(hass) -> None:
         getattr(e.device, "serial_number", None) == device.serial_number
         for e in added_entities
     )
-    # 11 sensors + 4 binary (water_flow, electrolyzer_active, filtration, ph_minus)
+    # 12 sensors + 4 binary (water_flow, electrolyzer_active, filtration, ph_minus)
     # + 2 consumption (ph_minus canister + total) + 1 connection_status
-    assert len(added_entities) == 18
+    assert len(added_entities) == 19
     assert any(
         getattr(e.entity_description, "key", None) != "water_flow_to_probes"
         for e in added_entities
