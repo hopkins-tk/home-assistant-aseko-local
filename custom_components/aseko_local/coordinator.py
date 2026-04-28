@@ -51,6 +51,8 @@ class AsekoLocalDataUpdateCoordinator(DataUpdateCoordinator[AsekoData]):
         self._last_v8_frames: dict[int, bytes] = {}
         # Unsubscribe handle for the periodic stale-check
         self._stale_check_unsub: Callable[[], None] | None = None
+        # Per-platform listeners called whenever a brand-new device is discovered
+        self._new_device_listeners: list[Callable[[AsekoDevice], None]] = []
 
     def devices_update_callback(self, device: AsekoDevice) -> None:
         """Receive callback with device update."""
@@ -115,6 +117,24 @@ class AsekoLocalDataUpdateCoordinator(DataUpdateCoordinator[AsekoData]):
             _LOGGER.debug("🆕 NEW DEVICE DISCOVERED: %s", device.serial_number)
             if self.cb_new_device is not None:
                 self.hass.loop.create_task(self.cb_new_device(device))
+            for listener in list(self._new_device_listeners):
+                listener(device)
+
+    def async_add_new_device_listener(
+        self, listener: Callable[[AsekoDevice], None]
+    ) -> Callable[[], None]:
+        """Register a callback invoked whenever a brand-new device is discovered.
+
+        Returns an unsubscribe callable that removes the listener.
+        Platforms call this in async_setup_entry and pass the result to
+        config_entry.async_on_unload() so the listener is removed on unload.
+        """
+        self._new_device_listeners.append(listener)
+
+        def _unsub() -> None:
+            self._new_device_listeners.remove(listener)
+
+        return _unsub
 
     def store_raw_frame(self, raw_frame: bytes) -> None:
         """Cache the last raw frame, keyed by serial number (bytes 0-3).
