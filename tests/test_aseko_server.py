@@ -94,7 +94,7 @@ async def test_valid_device_frame(monkeypatch) -> None:
 
 @pytest.mark.asyncio
 async def test_multiple_valid_device_frames(monkeypatch) -> None:
-    """Test: Bestehendes Device wird erkannt und verarbeitet."""
+    """Test: Multiple valid device frames are processed correctly."""
 
     called = []
 
