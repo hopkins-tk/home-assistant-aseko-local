@@ -19,7 +19,13 @@ VALID_FRAME_HEX = (
     "069187240903ffffffffffff480a08ffffffffffffffffff027e0149ffffffffffffffffffffffea"
     "069187240902ffffffffffff0001003cffff003cffff010383ff00781e02581e28ffffffff0049a9"
 )
+VALID_FRAME2_HEX = (
+    "069187250901ffffffffffff000402da0027ffff0095ff01400149ff000006640000000000ff006c"
+    "069187250903ffffffffffff480a08ffffffffffffffffff027e0149ffffffffffffffffffffffea"
+    "069187250902ffffffffffff0001003cffff003cffff010383ff00781e02581e28ffffffff0049a9"
+)
 VALID_FRAME = hexstr_to_bytes(VALID_FRAME_HEX)  # MESSAGE_SIZE = 120
+VALID_FRAME2 = hexstr_to_bytes(VALID_FRAME2_HEX)  # MESSAGE_SIZE = 120
 
 # Korruptes Frame: pH Wert ungültig (z.B. 99.99)
 CORRUPT_FRAME = bytearray(VALID_FRAME)
@@ -68,7 +74,7 @@ async def test_valid_device_frame(monkeypatch) -> None:
     async def dummy_start_server(handler, host, port) -> DummyServer:
         # Simulate a connection with valid data
         reader = asyncio.StreamReader()
-        writer = DummyWriter("127.0.0.1", 12345)
+        writer = DummyWriter("127.0.0.1", 12344)
         reader.feed_data(VALID_FRAME)
         reader.feed_eof()
         await handler(reader, writer)
@@ -77,12 +83,50 @@ async def test_valid_device_frame(monkeypatch) -> None:
     monkeypatch.setattr(asyncio, "start_server", dummy_start_server)
 
     server = await AsekoDeviceServer.create(
-        host="127.0.0.1", port=12345, on_data=on_data
+        host="127.0.0.1", port=12344, on_data=on_data
     )
     assert server.running
     # Serial number should be captured
     assert "serial" in called
     assert called["serial"] == 110200612
+    await server.stop()
+
+
+@pytest.mark.asyncio
+async def test_multiple_valid_device_frames(monkeypatch) -> None:
+    """Test: Bestehendes Device wird erkannt und verarbeitet."""
+
+    called = []
+
+    async def on_data(device: AsekoDevice) -> None:
+        called.append(device)
+
+    async def dummy_start_server(handler, host, port) -> DummyServer:
+        # Simulate a connection with valid data
+        writer = DummyWriter("127.0.0.1", 12345)
+
+        reader = asyncio.StreamReader()
+        reader.feed_data(VALID_FRAME)
+        reader.feed_eof()
+        await handler(reader, writer)
+
+        reader = asyncio.StreamReader()
+        reader.feed_data(VALID_FRAME2)
+        reader.feed_eof()
+        await handler(reader, writer)
+
+        return DummyServer()
+
+    monkeypatch.setattr(asyncio, "start_server", dummy_start_server)
+
+    server = await AsekoDeviceServer.create(
+        host="127.0.0.1", port=12345, on_data=on_data
+    )
+    assert server.running
+    # 2 serial numbers should be captured
+    assert len(called) == 2
+    assert called[0].serial_number == 110200612
+    assert called[1].serial_number == 110200613
     await server.stop()
 
 

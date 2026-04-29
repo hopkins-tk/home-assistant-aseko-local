@@ -304,6 +304,7 @@ def test_decode_issue_20() -> None:
     assert device.device_type == AsekoDeviceType.NET
     assert device.timestamp is not None
     assert device.cl_free is None
+    assert device.cl_free_mv is None
     assert device.redox == 703
 
 
@@ -320,6 +321,7 @@ def test_decode_issue_22() -> None:
     assert device.device_type == AsekoDeviceType.NET
     assert device.timestamp is not None
     assert device.cl_free == 0.59
+    assert device.cl_free_mv == 123
     assert device.redox is None
 
 
