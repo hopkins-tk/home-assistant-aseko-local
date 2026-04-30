@@ -118,7 +118,14 @@ class AsekoLocalDataUpdateCoordinator(DataUpdateCoordinator[AsekoData]):
             if self.cb_new_device is not None:
                 self.hass.loop.create_task(self.cb_new_device(device))
             for listener in list(self._new_device_listeners):
-                listener(device)
+                try:
+                    listener(device)
+                except Exception:
+                    _LOGGER.exception(
+                        "❌ New-device listener %r failed for device serial=%s",
+                        listener,
+                        device.serial_number,
+                    )
 
     def async_add_new_device_listener(
         self, listener: Callable[[AsekoDevice], None]
