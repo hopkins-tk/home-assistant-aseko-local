@@ -796,8 +796,12 @@ def test_decode_home_clf_real_frame() -> None:
     # Setpoints — all confirmed against Aseko Live Config page
     assert device.required_ph == pytest.approx(7.0)
     assert device.required_cl_free == pytest.approx(0.3)
-    assert device.required_floc == 10       # byte[54] = 0x0a = 10 ml/h  (was None before fix)
-    assert device.required_algicide == 0    # byte[72] = 0x00 = 0 ml/m³/d (was None before fix)
+    assert (
+        device.required_floc == 10
+    )  # byte[54] = 0x0a = 10 ml/h  (was None before fix)
+    assert (
+        device.required_algicide == 0
+    )  # byte[72] = 0x00 = 0 ml/m³/d (was None before fix)
     assert device.required_water_temperature == 25
     # Schedule
     assert device.start1 == time(8, 0)
