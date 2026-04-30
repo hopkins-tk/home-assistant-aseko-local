@@ -351,12 +351,17 @@ class AsekoDeviceServer:
 
         offset = 0
         while (
-            data[offset + 5] != 0x01
+            offset + 85 >= len(data)
+            or data[offset + 5] != 0x01
             or data[offset + 45] != 0x03
             or data[offset + 85] != 0x02
             or data[offset : offset + 4] != data[offset + 40 : offset + 44]
             or data[offset + 40 : offset + 44] != data[offset + 80 : offset + 84]
         ):
+            if offset + 85 >= len(data):
+                raise ValueError(
+                    f"No valid binary frame alignment found in {len(data)}-byte buffer"
+                )
             offset += 1
 
         if offset == 0:
