@@ -345,24 +345,34 @@ class AsekoDeviceServer:
         starts at an offset. This function searches for the correct
         start position and rewinds the frame accordingly.
 
+        The search is bounded by the actual frame length so that devices
+        sending frames shorter than MESSAGE_SIZE (e.g. pre-2021 hardware,
+        see issue #86) are handled gracefully: alignment is attempted within
+        whatever buffer was received, and a ValueError is raised — causing a
+        clean disconnect — only if no valid position can be found.
+
         Returns:
             tuple[bytes, int]: (rewound_frame, offset)
         """
+        # Alignment check requires at least bytes [offset+0 .. offset+85].
+        # max_offset is the last offset at which data[offset+85] is still valid.
+        max_offset = len(data) - 86
+        if max_offset < 0:
+            raise ValueError(f"Binary frame too short to align: {len(data)} bytes")
 
         offset = 0
         while (
-            offset + 85 >= len(data)
-            or data[offset + 5] != 0x01
+            data[offset + 5] != 0x01
             or data[offset + 45] != 0x03
             or data[offset + 85] != 0x02
             or data[offset : offset + 4] != data[offset + 40 : offset + 44]
             or data[offset + 40 : offset + 44] != data[offset + 80 : offset + 84]
         ):
-            if offset + 85 >= len(data):
+            offset += 1
+            if offset > max_offset:
                 raise ValueError(
                     f"No valid binary frame alignment found in {len(data)}-byte buffer"
                 )
-            offset += 1
 
         if offset == 0:
             _LOGGER.debug(
