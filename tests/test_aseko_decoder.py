@@ -132,9 +132,10 @@ def test_decode_home() -> None:
     assert device.backwash_time == time(2, 30)
     assert device.backwash_duration == 20
     # HOME has 4 independent pump ports — byte[37] routing does not apply.
-    # Setpoint byte positions for algicide/floc are unconfirmed; both must be None.
-    assert device.required_algicide is None
-    assert device.required_floc is None
+    # byte[54] = required_floc, byte[72] = required_algicide (same layout as OXY).
+    # Base bytes: data[54]=5, data[72]=0 (default zero).
+    assert device.required_floc == 5
+    assert device.required_algicide == 0
     assert device.required_water_temperature == 28
     assert device.timestamp is not None
     assert device.timestamp.year == YEAR_OFFSET + 24
@@ -761,6 +762,67 @@ def test_decode_issue_99_home() -> None:
     assert device.cl_free is not None
     assert device.cl_free_mv is not None
     assert device.redox is None
+    # Bug fix: required_floc and required_algicide must be decoded for HOME devices.
+    # byte[54] = 0x0a = 10 → required_floc = 10 ml/h
+    # byte[72] = 0x00 = 0  → required_algicide = 0 ml/m³/day
+    assert device.required_floc == 10
+    assert device.required_algicide == 0
+
+
+def test_decode_home_clf_real_frame() -> None:
+    """Real-world frame from serial 110128063 (ASIN AQUA Home, CLF variant).
+
+    Frame captured 2026-04-28 08:27:07.  Verified against Aseko Live app.
+    Confirms fix: required_floc (byte[54]) and required_algicide (byte[72])
+    are now correctly decoded for HOME devices.
+    """
+
+    data = bytearray.fromhex(
+        # Segment 1: real-time sensor data
+        "06906bbf02011a041c081b070028027500000000000290fe70017b080000ffff0000000000430a85"
+        # Segment 2: setpoints and schedule
+        "06906bbf02031a041c081b0746030a190800100012001600027c017b0315000c002801e02a30a0d8"
+        # Segment 3: pool parameters and flowrates
+        "06906bbf02021a041c081b07003c003c003c003c000a0d21376400f01402580f0f0f1e14ffbc0271"
+    )
+
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.device_type == AsekoDeviceType.HOME
+    assert device.configuration == {AsekoProbeType.PH, AsekoProbeType.CLF}
+    # Probe readings
+    assert device.ph == pytest.approx(6.29)
+    assert device.cl_free == pytest.approx(0.0)
+    assert device.cl_free_mv == 2
+    assert device.water_temperature == pytest.approx(37.9)
+    assert device.water_flow_to_probes is False
+    # Setpoints — all confirmed against Aseko Live Config page
+    assert device.required_ph == pytest.approx(7.0)
+    assert device.required_cl_free == pytest.approx(0.3)
+    assert (
+        device.required_floc == 10
+    )  # byte[54] = 0x0a = 10 ml/h  (was None before fix)
+    assert (
+        device.required_algicide == 0
+    )  # byte[72] = 0x00 = 0 ml/m³/d (was None before fix)
+    assert device.required_water_temperature == 25
+    # Schedule
+    assert device.start1 == time(8, 0)
+    assert device.stop1 == time(16, 0)
+    assert device.start2 == time(18, 0)
+    assert device.stop2 == time(22, 0)
+    # Backwash
+    assert device.backwash_every_n_days == 3
+    assert device.backwash_time == time(21, 0)
+    assert device.backwash_duration == 120
+    # Pool parameters
+    assert device.pool_volume == 60
+    assert device.max_filling_time == 60
+    assert device.delay_after_startup == 480
+    assert device.delay_after_dose == 240
+    # Flowrates
+    assert device.flowrate_chlor == 60
+    assert device.flowrate_ph_minus == 60
+    assert device.flowrate_floc == 10
 
 
 def test_decode_issue_99_salt() -> None:

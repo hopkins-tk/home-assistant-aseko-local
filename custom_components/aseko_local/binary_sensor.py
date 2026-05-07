@@ -8,11 +8,12 @@ from homeassistant.components.binary_sensor import (
     BinarySensorEntity,
     BinarySensorEntityDescription,
 )
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import AsekoLocalConfigEntry
 from .aseko_data import AsekoDevice
+from .coordinator import AsekoLocalDataUpdateCoordinator
 from .entity import AsekoLocalEntity
 
 _LOGGER = logging.getLogger(__name__)
@@ -99,6 +100,31 @@ async def async_setup_entry(
         [d.serial_number for d in devices],
     )
 
+    entities = _build_binary_sensor_entities(devices, coordinator)
+    _LOGGER.debug(">>> [sensor] Adding %s binary sensors", len(entities))
+    async_add_entities(entities)
+
+    @callback
+    def _async_add_new_device(device: AsekoDevice) -> None:
+        new_entities = _build_binary_sensor_entities([device], coordinator)
+        if new_entities:
+            _LOGGER.debug(
+                ">>> [sensor] Adding %s binary sensors for new device %s",
+                len(new_entities),
+                device.serial_number,
+            )
+            async_add_entities(new_entities)
+
+    config_entry.async_on_unload(
+        coordinator.async_add_new_device_listener(_async_add_new_device)
+    )
+
+
+def _build_binary_sensor_entities(
+    devices: list[AsekoDevice],
+    coordinator: AsekoLocalDataUpdateCoordinator,
+) -> list[BinarySensorEntity]:
+    """Create binary sensor entities for the given list of devices."""
     entities: list[BinarySensorEntity] = []
 
     for device in devices:
@@ -131,8 +157,7 @@ async def async_setup_entry(
                 entity.unique_id,
             )
 
-    _LOGGER.debug(">>> [sensor] Adding %s binary sensors", len(entities))
-    async_add_entities(entities)
+    return entities
 
 
 class AsekoLocalBinarySensorEntity(AsekoLocalEntity, BinarySensorEntity):

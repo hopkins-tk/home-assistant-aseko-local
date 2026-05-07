@@ -196,3 +196,106 @@ async def test_device_recognition(monkeypatch) -> None:
     assert len(devices) == 1
     assert 110200612 in devices  # Example serial number from frame
     await server.stop()
+
+
+# ---------------------------------------------------------------------------
+# Multi-device listener tests (fix for issue #99)
+# ---------------------------------------------------------------------------
+
+
+def _make_device(serial: int) -> AsekoDevice:
+    """Return a minimal AsekoDevice with the given serial number."""
+    from custom_components.aseko_local.aseko_data import AsekoDeviceType
+
+    device = AsekoDevice()
+    device.serial_number = serial
+    device.device_type = AsekoDeviceType.NET
+    return device
+
+
+@pytest.mark.asyncio
+async def test_coordinator_new_device_listener_called_for_new_device(hass) -> None:
+    """Listener is called exactly once when a brand-new device arrives."""
+    from custom_components.aseko_local.coordinator import (
+        AsekoLocalDataUpdateCoordinator,
+    )
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+    from custom_components.aseko_local.const import DOMAIN
+    from tests.const import MOCK_CONFIG
+
+    entry = MockConfigEntry(domain=DOMAIN, data=MOCK_CONFIG, entry_id="test_listener")
+    entry.add_to_hass(hass)
+
+    coordinator = AsekoLocalDataUpdateCoordinator(hass, entry)
+    discovered: list[AsekoDevice] = []
+
+    unsub = coordinator.async_add_new_device_listener(discovered.append)
+
+    device = _make_device(111)
+    coordinator.devices_update_callback(device)
+
+    assert len(discovered) == 1
+    assert discovered[0].serial_number == 111
+
+    # Second update for the SAME device must NOT trigger the listener again
+    coordinator.devices_update_callback(device)
+    assert len(discovered) == 1
+
+    unsub()
+
+
+@pytest.mark.asyncio
+async def test_coordinator_new_device_listener_unsub(hass) -> None:
+    """Unsubscribing the listener stops it from receiving future discoveries."""
+    from custom_components.aseko_local.coordinator import (
+        AsekoLocalDataUpdateCoordinator,
+    )
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+    from custom_components.aseko_local.const import DOMAIN
+    from tests.const import MOCK_CONFIG
+
+    entry = MockConfigEntry(domain=DOMAIN, data=MOCK_CONFIG, entry_id="test_unsub")
+    entry.add_to_hass(hass)
+
+    coordinator = AsekoLocalDataUpdateCoordinator(hass, entry)
+    discovered: list[AsekoDevice] = []
+
+    unsub = coordinator.async_add_new_device_listener(discovered.append)
+    unsub()  # unsubscribe immediately
+
+    coordinator.devices_update_callback(_make_device(222))
+    assert len(discovered) == 0
+
+
+@pytest.mark.asyncio
+async def test_coordinator_multiple_listeners(hass) -> None:
+    """All registered listeners receive the new-device notification."""
+    from custom_components.aseko_local.coordinator import (
+        AsekoLocalDataUpdateCoordinator,
+    )
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+    from custom_components.aseko_local.const import DOMAIN
+    from tests.const import MOCK_CONFIG
+
+    entry = MockConfigEntry(domain=DOMAIN, data=MOCK_CONFIG, entry_id="test_multi_cb")
+    entry.add_to_hass(hass)
+
+    coordinator = AsekoLocalDataUpdateCoordinator(hass, entry)
+    bucket_a: list[int] = []
+    bucket_b: list[int] = []
+
+    unsub_a = coordinator.async_add_new_device_listener(
+        lambda d: bucket_a.append(d.serial_number)
+    )
+    unsub_b = coordinator.async_add_new_device_listener(
+        lambda d: bucket_b.append(d.serial_number)
+    )
+
+    coordinator.devices_update_callback(_make_device(333))
+    coordinator.devices_update_callback(_make_device(444))
+
+    assert bucket_a == [333, 444]
+    assert bucket_b == [333, 444]
+
+    unsub_a()
+    unsub_b()

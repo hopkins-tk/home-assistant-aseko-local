@@ -82,8 +82,14 @@ async def async_setup_entry(
             _LOGGER.debug("Deferring platform setup; first snapshot not ready yet.")
             return
 
-        await hass.config_entries.async_forward_entry_setups(config_entry, PLATFORMS)
-        rd.device_discovered = True
+        rd.device_discovered = True  # set early to prevent concurrent calls
+        try:
+            await hass.config_entries.async_forward_entry_setups(
+                config_entry, PLATFORMS
+            )
+        except Exception:
+            rd.device_discovered = False  # allow retry on next device callback
+            raise
         _LOGGER.info("New Aseko device registered: %s", device.serial_number)
 
     coordinator = AsekoLocalDataUpdateCoordinator(
