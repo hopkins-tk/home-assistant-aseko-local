@@ -79,6 +79,9 @@ def _dummy_entry(device):
         def get_tracker(self, serial_number):
             return None
 
+        def async_add_new_device_listener(self, listener):
+            return lambda: None
+
     entry = MagicMock(spec=ConfigEntry)
     entry.runtime_data = type("RuntimeData", (), {"coordinator": DummyCoordinator()})()
     return entry

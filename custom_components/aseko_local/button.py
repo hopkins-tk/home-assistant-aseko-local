@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from homeassistant.components.button import ButtonEntity, ButtonEntityDescription
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import AsekoLocalConfigEntry
@@ -71,6 +71,25 @@ async def async_setup_entry(
 
     coordinator = config_entry.runtime_data.coordinator
     devices = coordinator.get_devices()
+    entities = _build_button_entities(devices, coordinator)
+    async_add_entities(entities)
+
+    @callback
+    def _async_add_new_device(device: AsekoDevice) -> None:
+        new_entities = _build_button_entities([device], coordinator)
+        if new_entities:
+            async_add_entities(new_entities)
+
+    config_entry.async_on_unload(
+        coordinator.async_add_new_device_listener(_async_add_new_device)
+    )
+
+
+def _build_button_entities(
+    devices: list[AsekoDevice],
+    coordinator: AsekoLocalDataUpdateCoordinator,
+) -> list[ButtonEntity]:
+    """Create button entities for the given list of devices."""
     entities: list[ButtonEntity] = []
 
     for device in devices:
@@ -88,7 +107,7 @@ async def async_setup_entry(
                 continue  # decoder determined pump absent on this specific unit
             entities.append(AsekoResetButtonEntity(device, coordinator, description))
 
-    async_add_entities(entities)
+    return entities
 
 
 class AsekoResetButtonEntity(AsekoLocalEntity, ButtonEntity):

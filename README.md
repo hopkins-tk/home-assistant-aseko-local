@@ -22,6 +22,7 @@ The Aseko unit and your Home Assistant need to run on the same network or traffi
 | ASIN Aqua Net | 8.x | ✅ | ✅ Filtration, cl, PH− | ✅ cl, PH− |
 | ASIN Aqua Salt | ≤ 7.x | ✅ | ✅ Filtration, Electrolyzer, Algicide, Flocculant, pH− | ✅ Algicide, Flocculant, pH− |
 | ASIN Aqua Oxy | ≤ 7.x | ✅ | ✅ Filtration, Oxy, Algicide, Flocculant, pH− | ✅ Oxy,Algicide, Flocculant, pH− |
+| ASIN Aqua Home | ≤ 7.x | ✅ | ✅ Filtration, cl, Algicide, Flocculant, pH− | ✅ Algicide, Flocculant, pH− |
 > **Firmware note:** This integration supports both the **120-byte binary protocol** (firmware ≤ 7.x, port **47524**) and the **text-frame protocol** (firmware 8.x, port **51050**). The port can be changed in the integration settings to match your device.
 
 ### Partially supported / untested devices
@@ -30,8 +31,6 @@ The following devices are likely compatible but the byte mapping for pump states
 
 | Device | Status | Known unknowns |
 |---|---|---|
-| ASIN Aqua Home | ⚠️ Untested | Pump state bits uncertain; algicide/floc may share a single bit |
-| ASIN Salt | ⚠️ Untested | |
 | ASIN Aqua Pro | ⚠️ Untested | Pump state bits uncertain; pH+ pump bit position unknown |
 | ASIN Aqua Home Pro (07.2026) | ⚠️ Untested | Pump state bits uncertain; pH+ pump bit position unknown |
 | ASIN Aqua Salt Pro (07.2026) | ⚠️ Untested | Pump state bits uncertain; pH+ pump bit position unknown |

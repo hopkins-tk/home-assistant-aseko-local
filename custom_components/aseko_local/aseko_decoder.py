@@ -260,8 +260,10 @@ class AsekoDecoder:
             required_cl_free          CLF probe
             required_cl_dose          DOSE probe without CLF (pure dosing mode)
             required_redox            REDOX probe, not on PROFI (× 10)
-        byte[54] → required_algicide or required_floc
-                   (byte[37] routing, only on devices with a shared pump port)
+        byte[54] → required_floc      (OXY and HOME: independent pump ports)
+                 → required_algicide or required_floc
+                   (SALT: shared pump port, routed via byte[37])
+        byte[72] → required_algicide  (OXY and HOME: independent pump ports)
         """
         # byte[52]: pH setpoint — present on all devices with a pH probe.
         if AsekoProbeType.PH in unit.configuration:
@@ -276,6 +278,15 @@ class AsekoDecoder:
             unit.required_floc = AsekoDecoder._normalize_value(data[54], int)
             unit.required_algicide = AsekoDecoder._normalize_value(data[72], int)
             return
+
+        # HOME devices have independent pump ports for algicide and flocculant
+        # (same layout as OXY Pure for these two setpoints).
+        # byte[54] = required_floc (ml/h)         confirmed: 2026-04-28, serial 110128063, value=10
+        # byte[72] = required_algicide (ml/m³/d)  confirmed: 2026-04-28, serial 110128063, value=0
+        # Fall through so byte[53] is still decoded as required_cl_free / required_redox below.
+        if unit.device_type == AsekoDeviceType.HOME:
+            unit.required_floc = AsekoDecoder._normalize_value(data[54], int)
+            unit.required_algicide = AsekoDecoder._normalize_value(data[72], int)
 
         # byte[53]: mutually exclusive interpretations determined by probe/device type.
         if AsekoProbeType.CLF in unit.configuration:

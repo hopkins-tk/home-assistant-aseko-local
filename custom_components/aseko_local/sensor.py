@@ -14,7 +14,7 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.const import UnitOfElectricPotential, UnitOfTemperature, UnitOfVolume
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.typing import StateType
 
@@ -453,6 +453,31 @@ async def async_setup_entry(
         [d.serial_number for d in devices],
     )
 
+    entities: list[SensorEntity] = _build_sensor_entities(devices, coordinator)
+    _LOGGER.debug(">>> [sensor] Adding %s sensors", len(entities))
+    async_add_entities(entities)
+
+    @callback
+    def _async_add_new_device(device: AsekoDevice) -> None:
+        new_entities = _build_sensor_entities([device], coordinator)
+        if new_entities:
+            _LOGGER.debug(
+                ">>> [sensor] Adding %s sensors for new device %s",
+                len(new_entities),
+                device.serial_number,
+            )
+            async_add_entities(new_entities)
+
+    config_entry.async_on_unload(
+        coordinator.async_add_new_device_listener(_async_add_new_device)
+    )
+
+
+def _build_sensor_entities(
+    devices: list[AsekoDevice],
+    coordinator: AsekoLocalDataUpdateCoordinator,
+) -> list[SensorEntity]:
+    """Create sensor entities for the given list of devices."""
     entities: list[SensorEntity] = []
 
     for device in devices:
@@ -512,8 +537,7 @@ async def async_setup_entry(
             )
         )
 
-    _LOGGER.debug(">>> [sensor] Adding %s sensors", len(entities))
-    async_add_entities(entities)
+    return entities
 
 
 class AsekoConsumptionSensorEntity(AsekoLocalEntity, RestoreSensor):
