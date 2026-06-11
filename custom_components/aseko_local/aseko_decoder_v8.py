@@ -18,6 +18,7 @@ _SECTION_RE = re.compile(r"(\w+):\s*(.*?)(?=\s+\w+:|$)", re.DOTALL)
 # Maps the header type field (f2) to the corresponding device type.
 _V8_DEVICE_TYPE_BY_HEADER: dict[int, AsekoDeviceType] = {
     804: AsekoDeviceType.NET,
+    805: AsekoDeviceType.NET,
 }
 
 
