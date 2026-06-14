@@ -268,7 +268,7 @@ async def test_async_setup_salt_redox(hass) -> None:
     )
     # 11 sensors + 4 binary (water_flow, electrolyzer_active, filtration, ph_minus)
     # + 2 consumption (ph_minus canister + total) + 1 connection_status
-    assert len(added_entities) == 18
+    assert len(added_entities) == 26
     assert any(
         getattr(e.entity_description, "key", None) != "water_flow_to_probes"
         for e in added_entities
@@ -367,7 +367,7 @@ async def test_async_setup_salt_clf(hass) -> None:
     )
     # 12 sensors + 4 binary (water_flow, electrolyzer_active, filtration, ph_minus)
     # + 2 consumption (ph_minus canister + total) + 1 connection_status
-    assert len(added_entities) == 19
+    assert len(added_entities) == 27
     assert any(
         getattr(e.entity_description, "key", None) != "water_flow_to_probes"
         for e in added_entities
@@ -459,7 +459,7 @@ async def test_async_setup_net_clf(hass) -> None:
     # 8 sensors + 3 binary (water_flow, cl_pump, ph_minus_pump – NET has no filtration output)
     # + 4 consumption (ph_minus canister + total, cl canister + total) + 1 connection_status
     # note: required_algicide/required_floc are absent because byte[37]=0xFF (undefined)
-    assert len(added_entities) == 16
+    assert len(added_entities) == 21
     assert any(
         getattr(e.entity_description, "key", None) == "free_chlorine"
         for e in added_entities
@@ -544,7 +544,7 @@ async def test_async_setup_profi_clf_redox(hass) -> None:
     # + 6 consumption (cl, ph_minus, floc × canister + total) + 1 connection_status
     # required_floc is intentionally absent: PROFI has independent pump ports (4+) so
     # byte[37] routing does not apply. The exact setpoint byte position is unconfirmed.
-    assert len(added_entities) == 22
+    assert len(added_entities) == 29
     assert any(
         getattr(e.entity_description, "key", None) == "free_chlorine"
         for e in added_entities

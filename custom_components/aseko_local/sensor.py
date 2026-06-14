@@ -13,7 +13,13 @@ from homeassistant.components.sensor import (
     SensorEntityDescription,
     SensorStateClass,
 )
-from homeassistant.const import UnitOfElectricPotential, UnitOfTemperature, UnitOfVolume
+from homeassistant.const import (
+    UnitOfElectricPotential,
+    UnitOfLength,
+    UnitOfTemperature,
+    UnitOfTime,
+    UnitOfVolume,
+)
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.typing import StateType
@@ -297,6 +303,63 @@ SENSORS: list[AsekoSensorEntityDescription] = [
         value_fn=lambda device: device.required_water_temperature,
     ),
     AsekoSensorEntityDescription(
+        key="water_level",
+        translation_key="water_level",
+        native_unit_of_measurement=UnitOfLength.CENTIMETERS,
+        state_class=SensorStateClass.MEASUREMENT,
+        icon="mdi:waves",
+        value_fn=lambda device: device.water_level,
+    ),
+    AsekoSensorEntityDescription(
+        key="water_level_low_alarm",
+        translation_key="water_level_low_alarm",
+        native_unit_of_measurement=UnitOfLength.CENTIMETERS,
+        state_class=SensorStateClass.MEASUREMENT,
+        icon="mdi:waves-arrow-down",
+        entity_registry_enabled_default=False,
+        value_fn=lambda device: device.water_level_low_alarm,
+    ),
+    AsekoSensorEntityDescription(
+        key="water_level_filling_on",
+        translation_key="water_level_filling_on",
+        native_unit_of_measurement=UnitOfLength.CENTIMETERS,
+        state_class=SensorStateClass.MEASUREMENT,
+        icon="mdi:waves-arrow-up",
+        entity_registry_enabled_default=False,
+        value_fn=lambda device: device.water_level_filling_on,
+    ),
+    AsekoSensorEntityDescription(
+        key="water_level_filling_off",
+        translation_key="water_level_filling_off",
+        native_unit_of_measurement=UnitOfLength.CENTIMETERS,
+        state_class=SensorStateClass.MEASUREMENT,
+        icon="mdi:waves-arrow-up",
+        entity_registry_enabled_default=False,
+        value_fn=lambda device: device.water_level_filling_off,
+    ),
+    AsekoSensorEntityDescription(
+        key="water_level_high_alarm",
+        translation_key="water_level_high_alarm",
+        native_unit_of_measurement=UnitOfLength.CENTIMETERS,
+        state_class=SensorStateClass.MEASUREMENT,
+        icon="mdi:waves-arrow-up",
+        entity_registry_enabled_default=False,
+        value_fn=lambda device: device.water_level_high_alarm,
+    ),
+    AsekoSensorEntityDescription(
+        key="max_filling_time",
+        translation_key="max_filling_time",
+        native_unit_of_measurement=UnitOfTime.MINUTES,
+        state_class=SensorStateClass.MEASUREMENT,
+        icon="mdi:timer",
+        entity_registry_enabled_default=False,
+        value_fn=lambda device: (
+            device.max_filling_time // 60
+            if device.max_filling_time is not None
+            else None
+        ),
+    ),
+    AsekoSensorEntityDescription(
         key="required_algicide",
         translation_key="required_algicide",
         state_class=SensorStateClass.MEASUREMENT,
@@ -421,6 +484,22 @@ SENSORS: list[AsekoSensorEntityDescription] = [
         device_class=SensorDeviceClass.TIMESTAMP,
         icon="mdi:clock-outline",
         value_fn=lambda device: device.last_seen,
+    ),
+    AsekoSensorEntityDescription(
+        key="last_backwash",
+        translation_key="last_backwash",
+        device_class=SensorDeviceClass.TIMESTAMP,
+        icon="mdi:clock-check-outline",
+        entity_registry_enabled_default=False,
+        value_fn=lambda device: device.last_backwash,
+    ),
+    AsekoSensorEntityDescription(
+        key="next_backwash",
+        translation_key="next_backwash",
+        device_class=SensorDeviceClass.TIMESTAMP,
+        icon="mdi:clock-alert-outline",
+        entity_registry_enabled_default=False,
+        value_fn=lambda device: device.next_backwash,
     ),
 ]
 

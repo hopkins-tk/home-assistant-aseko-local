@@ -62,6 +62,24 @@
             },
             "water_flow_to_probes": {
                 "name": "Circulation d'eau vers les sondes"
+            },
+            "water_filling_active": {
+                "name": "Remplissage d'eau actif"
+            },
+            "filtration_nonstop24": {
+                "name": "Filtration nonstop 24h"
+            },
+            "alarm_ph_too_many_doses": {
+                "name": "Alarme pH : trop de doses"
+            },
+            "alarm_orp_too_many_doses": {
+                "name": "Alarme ORP/Chlore : trop de doses"
+            },
+            "alarm_no_flow_to_probes": {
+                "name": "Alarme : pas de flux vers les sondes"
+            },
+            "alarm_rapid_ph_change": {
+                "name": "Alarme : variation rapide du pH"
             }
         },
         "sensor": {
@@ -99,6 +117,24 @@
             },
             "required_water_temperature": {
                 "name": "Température de l'eau requise"
+            },
+            "water_level": {
+                "name": "Niveau d'eau"
+            },
+            "water_level_low_alarm": {
+                "name": "Alarme niveau bas"
+            },
+            "water_level_filling_on": {
+                "name": "Seuil démarrage remplissage"
+            },
+            "water_level_filling_off": {
+                "name": "Seuil arrêt remplissage"
+            },
+            "water_level_high_alarm": {
+                "name": "Alarme niveau haut"
+            },
+            "max_filling_time": {
+                "name": "Durée maximale de remplissage"
             },
             "required_algicide": {
                 "name": "Dose algicide requise",
@@ -148,6 +184,12 @@
             },
             "last_seen": {
                 "name": "Dernière mise à jour des données"
+            },
+            "last_backwash": {
+                "name": "Dernière contre-lavage"
+            },
+            "next_backwash": {
+                "name": "Prochain contre-lavage"
             },
             "chlor_consumed": {
                 "name": "Chlore consommé (depuis le remplissage)"
