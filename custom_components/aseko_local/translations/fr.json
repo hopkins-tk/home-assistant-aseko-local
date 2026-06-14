@@ -42,6 +42,9 @@
             "filtration_pump_running": {
                 "name": "Pompe de filtration en marche"
             },
+            "heating_active": {
+                "name": "Chauffage actif"
+            },
             "cl_pump_running": {
                 "name": "Pompe à chlore en marche"
             },

@@ -158,6 +158,7 @@ class AsekoDevice:
     water_temperature: float | None = None  # byte 25 & 26
     water_flow_to_probes: bool | None = None  # byte 28 == aah
     filtration_pump_running: bool | None = None  # byte 29 (3-rd bit)
+    heating_active: bool | None = None  # byte 29 (2-nd bit, 0x04)
     cl_pump_running: bool | None = None  # byte 29 (6-th bit)
     ph_minus_pump_running: bool | None = None  # byte 29 (7-th bit)
     ph_plus_pump_running: bool | None = (
