@@ -82,6 +82,8 @@ def device_sep():
 @pytest.fixture
 def device_812():
     return AsekoV8Decoder.decode(REFERENCE_FRAME_812)
+
+
 def device_805():
     return AsekoV8Decoder.decode(REFERENCE_FRAME_805)
 
@@ -106,6 +108,8 @@ def test_device_type_is_net(device_sep):
 
 def test_device_812_type_is_net(device_812):
     assert device_812.device_type == AsekoDeviceType.NET
+
+
 def test_device_805_type_is_net(device_805):
     assert device_805.device_type == AsekoDeviceType.NET
 
