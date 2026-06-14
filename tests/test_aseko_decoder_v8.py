@@ -87,6 +87,22 @@ REFERENCE_FRAME_APR = (
     b"crc16: C3C8}\n"
 )
 
+# Reference frame for FW 8.12 devices (header type 812).
+# Same body layout as REFERENCE_FRAME — only the f2 header value changes.
+REFERENCE_FRAME_812 = (
+    b"{v1 123456789 812 0 27 "
+    b"ins: 314 -500 -500 -500 0 0 0 0 1 -500 -500 -500 0 24 6 29 22 27 0 "
+    b"ains: 708 708 774 7790 0 0 779 779 0 0 0 0 0 0 0 0 "
+    b"outs: 0 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 "
+    b"areqs: 74 73 4 5 0 36 36 0 0 0 6 0 36 0 45 0 255 2 2 10 0 15 0 0 0 0 "
+    b"reqs: 0 0 0 0 0 0 0 24 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 "
+    b"0 10 10 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 "
+    b"fncs: 0 0 3 0 0 0 2 0 "
+    b"mods: 2 0 0 1 0 0 0 0 "
+    b"flags: 2 0 0 0 0 0 0 0 "
+    b"crc16: C3C8}\n"
+)
+
 
 @pytest.fixture
 def device_sep():
@@ -301,19 +317,30 @@ def test_bad_header_raises():
         AsekoV8Decoder.decode(b"{not a valid v8 header}\n")
 
 
-def test_unknown_header_type_is_tolerated():
-    """Unknown f2 values must not raise — they fall back to NET."""
-    device = AsekoV8Decoder.decode(
-        b"{v1 123456789 999 0 27 "
-        b"ins: 314 -500 -500 -500 0 0 0 0 1 -500 -500 -500 0 24 6 29 22 27 0 "
-        b"ains: 708 708 774 7790 0 0 779 779 0 0 0 0 0 0 0 0 "
-        b"outs: 0 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 "
-        b"areqs: 74 73 4 5 0 36 36 0 0 0 6 0 36 0 45 0 255 2 2 10 0 15 0 0 0 0 "
-        b"crc16: C3C8}\n"
-    )
+def test_unknown_header_type_is_tolerated(caplog):
+    """Unknown f2 values must not raise — they fall back to NET with a warning.
+
+    Backport of v1.6.3 hotfix (PR #119) so unknown future FW revisions do not
+    crash the integration when an unreleased header type appears in the field.
+    """
+    import logging
+
+    with caplog.at_level(
+        logging.WARNING, logger="custom_components.aseko_local.aseko_decoder_v8"
+    ):
+        device = AsekoV8Decoder.decode(
+            b"{v1 123456789 999 0 27 "
+            b"ins: 314 -500 -500 -500 0 0 0 0 1 -500 -500 -500 0 24 6 29 22 27 0 "
+            b"ains: 708 708 774 7790 0 0 779 779 0 0 0 0 0 0 0 0 "
+            b"outs: 0 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 "
+            b"areqs: 74 73 4 5 0 36 36 0 0 0 6 0 36 0 45 0 255 2 2 10 0 15 0 0 0 0 "
+            b"crc16: C3C8}\n"
+        )
     assert device.device_type == AsekoDeviceType.NET
     assert device.serial_number == 123456789
     assert device.ph == pytest.approx(7.08)
+    # Warning must have been emitted to help diagnose the unknown header in the wild.
+    assert any("999" in rec.message for rec in caplog.records)
 
 
 # ---------------------------------------------------------------------------
