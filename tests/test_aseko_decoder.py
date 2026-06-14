@@ -121,7 +121,7 @@ def test_decode_home() -> None:
     assert device.filtration_pump_running is True
     assert device.water_flow_to_probes is True
     assert device.pool_volume == 5000
-    assert device.max_filling_time == 60
+    assert device.max_filling_time == 1800  # 60 raw × 30 s = 1800 s
     assert device.delay_after_startup == 120
     assert device.delay_after_dose == 30
     assert device.start1 == time(8, 0)
@@ -860,7 +860,7 @@ def test_decode_home_clf_real_frame() -> None:
     assert device.backwash_duration == 120
     # Pool parameters
     assert device.pool_volume == 60
-    assert device.max_filling_time == 60
+    assert device.max_filling_time == 1800  # 0x003c=60 raw × 30 s = 1800 s
     assert device.delay_after_startup == 480
     assert device.delay_after_dose == 240
     # Flowrates
@@ -884,3 +884,296 @@ def test_decode_issue_99_salt() -> None:
     assert device.cl_free is not None
     assert device.cl_free_mv is not None
     assert device.redox is None
+
+
+# ── HOME water level and alarm tests (Issue #100 / #110) ─────────────────────
+
+
+def _make_home_bytes() -> bytearray:
+    """Base HOME device frame (CLF variant, byte[4]=0x02) for water-level tests."""
+    data = _make_base_bytes()
+    data[4] = 0x02  # HOME CLF
+    return data
+
+
+def test_home_water_level_decoding() -> None:
+    """byte[27] is decoded as water_level (cm) for HOME devices only."""
+    data = _make_home_bytes()
+    data[27] = 0x0E  # 14 cm — confirmed by issue #110 frame
+
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.device_type == AsekoDeviceType.HOME
+    assert device.water_level == 14
+
+
+def test_home_water_level_unspecified() -> None:
+    """byte[27] = 0xFF → water_level is None."""
+    data = _make_home_bytes()
+    data[27] = 0xFF
+
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.water_level is None
+
+
+def test_home_water_filling_active() -> None:
+    """byte[29] bit 0x02: water filling active for HOME devices."""
+    data = _make_home_bytes()
+
+    # bit 0x02 set: filling active
+    data[29] = 0x4A  # confirmed transition in DomSchCoding #100 (0x48 → 0x4a)
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.water_filling_active is True
+
+    # bit 0x02 clear: filling inactive
+    data[29] = 0x48
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.water_filling_active is False
+
+
+def test_home_water_level_thresholds() -> None:
+    """bytes [102..105] decode to the four water level thresholds for HOME devices.
+
+    Values taken from the issue #110 frame:
+      byte[102] = 0x09 = 9 cm  (low alarm)
+      byte[103] = 0x0b = 11 cm (filling ON)
+      byte[104] = 0x0d = 13 cm (filling OFF)
+      byte[105] = 0x0f = 15 cm (high alarm)
+    """
+    data = _make_home_bytes()
+    data[102] = 0x09
+    data[103] = 0x0B
+    data[104] = 0x0D
+    data[105] = 0x0F
+
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.water_level_low_alarm == 9
+    assert device.water_level_filling_on == 11
+    assert device.water_level_filling_off == 13
+    assert device.water_level_high_alarm == 15
+
+
+def test_home_water_level_threshold_unspecified() -> None:
+    """0xFF threshold values → None (e.g. feature not configured)."""
+    data = _make_home_bytes()
+    data[102] = 0xFF
+    data[103] = 0xFF
+    data[104] = 0xFF
+    data[105] = 0xFF
+
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.water_level_low_alarm is None
+    assert device.water_level_filling_on is None
+    assert device.water_level_filling_off is None
+    assert device.water_level_high_alarm is None
+
+
+def test_water_level_not_decoded_for_net() -> None:
+    """NET devices must have all water level fields as None (bytes [102..104] are unrelated data on NET)."""
+    data = _make_base_bytes()
+    data[4] = 0x09  # NET
+    # Set bytes that would produce values if wrongly decoded
+    data[27] = 0x0E
+    data[102] = 0x09
+    data[103] = 0x0B
+    data[104] = 0x0D
+    data[105] = 0x0F
+
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.water_level is None
+    assert device.water_level_low_alarm is None
+    assert device.water_level_filling_on is None
+    assert device.water_level_filling_off is None
+    assert device.water_level_high_alarm is None
+    assert device.water_filling_active is None
+
+
+def test_water_level_decoded_for_oxy_and_salt() -> None:
+    """OXY and SALT devices decode water level fields just like HOME."""
+    for device_byte in (0x05, 0x0E):  # OXY, SALT
+        data = _make_base_bytes()
+        data[4] = device_byte
+        data[27] = 0x0E  # 14 cm
+        data[29] = data[29] | 0x02  # water filling active
+        data[102] = 0x09  # low alarm 9 cm
+        data[103] = 0x0B  # filling ON 11 cm
+        data[104] = 0x0D  # filling OFF 13 cm
+        data[105] = 0x0F  # high alarm 15 cm
+
+        device = AsekoDecoder.decode(bytes(data))
+        assert device.water_level == 14, f"byte[4]={device_byte:#x}"
+        assert device.water_filling_active is True, f"byte[4]={device_byte:#x}"
+        assert device.water_level_low_alarm == 9, f"byte[4]={device_byte:#x}"
+        assert device.water_level_filling_on == 11, f"byte[4]={device_byte:#x}"
+        assert device.water_level_filling_off == 13, f"byte[4]={device_byte:#x}"
+        assert device.water_level_high_alarm == 15, f"byte[4]={device_byte:#x}"
+
+
+def test_filtration_nonstop24_none_for_non_home() -> None:
+    """filtration_nonstop24 is None for NET, OXY, SALT when byte[37] has non-mode values.
+
+    Real-world byte[37] values for these devices:
+      NET = 0xFF (always UNSPECIFIED)
+      OXY = 0x03 (third-pump config, not filtration flag)
+      SALT = 0xb7, 0xb3, 0x37, 0x13 (algicide/floc routing)
+    None of those are 0x43 (nonstop) or 0x53 (timer), so filtration_nonstop24 stays None.
+    """
+    for device_byte, real_byte37 in (
+        (0x09, 0xFF),  # NET — 0xFF always
+        (0x05, 0x03),  # OXY — third-pump config byte
+        (0x0E, 0xB7),  # SALT — algicide routing
+    ):
+        data = _make_base_bytes()
+        data[4] = device_byte
+        data[37] = real_byte37
+
+        device = AsekoDecoder.decode(bytes(data))
+        assert device.filtration_nonstop24 is None, (
+            f"byte[4]={device_byte:#x}, byte[37]={real_byte37:#x}"
+        )
+
+
+def test_filtration_nonstop24_decoded_for_all_device_types() -> None:
+    """filtration_nonstop24 is decoded for NET, OXY, SALT when byte[37] = 0x43/0x53.
+
+    The guard was removed — any device reporting 0x43 gets True, 0x53 gets False.
+    """
+    for device_byte in (0x09, 0x05, 0x0E):  # NET, OXY, SALT
+        data = _make_base_bytes()
+        data[4] = device_byte
+        data[37] = 0x43
+        assert AsekoDecoder.decode(bytes(data)).filtration_nonstop24 is True, (
+            f"byte[4]={device_byte:#x}"
+        )
+
+        data[37] = 0x53
+        assert AsekoDecoder.decode(bytes(data)).filtration_nonstop24 is False, (
+            f"byte[4]={device_byte:#x}"
+        )
+
+
+def test_alarms_decoded_for_all_device_types() -> None:
+    """Alarm byte [13] bitmask is decoded for NET, OXY and SALT, not only HOME.
+
+    Confirmed by NET frame serial 0x06918724: byte[13]=0x04 = active no-flow alarm.
+    """
+    for device_byte in (0x09, 0x05, 0x0E):  # NET, OXY, SALT
+        data = _make_base_bytes()
+        data[4] = device_byte
+        data[13] = 0x04  # no-flow alarm only
+
+        device = AsekoDecoder.decode(bytes(data))
+        assert device.alarm_no_flow_to_probes is True, f"byte[4]={device_byte:#x}"
+        assert device.alarm_ph_too_many_doses is False, f"byte[4]={device_byte:#x}"
+        assert device.alarm_orp_too_many_doses is False, f"byte[4]={device_byte:#x}"
+        assert device.alarm_rapid_ph_change is False, f"byte[4]={device_byte:#x}"
+
+
+def test_home_filtration_nonstop24() -> None:
+    """byte[37] filtration mode: 0x43 = nonstop, 0x53 = timer, others = None."""
+    data = _make_home_bytes()
+
+    data[37] = 0x43  # nonstop 24 h
+    assert AsekoDecoder.decode(bytes(data)).filtration_nonstop24 is True
+
+    data[37] = 0x53  # timer mode
+    assert AsekoDecoder.decode(bytes(data)).filtration_nonstop24 is False
+
+    data[37] = 0x47  # transitional edit state → None
+    assert AsekoDecoder.decode(bytes(data)).filtration_nonstop24 is None
+
+    data[37] = 0x57  # transitional edit state → None
+    assert AsekoDecoder.decode(bytes(data)).filtration_nonstop24 is None
+
+
+def test_home_alarm_bitmask_byte13() -> None:
+    """byte[13] alarm bitmask is decoded for all device types; tested here on HOME."""
+    data = _make_home_bytes()
+
+    # All four bits set
+    data[13] = 0x0F
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.alarm_ph_too_many_doses is True  # bit 0x01
+    assert device.alarm_orp_too_many_doses is True  # bit 0x02
+    assert device.alarm_no_flow_to_probes is True  # bit 0x04
+    assert device.alarm_rapid_ph_change is True  # bit 0x08
+
+    # No alarm
+    data[13] = 0x00
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.alarm_ph_too_many_doses is False
+    assert device.alarm_orp_too_many_doses is False
+    assert device.alarm_no_flow_to_probes is False
+    assert device.alarm_rapid_ph_change is False
+
+    # Only no-flow bit (0x04) — as seen in NET frame (serial 06918724)
+    data[13] = 0x04
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.alarm_no_flow_to_probes is True
+    assert device.alarm_ph_too_many_doses is False
+    assert device.alarm_orp_too_many_doses is False
+    assert device.alarm_rapid_ph_change is False
+
+
+def test_home_byte12_not_an_alarm_byte() -> None:
+    """byte[12] = 0x04 must NOT set any alarm field (it is NOT an error byte).
+
+    Confirmed by user's NET frame (serial 0x06918724): byte[12]=0x00 while
+    byte[13]=0x04 (active no-flow error) and byte[28]=0x00.
+    """
+    data = _make_home_bytes()
+    data[12] = 0x04  # would have set alarm_rapid_ph_change in old design
+    data[13] = 0x00  # all alarms off
+
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.alarm_rapid_ph_change is False
+    assert device.alarm_ph_too_many_doses is False
+    assert device.alarm_orp_too_many_doses is False
+    assert device.alarm_no_flow_to_probes is False
+
+
+def test_home_max_filling_time_seconds() -> None:
+    """max_filling_time is stored in seconds (raw value × 30).
+
+    DomSchCoding confirmed: raw=60 → 60×30s = 1800 s = 30 min.
+    """
+    data = _make_home_bytes()
+    data[94:96] = (60).to_bytes(2, "big")  # raw = 60
+
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.max_filling_time == 1800  # 60 × 30 s
+
+
+def test_home_issue_110_frame() -> None:
+    """Full integration test using the real issue #110 frame.
+
+    Frame from serial 0x068f8f26 (= 110071590), ASIN AQUA Home CLF.
+    Water level 14 cm confirmed by the issue reporter (mannekung).
+    Segments 1 and 3 taken directly from plan section 2.
+    Segment 2 is a placeholder (schedule fields not relevant here).
+    """
+    data = bytes.fromhex(
+        # Segment 1 (real-time, byte[5]=0x01) — confirmed from issue #110
+        "068f8f2602011a0517170900000002f5006600660058"
+        "88fdc400a10eaa08000000000000005302dd"
+        # Segment 2 (config1, byte[5]=0x03) — placeholder
+        "068f8f2602031a051717090000"
+        "000000000000000000000000000000000000000000000000000000"
+        # Segment 3 (config2, byte[5]=0x02) — confirmed from issue #110
+        "068f8f2602021a051717090000"
+        "14003c003c003c000a090b0d0f00f03c02580f0a0f1e1eff81015d"
+    )
+    assert len(data) == 120, f"Frame length = {len(data)}, expected 120"
+
+    device = AsekoDecoder.decode(data)
+
+    assert device.device_type == AsekoDeviceType.HOME
+    assert device.water_level == 14  # byte[27] = 0x0e confirmed
+    assert device.water_flow_to_probes is True  # byte[28] = 0xAA
+    assert device.water_filling_active is False  # byte[29] = 0x08, bit 0x02 not set
+    assert device.filtration_nonstop24 is False  # byte[37] = 0x53 = timer mode
+    assert device.water_level_low_alarm == 9  # byte[102]
+    assert device.water_level_filling_on == 11  # byte[103]
+    assert device.water_level_filling_off == 13  # byte[104]
+    assert device.water_level_high_alarm == 15  # byte[105]
+    assert device.pool_volume == 20  # bytes[92:94] = 0x0014
+    assert device.max_filling_time == 1800  # 0x003c=60 raw × 30 s

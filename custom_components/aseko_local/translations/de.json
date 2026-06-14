@@ -62,6 +62,24 @@
       },
       "water_flow_to_probes": {
         "name": "Wasserfluss zu den Sensoren"
+      },
+      "water_filling_active": {
+        "name": "Wasserauffüllung aktiv"
+      },
+      "filtration_nonstop24": {
+        "name": "Filtration Nonstop 24h"
+      },
+      "alarm_ph_too_many_doses": {
+        "name": "pH-Alarm: zu viele Dosierungen"
+      },
+      "alarm_orp_too_many_doses": {
+        "name": "ORP/Chlor-Alarm: zu viele Dosierungen"
+      },
+      "alarm_no_flow_to_probes": {
+        "name": "Alarm: kein Durchfluss zu den Sensoren"
+      },
+      "alarm_rapid_ph_change": {
+        "name": "Alarm: schnelle pH-Wert-Änderung"
       }
     },
     "sensor": {
@@ -121,6 +139,24 @@
       "required_water_temperature": {
         "name": "Benötigte Wassertemperatur"
       },
+      "water_level": {
+        "name": "Wasserstand"
+      },
+      "water_level_low_alarm": {
+        "name": "Wasserstand Alarm unten"
+      },
+      "water_level_filling_on": {
+        "name": "Befüllungsschwelle EIN"
+      },
+      "water_level_filling_off": {
+        "name": "Befüllungsschwelle AUS"
+      },
+      "water_level_high_alarm": {
+        "name": "Wasserstand Alarm oben"
+      },
+      "max_filling_time": {
+        "name": "Maximale Befüllungszeit"
+      },
       "required_algicide": {
         "name": "Benötigte Dosis Algizid",
         "unit_of_measurement": "ml/m³/Tag"
@@ -169,6 +205,12 @@
       },
       "last_seen": {
         "name": "Letzter Datenstand"
+      },
+      "last_backwash": {
+        "name": "Letzte Rückspülung"
+      },
+      "next_backwash": {
+        "name": "Nächste Rückspülung"
       },
       "chlor_consumed": {
         "name": "Chlor verbraucht (seit Nachfüllung)"

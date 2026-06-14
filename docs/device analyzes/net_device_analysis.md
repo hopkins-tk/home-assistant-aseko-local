@@ -199,4 +199,4 @@ AsekoDeviceType.NET: AsekoActuatorMasks(
 | NET-in-DOSE-mode decoded as HOME? | ⚠️ Known bug — filed as separate issue, out of v1.4.0 scope |
 | byte[29] other bits on NET? | ⏳ Only `0x01` and `0x02` confirmed — no further pump outputs known |
 | ph_plus pump on NET? | ⏳ NET hardware may not have pH+ pump — not confirmed |
-| byte[37] = `0xFF` always on NET? | ✅ Confirmed — `0xFF` (UNSPECIFIED) in all captured frames |
+| byte[37] = `0xFF` always on NET? | ✅ Confirmed — `0xFF` (UNSPECIFIED) in all captured frames → `filtration_nonstop24 = None` |

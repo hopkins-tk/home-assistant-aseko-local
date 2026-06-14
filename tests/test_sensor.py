@@ -269,7 +269,7 @@ async def test_async_setup_salt_redox(hass) -> None:
     # 11 sensors + 7 new (filtration schedule, pool volume, delays) + 4 binary
     # (water_flow, electrolyzer_active, filtration, ph_minus)
     # + 2 consumption (ph_minus canister + total) + 1 connection_status
-    assert len(added_entities) == 25
+    assert len(added_entities) == 26
     assert any(
         getattr(e.entity_description, "key", None) != "water_flow_to_probes"
         for e in added_entities
@@ -369,7 +369,7 @@ async def test_async_setup_salt_clf(hass) -> None:
     # 12 sensors + 7 new (filtration schedule, pool volume, delays) + 4 binary
     # (water_flow, electrolyzer_active, filtration, ph_minus)
     # + 2 consumption (ph_minus canister + total) + 1 connection_status
-    assert len(added_entities) == 26
+    assert len(added_entities) == 27
     assert any(
         getattr(e.entity_description, "key", None) != "water_flow_to_probes"
         for e in added_entities
@@ -463,7 +463,7 @@ async def test_async_setup_net_clf(hass) -> None:
     # + 4 consumption (ph_minus canister + total, cl canister + total) + 1 connection_status
     # note: required_algicide/required_floc are absent because byte[37]=0xFF (undefined)
     # note: filtration sensors skipped because start/stop times are None in NET test data
-    assert len(added_entities) == 19
+    assert len(added_entities) == 23
     assert any(
         getattr(e.entity_description, "key", None) == "free_chlorine"
         for e in added_entities

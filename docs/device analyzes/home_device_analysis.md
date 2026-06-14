@@ -150,7 +150,7 @@ Note on **bytes 94–95**: `max_filling_time` reads bytes[94:96] as a big-endian
 | required_floc             | 10 ml/h          | 10 ml/h           | ✓ (fixed) |
 | required_algicide         | 0 ml/m³/day      | 0 ml/m³/day       | ✓ (fixed) |
 | required_water_temperature | 25°C            | --- (disabled)    | ⚠️ see Issue 3 |
-| Filtration schedule       | 08:00–16:00 / 18:00–22:00 | NONSTOP 24H | ⚠️ see Issue 4 |
+| Filtration schedule       | 08:00–16:00 / 18:00–22:00 | NONSTOP 24H | ✓ |
 | backwash_every_n_days     | 3                | every 3 days      | ✓     |
 | backwash_time             | 21:00            | starts at 21:00   | ✓     |
 | backwash_duration         | 120 s            | 02:00 min         | ✓     |
@@ -196,15 +196,23 @@ Note on **bytes 94–95**: `max_filling_time` reads bytes[94:96] as a big-endian
 
 ---
 
-### Issue 4 (Pending — low-water condition at capture time)
+### Issue 4 ✅ Resolved — Filtration nonstop mode flag is byte[37]
 
 **Observation**: Aseko Live Config shows **FILTRATION NONSTOP 24H**. The decoder produces start1=08:00, stop1=16:00, start2=18:00, stop2=22:00 (12 h total — inconsistent with nonstop mode).
 
-**Context**: The frame was captured while the pool had an error (likely too little water). The filtration pump was stopped and byte[29] = 0x00, consistent with an active alarm suppressing normal operation. It is possible that in a normal-operation frame the scheduled times look different, or that a separate flag byte signals "nonstop" mode.
+**Context**: The frame was captured while the pool had an error (likely too little water). The filtration pump was stopped and byte[29] = 0x00, consistent with an active alarm suppressing normal operation.
 
-**Hypothesis**: A "nonstop mode" flag byte exists somewhere in the frame. The scheduled times in bytes 56–63 may store the last manually-configured schedule as a fallback, even when nonstop mode is active.
+**Resolution (Issue #110)**: `byte[37]` encodes the filtration mode flag:
 
-**Action needed**: Request a new frame captured during normal (nonstop) operation and compare bytes 52–79 to identify the nonstop flag. Ideally also a second frame with timed schedule mode active.
+| byte[37] | Meaning |
+|---|---|
+| `0x43` | FILTRATION NONSTOP 24H active |
+| `0x53` | Timer mode active |
+| `0x47` / `0x57` | Transitional / edit state — leave as `None` |
+
+The issue #110 frame (low-water alarm) shows `byte[37] = 0x53` (timer mode), while "NONSTOP 24H" was active in the live app — this is consistent with alarm state suppressing normal config reporting, or the device defaulting to timer mode values during an alarm.
+
+`filtration_nonstop24` is now decoded for **all device types** (HOME, SALT, OXY, NET). Non-HOME real-world values for byte[37] are never `0x43`/`0x53` (SALT uses it for algicide routing, OXY uses `0x03`, NET always `0xFF`), so `filtration_nonstop24` stays `None` for those devices today.
 
 ---
 

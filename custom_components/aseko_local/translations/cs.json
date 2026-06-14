@@ -62,6 +62,24 @@
       },
       "water_flow_to_probes": {
         "name": "Průtok vody k sondám"
+      },
+      "water_filling_active": {
+        "name": "Plnění vody aktivní"
+      },
+      "filtration_nonstop24": {
+        "name": "Filtrace nonstop 24h"
+      },
+      "alarm_ph_too_many_doses": {
+        "name": "pH alarm: příliš mnoho dávek"
+      },
+      "alarm_orp_too_many_doses": {
+        "name": "ORP/Chlor alarm: příliš mnoho dávek"
+      },
+      "alarm_no_flow_to_probes": {
+        "name": "Alarm: žádný průtok k sondám"
+      },
+      "alarm_rapid_ph_change": {
+        "name": "Alarm: rychlá změna pH"
       }
     },
     "sensor": {
@@ -107,7 +125,25 @@
       "required_water_temperature": {
         "name": "Požadovaná teplota vody"
       },
-      "required_algicide": {
+      "water_level": {
+        "name": "Hladina vody"
+      },
+      "water_level_low_alarm": {
+        "name": "Hladina vody — dolní alarm"
+      },
+      "water_level_filling_on": {
+        "name": "Prah zapnutí plnění"
+      },
+      "water_level_filling_off": {
+        "name": "Prah vypnutí plnění"
+      },
+      "water_level_high_alarm": {
+        "name": "Hladina vody — horní alarm"
+      },
+      "max_filling_time": {
+        "name": "Maximální doba plnění"
+      },
+      {
         "name": "Požadovaná dávka algicidu",
         "unit_of_measurement": "ml/m³/den"
       },
@@ -155,6 +191,12 @@
       },
       "last_seen": {
         "name": "Poslední aktualizace dat"
+      },
+      "last_backwash": {
+        "name": "Poslední zpětné proplachování"
+      },
+      "next_backwash": {
+        "name": "Príští zpětné proplachování"
       },
       "chlor_consumed": {
         "name": "Spotřeba chloru (od doplnění)"

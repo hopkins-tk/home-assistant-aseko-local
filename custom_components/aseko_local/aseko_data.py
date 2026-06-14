@@ -210,8 +210,38 @@ class AsekoDevice:
     max_filling_time: int | None = None  # byte 94
 
     air_temperature: float | None = None
+
+    # Water level
+    water_level: int | None = None  # byte [27] (cm, real-time)
+    water_level_low_alarm: int | None = None  # byte [102] (cm, config)
+    water_level_filling_on: int | None = None  # byte [103] (cm, config)
+    water_level_filling_off: int | None = None  # byte [104] (cm, config)
+    water_level_high_alarm: int | None = None  # byte [105] (cm, config)
+
+    # Water filling active — byte [29] bit 0x02
+    water_filling_active: bool | None = None
+
+    # Filtration mode — byte [37]
+    # True = nonstop 24 h (0x43), False = timer (0x53), None = transitional/unknown
+    filtration_nonstop24: bool | None = None
+
+    # Alarm/error bitmask — byte [13]
+    # byte [12] is NOT an error byte (confirmed: NET frame shows 0x00 with active no-flow error)
+    alarm_ph_too_many_doses: bool | None = None  # byte [13] bit 0x01
+    alarm_orp_too_many_doses: bool | None = None  # byte [13] bit 0x02
+    alarm_no_flow_to_probes: bool | None = None  # byte [13] bit 0x04 (confirmed)
+    alarm_rapid_ph_change: bool | None = (
+        None  # byte [13] bit 0x08 (error_codes.md, unconfirmed by capture)
+    )
+
     delay_after_dose: int | None = None  # byte 107 & 108 ? (seconds)
     delay_after_startup: int | None = None  # byte 74 & 75 (seconds)
+
+    # Computed backwash schedule (derived from backwash_time + backwash_every_n_days + timestamp).
+    # last_backwash = most recent daily occurrence of backwash_time at or before the frame timestamp.
+    # next_backwash = last_backwash + backwash_every_n_days days.
+    last_backwash: datetime | None = None
+    next_backwash: datetime | None = None
 
     # Server-side receive timestamp – set by the coordinator on every incoming frame.
     # Independent of the device clock (which can be wrong or missing on some models).

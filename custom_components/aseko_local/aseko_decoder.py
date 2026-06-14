@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 import homeassistant.util
 from typing import Type, TypeVar
 
@@ -368,6 +368,107 @@ class AsekoDecoder:
         # flowrate_ph_plus (byte 97): mapping unconfirmed
 
     @staticmethod
+    def _fill_home_water_level_data(unit: AsekoDevice, data: bytes) -> None:
+        """Decode water level fields for HOME, SALT and OXY devices.
+
+        Confirmed byte positions (all sources zero-based):
+          byte [27]  = current water level in cm     (domin211 ✅, issue #110 ✅)
+          byte [29] bit 0x02 = water filling active  (DomSchCoding #100 ✅)
+          byte [102] = low alarm threshold (cm)       (domin211 ✅, issue #110 ✅)
+          byte [103] = filling ON threshold (cm)      (domin211 ✅, DomSchCoding ✅, issue #110 ✅)
+          byte [104] = filling OFF threshold (cm)     (domin211 ✅, DomSchCoding ✅, issue #110 ✅)
+          byte [105] = high alarm threshold (cm)      (domin211 ✅, issue #110 ✅)
+
+        NET is excluded: bytes [102..104] contain unrelated non-FF data on NET devices
+        that would produce incorrect water level threshold readings.
+        Note: byte [103] overlaps with OXY flowrate_algicide; OXY is explicitly
+        allowed here because _fill_flowrate_data returns early for OXY before reaching
+        the shared byte[101]/byte[103] logic.
+        """
+        if unit.device_type not in {
+            AsekoDeviceType.HOME,
+            AsekoDeviceType.SALT,
+            AsekoDeviceType.OXY,
+        }:
+            return
+
+        unit.water_level = AsekoDecoder._normalize_value(data[27], int)
+        unit.water_filling_active = bool(data[29] & 0x02)
+
+        unit.water_level_low_alarm = AsekoDecoder._normalize_value(data[102], int)
+        unit.water_level_filling_on = AsekoDecoder._normalize_value(data[103], int)
+        unit.water_level_filling_off = AsekoDecoder._normalize_value(data[104], int)
+        unit.water_level_high_alarm = AsekoDecoder._normalize_value(data[105], int)
+
+    @staticmethod
+    def _fill_backwash_schedule(unit: AsekoDevice) -> None:
+        """Compute estimated last/next backwash datetimes from the schedule config.
+
+        Algorithm:
+          last_backwash = most recent occurrence of backwash_time at or before
+                          the frame timestamp (i.e. today's or yesterday's slot).
+          next_backwash = last_backwash + backwash_every_n_days days.
+
+        This is an approximation: the actual cycle phase is unknown because the
+        device does not transmit when the last backwash physically ran.
+        """
+        if (
+            unit.backwash_every_n_days is None
+            or unit.backwash_time is None
+            or unit.timestamp is None
+        ):
+            return
+
+        tz = unit.timestamp.tzinfo
+        today_at_backwash = datetime.combine(
+            unit.timestamp.date(), unit.backwash_time
+        ).replace(tzinfo=tz)
+
+        # If the scheduled time is still in the future today, use yesterday's slot.
+        if today_at_backwash > unit.timestamp:
+            last = today_at_backwash - timedelta(days=1)
+        else:
+            last = today_at_backwash
+
+        unit.last_backwash = last
+        unit.next_backwash = last + timedelta(days=unit.backwash_every_n_days)
+
+    @staticmethod
+    def _fill_alarm_data(unit: AsekoDevice, data: bytes) -> None:
+        """Decode alarm bitmask (byte [13]) for all device types.
+
+        byte [13] bitmask (multiple bits can be set simultaneously):
+          0x01 = pH alarm: too many doses, no value change   (error_codes.md)
+          0x02 = ORP alarm: 30 doses, no value change        (error_codes.md)
+          0x04 = no flow to probes                           (DomSchCoding ✅, NET frame ✅)
+          0x08 = rapid pH change, stops regulation ~2 h      (error_codes.md, unconfirmed)
+
+        byte [12] is NOT an error byte — confirmed 0x00 on NET device while
+        byte [13] = 0x04 (active no-flow error) and byte [28] = 0x00.
+        """
+        unit.alarm_ph_too_many_doses = bool(data[13] & 0x01)
+        unit.alarm_orp_too_many_doses = bool(data[13] & 0x02)
+        unit.alarm_no_flow_to_probes = bool(data[13] & 0x04)
+        unit.alarm_rapid_ph_change = bool(data[13] & 0x08)
+
+    @staticmethod
+    def _fill_filtration_mode(unit: AsekoDevice, data: bytes) -> None:
+        """Decode filtration mode (byte [37]) for all device types.
+
+        byte [37]:
+          0x43 = nonstop 24 h active   (confirmed: HOME ✅)
+          0x53 = timer mode active     (confirmed: HOME ✅, issue #110 ✅)
+          0x47 / 0x57 = transitional edit state → leave as None
+          other values → None (SALT uses 0xb7/0xb3/0x37/0x13 for pump routing;
+                               OXY uses 0x03; NET = 0xFF always → all give None)
+        """
+        if data[37] == 0x43:
+            unit.filtration_nonstop24 = True
+        elif data[37] == 0x53:
+            unit.filtration_nonstop24 = False
+        # all other values (including 0xFF, 0x03, 0x37, 0xb7 …) → leave as None
+
+    @staticmethod
     def _fill_consumable_data(unit: AsekoDevice, data: bytes) -> None:
         masks = ACTUATOR_MASKS.get(unit.device_type)
         if masks is None:
@@ -431,7 +532,7 @@ class AsekoDecoder:
             backwash_time=AsekoDecoder._time(data[69:71]),
             backwash_duration=data[71] * 10 if data[71] != UNSPECIFIED_VALUE else None,
             pool_volume=int.from_bytes(data[92:94], "big"),
-            max_filling_time=int.from_bytes(data[94:96], "big"),
+            max_filling_time=int.from_bytes(data[94:96], "big") * 30,
             delay_after_startup=int.from_bytes(data[74:76], "big"),
             delay_after_dose=int.from_bytes(data[106:108], "big"),
         )
@@ -445,5 +546,9 @@ class AsekoDecoder:
         # algicide/flocculant is determined by whether the flowrate byte is set (≠ 0xFF).
         AsekoDecoder._fill_flowrate_data(device, data)
         AsekoDecoder._fill_consumable_data(device, data)
+        AsekoDecoder._fill_home_water_level_data(device, data)
+        AsekoDecoder._fill_alarm_data(device, data)
+        AsekoDecoder._fill_filtration_mode(device, data)
+        AsekoDecoder._fill_backwash_schedule(device)
 
         return device
