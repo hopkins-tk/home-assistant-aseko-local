@@ -353,11 +353,7 @@ SENSORS: list[AsekoSensorEntityDescription] = [
         state_class=SensorStateClass.MEASUREMENT,
         icon="mdi:timer",
         entity_registry_enabled_default=False,
-        value_fn=lambda device: (
-            device.max_filling_time // 60
-            if device.max_filling_time is not None
-            else None
-        ),
+        value_fn=lambda device: device.max_filling_time,
     ),
     AsekoSensorEntityDescription(
         key="required_algicide",

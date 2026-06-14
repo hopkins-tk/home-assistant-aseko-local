@@ -121,7 +121,7 @@ def test_decode_home() -> None:
     assert device.filtration_pump_running is True
     assert device.water_flow_to_probes is True
     assert device.pool_volume == 5000
-    assert device.max_filling_time == 1800  # 60 raw × 30 s = 1800 s
+    assert device.max_filling_time == 60  # raw = minutes directly (verified Issue #110)
     assert device.delay_after_startup == 120
     assert device.delay_after_dose == 30
     assert device.start1 == time(8, 0)
@@ -816,7 +816,7 @@ def test_decode_home_clf_real_frame() -> None:
     assert device.backwash_duration == 120
     # Pool parameters
     assert device.pool_volume == 60
-    assert device.max_filling_time == 1800  # 0x003c=60 raw × 30 s = 1800 s
+    assert device.max_filling_time == 60  # raw = minutes directly (verified Issue #110)
     assert device.delay_after_startup == 480
     assert device.delay_after_dose == 240
     # Flowrates
@@ -840,6 +840,113 @@ def test_decode_issue_99_salt() -> None:
     assert device.cl_free is not None
     assert device.cl_free_mv is not None
     assert device.redox is None
+
+
+# ── HOME independent flowrate tests (Issue #115) ─────────────────────────────
+
+
+def test_decode_home_independent_flowrates() -> None:
+    """HOME devices use byte[101]=floc, byte[103]=algicide independently.
+
+    Before this fix, HOME fell through to the SALT routing logic, which routed
+    byte[101] exclusively to either floc or algicide (per byte[37] bit 7).
+    This caused Issue #115: `required_algicide` and `flowrate_algicide`
+    entities were never created on HOME, and the algicide pump binary sensor
+    was always missing.
+
+    Confirmed by HOME frame from Issue #110 (serial 110071590, byte[4]=0x02):
+        byte[101] = 0x0a (10) → flowrate_floc
+        byte[103] = 0x0b (11) → flowrate_algicide  (was None before fix)
+    """
+    data = _make_base_bytes()
+    data[4] = 0x02  # HOME CLF
+    data[99] = 60  # flowrate_chlor (Chlor Pure)
+    data[101] = 10  # flowrate_floc
+    data[103] = 11  # flowrate_algicide — was never read on HOME before
+    data[37] = 0x53  # HOME filtration mode flag (irrelevant for flowrates)
+
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.device_type == AsekoDeviceType.HOME
+    assert device.flowrate_chlor == 60
+    # byte[95] is overwritten to 60 by the max_filling_time setter in _make_base_bytes.
+    assert device.flowrate_ph_minus == 60
+    assert device.flowrate_floc == 10
+    assert device.flowrate_algicide == 11  # NEW — previously None
+    # Byte 37 bit 7 has no meaning on HOME (no shared pump port).
+    # Confirms we do not depend on byte[37] for HOME flowrates.
+    data[37] = 0xB3  # SALT-style "algicide routing" value — must be IGNORED on HOME
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.flowrate_floc == 10
+    assert device.flowrate_algicide == 11
+
+
+def test_decode_home_flowrates_unspecified() -> None:
+    """HOME flowrates: 0xFF → None (e.g. pump not installed)."""
+    data = _make_base_bytes()
+    data[4] = 0x02  # HOME CLF
+    data[99] = 0xFF  # chlorine pump not installed
+    data[101] = 0xFF  # flocculant pump not installed
+    data[103] = 0xFF  # algicide pump not installed
+
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.device_type == AsekoDeviceType.HOME
+    assert device.flowrate_chlor is None
+    assert device.flowrate_floc is None
+    assert device.flowrate_algicide is None
+
+
+def test_decode_home_algicide_pump_running() -> None:
+    """Issue #115: HOME devices must expose algicide_pump_running binary sensor.
+
+    Before the HOME-specific flowrate branch was added, flowrate_algicide
+    was always None on HOME, which made _fill_consumable_data short-circuit
+    the algicide_pump_running assignment — so the binary sensor was never
+    registered.  With flowrate_algicide now decoded, the binary sensor
+    correctly reflects byte[29] bit 5 (0x20).
+    """
+    data = _make_base_bytes()
+    data[4] = 0x02  # HOME CLF
+    data[99] = 60  # chlor
+    data[101] = 10  # floc — pump installed
+    data[103] = 20  # algicide — pump installed (key for this test)
+    data[37] = 0x53
+
+    # Algicide running: bit 5 (0x20) set, bit 3 (0x08) filtration on
+    data[29] = 0x28
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.algicide_pump_running is True
+    # On HOME, floc and algicide share bit 0x20 in byte[29] (the existing
+    # HOME masks in ACTUATOR_MASKS mark both algicide=0x20 and flocculant=0x20
+    # with the "uncertain" comment).  The current implementation reports
+    # BOTH as active when bit 0x20 is set — this is a known limitation and
+    # the binary sensors exist for both chemicals.  See home_device_analysis.md
+    # §"Actuator byte[29] — HOME masks (uncertain)" for confirmation that
+    # the per-pump bit for HOME is unverified.  The important point of this
+    # test is that algicide_pump_running is no longer None on HOME.
+
+    # Algicide stopped
+    data[29] = 0x08
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.algicide_pump_running is False
+
+
+def test_decode_home_floc_pump_running_independent() -> None:
+    """On HOME the floc pump runs independently of algicide (different pump ports).
+
+    byte[101] set (floc installed) and byte[103] = 0xFF (no algicide) →
+    floc_pump_running tracks byte[29] bit 5, algicide_pump_running stays None.
+    """
+    data = _make_base_bytes()
+    data[4] = 0x02  # HOME CLF
+    data[99] = 0xFF  # no chlor
+    data[101] = 10  # floc installed
+    data[103] = 0xFF  # NO algicide pump
+    data[37] = 0x53
+
+    data[29] = 0x28
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.floc_pump_running is True
+    assert device.algicide_pump_running is None
 
 
 # ── HOME water level and alarm tests (Issue #100 / #110) ─────────────────────
@@ -1087,16 +1194,20 @@ def test_home_byte12_not_an_alarm_byte() -> None:
     assert device.alarm_no_flow_to_probes is False
 
 
-def test_home_max_filling_time_seconds() -> None:
-    """max_filling_time is stored in seconds (raw value × 30).
+def test_home_max_filling_time() -> None:
+    """max_filling_time is stored in minutes (raw value × 1).
 
-    DomSchCoding confirmed: raw=60 → 60×30s = 1800 s = 30 min.
+    Confirmed against the Aseko Live app for serial 110071590:
+        raw bytes 94:95 = 0x003c = 60
+        app shows "Max filling time 60 min"
+    Earlier interpretation as "raw × 30 seconds = 1800 s = 30 min"
+    was rejected by the live app screenshot from mannekung (Issue #110).
     """
     data = _make_home_bytes()
     data[94:96] = (60).to_bytes(2, "big")  # raw = 60
 
     device = AsekoDecoder.decode(bytes(data))
-    assert device.max_filling_time == 1800  # 60 × 30 s
+    assert device.max_filling_time == 60  # raw value = minutes directly
 
 
 def test_home_issue_110_frame() -> None:
@@ -1132,4 +1243,6 @@ def test_home_issue_110_frame() -> None:
     assert device.water_level_filling_off == 13  # byte[104]
     assert device.water_level_high_alarm == 15  # byte[105]
     assert device.pool_volume == 20  # bytes[92:94] = 0x0014
-    assert device.max_filling_time == 1800  # 0x003c=60 raw × 30 s
+    assert (
+        device.max_filling_time == 60
+    )  # raw = minutes directly (verified Issue #110 app)

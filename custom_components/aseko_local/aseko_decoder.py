@@ -328,7 +328,20 @@ class AsekoDecoder:
             unit.flowrate_algicide = AsekoDecoder._normalize_value(data[103], int)
             return
 
-        # Non-OXY devices: byte[99] = chlorine pump flowrate.
+        if unit.device_type == AsekoDeviceType.HOME:
+            # HOME devices have independent pump ports for flocculant and algicide
+            # (same layout as OXY Pure for these two flowrates — confirmed by
+            # real HOME frames from serial 110071590 / 110128063, see Issue #110
+            # and #115).  No byte[37] routing is involved.
+            # byte[99]  = chlorine / Chlor Pure flowrate (matches byte[54] family).
+            # byte[101] = flocculant flowrate (ml/min).
+            # byte[103] = algicide flowrate   (ml/min).
+            unit.flowrate_chlor = AsekoDecoder._normalize_value(data[99], int)
+            unit.flowrate_floc = AsekoDecoder._normalize_value(data[101], int)
+            unit.flowrate_algicide = AsekoDecoder._normalize_value(data[103], int)
+            return
+
+        # SALT / NET / PROFI: byte[99] = chlorine pump flowrate.
         unit.flowrate_chlor = AsekoDecoder._normalize_value(data[99], int)
 
         # byte[101]: shared "third pump slot" — algicide OR flocculant per byte[37].
@@ -356,9 +369,11 @@ class AsekoDecoder:
 
         NET is excluded: bytes [102..104] contain unrelated non-FF data on NET devices
         that would produce incorrect water level threshold readings.
-        Note: byte [103] overlaps with OXY flowrate_algicide; OXY is explicitly
-        allowed here because _fill_flowrate_data returns early for OXY before reaching
-        the shared byte[101]/byte[103] logic.
+        Note: byte [103] overlaps with OXY flowrate_algicide AND with HOME
+        flowrate_algicide.  Both OXY and HOME have an early return in
+        _fill_flowrate_data, so flowrate_algicide and water_level_filling_on
+        read the SAME byte without conflict.  SALT ignores byte[103] (it is
+        the duplicate flocculant slot — see salt_device_analysis.md).
         """
         if unit.device_type not in {
             AsekoDeviceType.HOME,
@@ -495,7 +510,13 @@ class AsekoDecoder:
             backwash_time=AsekoDecoder._time(data[69:71]),
             backwash_duration=data[71] * 10 if data[71] != UNSPECIFIED_VALUE else None,
             pool_volume=int.from_bytes(data[92:94], "big"),
-            max_filling_time=int.from_bytes(data[94:96], "big") * 30,
+            # max_filling_time is stored in minutes (verified against Aseko Live
+            # app for serial 110071590: raw bytes 94:95 = 0x003c = 60, app shows
+            # 60 min). The earlier "× 30 seconds" interpretation was wrong.
+            # See water_level_backwash_analysis.md and home_device_analysis.md
+            # (Bug 1, the 30 s hypothesis from DomSchCoding #100 was rejected by
+            # the live app screenshot).
+            max_filling_time=int.from_bytes(data[94:96], "big"),
             delay_after_startup=int.from_bytes(data[74:76], "big"),
             delay_after_dose=int.from_bytes(data[106:108], "big"),
         )
