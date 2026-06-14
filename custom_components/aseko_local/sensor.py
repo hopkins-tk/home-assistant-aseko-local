@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from collections.abc import Callable
+from datetime import date, datetime
 
 from homeassistant.components.sensor import (
     RestoreSensor,
@@ -480,6 +481,35 @@ SENSORS: list[AsekoSensorEntityDescription] = [
         device_class=SensorDeviceClass.TIMESTAMP,
         icon="mdi:clock-outline",
         value_fn=lambda device: device.last_seen,
+    ),
+    AsekoSensorEntityDescription(
+        key="backwash_every_n_days",
+        translation_key="backwash_every_n_days",
+        state_class=SensorStateClass.MEASUREMENT,
+        icon="mdi:calendar-refresh",
+        entity_registry_enabled_default=False,
+        value_fn=lambda device: device.backwash_every_n_days,
+    ),
+    AsekoSensorEntityDescription(
+        key="backwash_time",
+        translation_key="backwash_time",
+        device_class=SensorDeviceClass.TIMESTAMP,
+        icon="mdi:clock-start",
+        entity_registry_enabled_default=False,
+        value_fn=lambda device: (
+            datetime.combine(date.today(), device.backwash_time)
+            if device.backwash_time is not None
+            else None
+        ),
+    ),
+    AsekoSensorEntityDescription(
+        key="backwash_duration",
+        translation_key="backwash_duration",
+        native_unit_of_measurement=UnitOfTime.SECONDS,
+        state_class=SensorStateClass.MEASUREMENT,
+        icon="mdi:timer-sand",
+        entity_registry_enabled_default=False,
+        value_fn=lambda device: device.backwash_duration,
     ),
     AsekoSensorEntityDescription(
         key="last_backwash",

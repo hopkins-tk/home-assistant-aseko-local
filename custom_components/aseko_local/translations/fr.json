@@ -80,6 +80,9 @@
             },
             "alarm_rapid_ph_change": {
                 "name": "Alarme : variation rapide du pH"
+            },
+            "backwash_active": {
+                "name": "Contre-lavage actif"
             }
         },
         "sensor": {
@@ -190,6 +193,15 @@
             },
             "next_backwash": {
                 "name": "Prochain contre-lavage"
+            },
+            "backwash_every_n_days": {
+                "name": "Intervalle de contre-lavage"
+            },
+            "backwash_time": {
+                "name": "Heure de début du contre-lavage"
+            },
+            "backwash_duration": {
+                "name": "Durée du contre-lavage"
             },
             "chlor_consumed": {
                 "name": "Chlore consommé (depuis le remplissage)"

@@ -80,6 +80,9 @@
       },
       "alarm_rapid_ph_change": {
         "name": "Alarm: schnelle pH-Wert-Änderung"
+      },
+      "backwash_active": {
+        "name": "Rückspülung aktiv"
       }
     },
     "sensor": {
@@ -190,6 +193,15 @@
       },
       "next_backwash": {
         "name": "Nächste Rückspülung"
+      },
+      "backwash_every_n_days": {
+        "name": "Rückspülintervall"
+      },
+      "backwash_time": {
+        "name": "Rückspülung Startzeit"
+      },
+      "backwash_duration": {
+        "name": "Rückspüldauer"
       },
       "chlor_consumed": {
         "name": "Chlor verbraucht (seit Nachfüllung)"

@@ -206,6 +206,15 @@ class AsekoDevice:
     backwash_time: time | None = None  # byte 69 & 70
     backwash_duration: int | None = None  # byte 71
 
+    # Backwash running state — byte [29] bit 0x01
+    # True while the backwash valve relay is currently energized.
+    # NOTE: bit 0x01 is the backwash relay across all device types that
+    # have a backwash valve (HOME, SALT, OXY).  NET has no backwash output.
+    # The mapping is the same one JS-DE-Tech uses for `relay_byte` bit 0
+    # ("backwash" relay).  Live confirmation is still pending — see
+    # docs/temp/byte29_salt_pump_masks_analysis.md for context.
+    backwash_active: bool | None = None
+
     pool_volume: int | None = None  # byte 92 & 93
     max_filling_time: int | None = None  # byte 94
 
@@ -238,7 +247,11 @@ class AsekoDevice:
     delay_after_startup: int | None = None  # byte 74 & 75 (seconds)
 
     # Computed backwash schedule (derived from backwash_time + backwash_every_n_days + timestamp).
-    # last_backwash = most recent daily occurrence of backwash_time at or before the frame timestamp.
+    # last_backwash = most recent daily occurrence of backwash_time at or before
+    #                  the frame timestamp.  After the first detected backwash
+    #                  cycle, the BackwashTracker in coordinator.py overrides
+    #                  this with a real observed timestamp (persistent across
+    #                  restarts).  See custom_components/aseko_local/backwash_tracker.py.
     # next_backwash = last_backwash + backwash_every_n_days days.
     last_backwash: datetime | None = None
     next_backwash: datetime | None = None
