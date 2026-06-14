@@ -304,6 +304,7 @@ if unit.device_type == AsekoDeviceType.HOME:
 | 5 | ✅ Resolved | `flowrate_algicide` byte position — confirmed as `byte[103]` on HOME (Issue #115) |
 | 6 | New | `byte[29]` bit masks for HOME pumps remain **unconfirmed** — see §"Actuator byte[29] — HOME masks (uncertain)" above. The masks in `ACTUATOR_MASKS[HOME]` are placeholders matching OXY/NET. Capturing frames with a single HOME pump running (e.g. algicide only) would pin down the per-pump bit. Until then, both `algicide_pump_running` and `floc_pump_running` may report incorrectly on HOME when the corresponding pump is active. |
 | 7 | New | `max_filling_time` overlap with `flowrate_ph_minus` (both use byte[95]) — see note in Segment 3 below. If byte[94] ever becomes non-zero, `max_filling_time` is inflated. Only a frame with a non-zero byte[94] would prove or disprove the assumption. |
+| 8 | New | `heating_active` binary sensor (byte[29] bit 0x04) — added for [Issue #115](https://github.com/hopkins-tk/home-assistant-aseko-local/issues/115) "Entities for heating are not there" request. Mapping is the same as JS-DE-Tech's `relay_byte` bit 2. **Live confirmation pending** — needs a frame captured while the heat pump / electric heater is actually running. Currently it cannot be distinguished from the unconfirmed HOME pump-bit masks. |
 
 ---
 

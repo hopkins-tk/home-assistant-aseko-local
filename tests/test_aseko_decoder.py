@@ -1339,6 +1339,90 @@ def test_backwash_active_independent_of_water_filling() -> None:
     assert device.water_filling_active is True
 
 
+# ── Heating demand relay (Issue #115, JS-DE-Tech relay_byte bit 2) ──────────
+
+
+def test_heating_active_decoded_for_home() -> None:
+    """HOME devices: byte[29] bit 0x04 → heating_active."""
+    data = _make_home_bytes()
+
+    # Heating demand on (bit 0x04 set, plus filtration bit 0x08 for realism)
+    data[29] = 0x0C
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.heating_active is True
+
+    # Heating demand off
+    data[29] = 0x08  # filtration only
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.heating_active is False
+
+
+def test_heating_active_decoded_for_salt() -> None:
+    """SALT devices: byte[29] bit 0x04 → heating_active (parallel to HOME)."""
+    data = _make_base_bytes()
+    data[4] = 0x0E  # SALT
+
+    data[29] = 0x0C
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.heating_active is True
+
+    data[29] = 0x08
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.heating_active is False
+
+
+def test_heating_active_decoded_for_oxy() -> None:
+    """OXY devices: byte[29] bit 0x04 → heating_active (parallel to HOME)."""
+    data = _make_base_bytes()
+    data[4] = 0x05  # OXY
+
+    data[29] = 0x0C
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.heating_active is True
+
+    data[29] = 0x08
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.heating_active is False
+
+
+def test_heating_active_none_for_net() -> None:
+    """NET devices: no heating output → heating_active stays None.
+
+    The binary sensor is therefore not registered for NET devices.
+    """
+    data = _make_base_bytes()
+    data[4] = 0x09  # NET
+
+    data[29] = 0x0C  # bit 2 set
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.heating_active is None
+
+
+def test_heating_active_independent_of_backwash_and_filling() -> None:
+    """byte[29] bit 0x04 is independent of bits 0x01 and 0x02."""
+    data = _make_home_bytes()
+
+    # All three relays on
+    data[29] = 0x0F  # 0x08 | 0x04 | 0x02 | 0x01
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.heating_active is True
+    assert device.water_filling_active is True
+    assert device.backwash_active is True
+
+    # Only heating on
+    data[29] = 0x0C  # 0x08 | 0x04
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.heating_active is True
+    assert device.water_filling_active is False
+    assert device.backwash_active is False
+
+    # Only backwash on
+    data[29] = 0x09  # 0x08 | 0x01
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.heating_active is False
+    assert device.backwash_active is True
+
+
 def test_home_issue_110_frame() -> None:
     """Full integration test using the real issue #110 frame.
 

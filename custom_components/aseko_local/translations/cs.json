@@ -42,6 +42,9 @@
       "filtration_pump_running": {
         "name": "Filtrační čerpadlo běží"
       },
+      "heating_active": {
+        "name": "Topení aktivní"
+      },
       "cl_pump_running": {
         "name": "Čerpadlo chloru běží"
       },

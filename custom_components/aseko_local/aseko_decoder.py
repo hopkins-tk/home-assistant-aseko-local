@@ -416,6 +416,26 @@ class AsekoDecoder:
         unit.water_level_high_alarm = AsekoDecoder._normalize_value(data[105], int)
 
     @staticmethod
+    def _fill_heating_demand(unit: AsekoDevice, data: bytes) -> None:
+        """Decode the heating demand relay state from byte[29] bit 0x04.
+
+        byte[29] bit 0x04 = heating demand relay (JS-DE-Tech "relay_byte"
+        bit 2).  Set whenever the pool controller is requesting heat from
+        the configured heater source (heat pump, electric heater, etc.).
+
+        Available on HOME, SALT, OXY.  NET does not have a heating output,
+        so the field stays None for NET (and no binary sensor is
+        registered).
+
+        The bit-0x04 mapping is the same one JS-DE-Tech uses and was
+        independently listed by the prior Node-RED decoder.
+        """
+        if unit.device_type == AsekoDeviceType.NET:
+            # NET has no heating output.
+            return
+        unit.heating_active = bool(data[29] & 0x04)
+
+    @staticmethod
     def _fill_backwash_active(unit: AsekoDevice, data: bytes) -> None:
         """Decode the backwash relay state from byte[29] bit 0x01.
 
@@ -607,6 +627,7 @@ class AsekoDecoder:
         AsekoDecoder._fill_home_water_level_data(device, data)
         AsekoDecoder._fill_alarm_data(device, data)
         AsekoDecoder._fill_filtration_mode(device, data)
+        AsekoDecoder._fill_heating_demand(device, data)
         AsekoDecoder._fill_backwash_active(device, data)
         AsekoDecoder._fill_backwash_schedule(device)
 

@@ -42,6 +42,9 @@
       "filtration_pump_running": {
         "name": "Filtrationspumpe läuft"
       },
+      "heating_active": {
+        "name": "Heizung aktiv"
+      },
       "cl_pump_running": {
         "name": "Chlorpumpe läuft"
       },
