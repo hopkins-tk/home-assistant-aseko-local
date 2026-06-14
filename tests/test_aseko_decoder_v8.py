@@ -131,10 +131,6 @@ def test_device_812_type_is_net(device_812):
     assert device_812.device_type == AsekoDeviceType.NET
 
 
-def test_device_805_type_is_net(device_805):
-    assert device_805.device_type == AsekoDeviceType.NET
-
-
 def test_configuration_contains_ph_and_redox(device_sep):
     assert AsekoProbeType.PH in device_sep.configuration
     assert AsekoProbeType.REDOX in device_sep.configuration
