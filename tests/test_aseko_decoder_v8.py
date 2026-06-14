@@ -28,6 +28,20 @@ REFERENCE_FRAME = (
     b"crc16: C3C8}\n"
 )
 
+REFERENCE_FRAME_805 = (
+    b"{v1 123456789 805 0 27 "
+    b"ins: 314 -500 -500 -500 0 0 0 0 1 -500 -500 -500 0 24 6 29 22 27 0 "
+    b"ains: 708 708 774 7790 0 0 779 779 0 0 0 0 0 0 0 0 "
+    b"outs: 0 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 "
+    b"areqs: 74 73 4 5 0 36 36 0 0 0 6 0 36 0 45 0 255 2 2 10 0 15 0 0 0 0 "
+    b"reqs: 0 0 0 0 0 0 0 24 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 "
+    b"0 10 10 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 "
+    b"fncs: 0 0 3 0 0 0 2 0 "
+    b"mods: 2 0 0 1 0 0 0 0 "
+    b"flags: 2 0 0 0 0 0 0 0 "
+    b"crc16: C3C8}\n"
+)
+
 # Second reference frame (Apr 13, 2026, 12:27 CEST) — used as cross-check fixture.
 REFERENCE_FRAME_APR = (
     b"{v1 123456789 804 0 27 "
@@ -68,6 +82,8 @@ def device_sep():
 @pytest.fixture
 def device_812():
     return AsekoV8Decoder.decode(REFERENCE_FRAME_812)
+def device_805():
+    return AsekoV8Decoder.decode(REFERENCE_FRAME_805)
 
 
 @pytest.fixture
@@ -90,6 +106,8 @@ def test_device_type_is_net(device_sep):
 
 def test_device_812_type_is_net(device_812):
     assert device_812.device_type == AsekoDeviceType.NET
+def test_device_805_type_is_net(device_805):
+    assert device_805.device_type == AsekoDeviceType.NET
 
 
 def test_configuration_contains_ph_and_redox(device_sep):
