@@ -15,9 +15,13 @@ _LOGGER = logging.getLogger(__name__)
 # Matches "sectionname: <values>" up to the next section keyword or end of string.
 _SECTION_RE = re.compile(r"(\w+):\s*(.*?)(?=\s+\w+:|$)", re.DOTALL)
 
-# Maps the header type field (f2) to the corresponding device type.
+# Maps known header type fields (f2) to their device type.
+# Unknown values are tolerated — the decoder falls back to NET (all
+# V8 frames observed so far use the same layout regardless of f2).
 _V8_DEVICE_TYPE_BY_HEADER: dict[int, AsekoDeviceType] = {
     804: AsekoDeviceType.NET,
+    805: AsekoDeviceType.NET,
+    812: AsekoDeviceType.NET,
 }
 
 
@@ -77,7 +81,13 @@ class AsekoV8Decoder:
         header_type = int(header_match.group(2))
         device_type = _V8_DEVICE_TYPE_BY_HEADER.get(header_type)
         if device_type is None:
-            raise ValueError(f"v8 frame: unknown device type {header_type}")
+            _LOGGER.warning(
+                "Unknown V8 header type %s for serial %s — falling back to NET. "
+                "Please report this at https://github.com/hopkins-tk/home-assistant-aseko-local/issues",
+                header_type,
+                serial_number,
+            )
+            device_type = AsekoDeviceType.NET
 
         # Parse all sections into a dict of {name: [int, ...]}
         sections: dict[str, list[int]] = {}
