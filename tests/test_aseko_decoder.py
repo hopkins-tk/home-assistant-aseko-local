@@ -1254,6 +1254,91 @@ def test_home_max_filling_time() -> None:
     assert device.max_filling_time == 60  # raw value = minutes directly
 
 
+# ── Backwash relay state (Issue #100) ────────────────────────────────────────
+
+
+def test_backwash_active_decoded_for_home() -> None:
+    """HOME devices: byte[29] bit 0x01 → backwash_active.
+
+    Mapping from JS-DE-Tech relay_byte bit 0 ('backwash relay').
+    """
+    data = _make_home_bytes()
+
+    # Backwash relay on (bit 0x01 set, plus filtration bit 0x08 for realism)
+    data[29] = 0x09
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.backwash_active is True
+
+    # Backwash relay off
+    data[29] = 0x08  # filtration only
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.backwash_active is False
+
+
+def test_backwash_active_decoded_for_salt() -> None:
+    """SALT devices: byte[29] bit 0x01 → backwash_active (parallel to HOME)."""
+    data = _make_base_bytes()
+    data[4] = 0x0E  # SALT
+
+    data[29] = 0x09  # bit 0 set
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.backwash_active is True
+
+    data[29] = 0x08
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.backwash_active is False
+
+
+def test_backwash_active_decoded_for_oxy() -> None:
+    """OXY devices: byte[29] bit 0x01 → backwash_active (parallel to HOME)."""
+    data = _make_base_bytes()
+    data[4] = 0x05  # OXY
+
+    data[29] = 0x09
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.backwash_active is True
+
+    data[29] = 0x08
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.backwash_active is False
+
+
+def test_backwash_active_none_for_net() -> None:
+    """NET devices: no backwash valve → backwash_active stays None.
+
+    The binary sensor is therefore not registered for NET devices.
+    """
+    data = _make_base_bytes()
+    data[4] = 0x09  # NET
+
+    data[29] = 0x09  # bit 0 set
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.backwash_active is None
+
+
+def test_backwash_active_independent_of_water_filling() -> None:
+    """byte[29] bit 0x01 (backwash) is independent of bit 0x02 (water filling)."""
+    data = _make_home_bytes()
+
+    # Both backwash and water filling on
+    data[29] = 0x0B  # 0x08 | 0x02 | 0x01
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.backwash_active is True
+    assert device.water_filling_active is True
+
+    # Only backwash on (water filling off)
+    data[29] = 0x09  # 0x08 | 0x01
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.backwash_active is True
+    assert device.water_filling_active is False
+
+    # Only water filling on (backwash off)
+    data[29] = 0x0A  # 0x08 | 0x02
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.backwash_active is False
+    assert device.water_filling_active is True
+
+
 def test_home_issue_110_frame() -> None:
     """Full integration test using the real issue #110 frame.
 

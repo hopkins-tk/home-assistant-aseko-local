@@ -90,6 +90,10 @@ async def async_setup_entry(
         except Exception:
             rd.device_discovered = False  # allow retry on next device callback
             raise
+        # Load persisted backwash timestamps for known devices (e.g. after
+        # an HA restart, so the sensor shows the last observed value
+        # immediately on first frame).
+        await rd.coordinator.async_setup_backwash_trackers()
         _LOGGER.info("New Aseko device registered: %s", device.serial_number)
 
     coordinator = AsekoLocalDataUpdateCoordinator(

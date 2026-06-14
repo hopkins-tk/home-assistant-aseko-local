@@ -80,6 +80,9 @@
       },
       "alarm_rapid_ph_change": {
         "name": "Alarm: rychlá změna pH"
+      },
+      "backwash_active": {
+        "name": "Zpětné proplachování aktivní"
       }
     },
     "sensor": {
@@ -143,7 +146,7 @@
       "max_filling_time": {
         "name": "Maximální doba plnění"
       },
-      {
+      "required_algicide": {
         "name": "Požadovaná dávka algicidu",
         "unit_of_measurement": "ml/m³/den"
       },
@@ -197,6 +200,15 @@
       },
       "next_backwash": {
         "name": "Príští zpětné proplachování"
+      },
+      "backwash_every_n_days": {
+        "name": "Interval zpětného proplachování"
+      },
+      "backwash_time": {
+        "name": "Čas začátku zpětného proplachování"
+      },
+      "backwash_duration": {
+        "name": "Doba trvání zpětného proplachování"
       },
       "chlor_consumed": {
         "name": "Spotřeba chloru (od doplnění)"

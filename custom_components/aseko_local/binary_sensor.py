@@ -118,6 +118,12 @@ BINARY_SENSORS: tuple[AsekoLocalBinarySensorEntityDescription, ...] = (
         icon="mdi:alert",
         value_fn=lambda device: device.alarm_rapid_ph_change,
     ),
+    AsekoLocalBinarySensorEntityDescription(
+        key="backwash_active",
+        translation_key="backwash_active",
+        icon="mdi:water-pump",
+        value_fn=lambda device: device.backwash_active,
+    ),
 )
 
 

@@ -416,6 +416,31 @@ class AsekoDecoder:
         unit.water_level_high_alarm = AsekoDecoder._normalize_value(data[105], int)
 
     @staticmethod
+    def _fill_backwash_active(unit: AsekoDevice, data: bytes) -> None:
+        """Decode the backwash relay state from byte[29] bit 0x01.
+
+        byte[29] bit 0x01 = backwash relay active (JS-DE-Tech "relay_byte" bit 0).
+
+        This bit is set across all device types that have a backwash valve
+        (HOME, SALT, OXY).  NET has no backwash output, so the field stays
+        None for NET — it is the user's responsibility to interpret "no entity
+        at all" as "device does not have a backwash output".
+
+        Live confirmation: not yet captured in a frame while a backwash cycle
+        is actually running.  A "no flow to probes" condition (byte[13] bit
+        0x04) was independently confirmed to be associated with byte[28] == 0
+        (and not byte[29] bit 0x01) — see Issue #100, DomSchCoding capture.
+        The bit-0x01 mapping is the same one JS-DE-Tech uses and DomSchCoding
+        identified as a candidate in Issue #100 §"Open: Dynamic State Bytes".
+        """
+        if unit.device_type == AsekoDeviceType.NET:
+            # NET has no backwash valve — leave the field as None so the
+            # binary sensor is not registered.
+            return
+
+        unit.backwash_active = bool(data[29] & 0x01)
+
+    @staticmethod
     def _fill_backwash_schedule(unit: AsekoDevice) -> None:
         """Compute estimated last/next backwash datetimes from the schedule config.
 
@@ -424,8 +449,20 @@ class AsekoDecoder:
                           the frame timestamp (i.e. today's or yesterday's slot).
           next_backwash = last_backwash + backwash_every_n_days days.
 
-        This is an approximation: the actual cycle phase is unknown because the
-        device does not transmit when the last backwash physically ran.
+        Caveat (last_backwash): This is a schedule-based *estimate*.  The actual
+        backwash phase is unknown from the device because it does not transmit
+        when the last backwash physically ran.
+
+        The coordinator (``coordinator.py``) overrides ``last_backwash`` with
+        the value from ``BackwashTracker`` (a persistent store of the last
+        observed ≥60 s relay-on window) once a real backwash has been seen.
+        So:
+            * Before the first observed backwash: the value here is shown
+              (i.e. the latest scheduled slot in the past).
+            * After the first observed backwash: the tracker's value wins
+              (and persists across HA restarts).
+
+        See ``backwash_tracker.py`` for the live-tracking implementation.
         """
         if (
             unit.backwash_every_n_days is None
@@ -570,6 +607,7 @@ class AsekoDecoder:
         AsekoDecoder._fill_home_water_level_data(device, data)
         AsekoDecoder._fill_alarm_data(device, data)
         AsekoDecoder._fill_filtration_mode(device, data)
+        AsekoDecoder._fill_backwash_active(device, data)
         AsekoDecoder._fill_backwash_schedule(device)
 
         return device

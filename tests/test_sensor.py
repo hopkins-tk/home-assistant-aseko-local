@@ -269,7 +269,9 @@ async def test_async_setup_salt_redox(hass) -> None:
     # 11 sensors + 7 new (filtration schedule, pool volume, delays) + 4 binary
     # (water_flow, electrolyzer_active, filtration, ph_minus)
     # + 2 consumption (ph_minus canister + total) + 1 connection_status
-    assert len(added_entities) == 26
+    # + 3 new backwash config sensors (every_n_days, time, duration)
+    # + 1 new backwash_active binary sensor
+    assert len(added_entities) == 30
     assert any(
         getattr(e.entity_description, "key", None) != "water_flow_to_probes"
         for e in added_entities
@@ -369,7 +371,9 @@ async def test_async_setup_salt_clf(hass) -> None:
     # 12 sensors + 7 new (filtration schedule, pool volume, delays) + 4 binary
     # (water_flow, electrolyzer_active, filtration, ph_minus)
     # + 2 consumption (ph_minus canister + total) + 1 connection_status
-    assert len(added_entities) == 27
+    # + 3 new backwash config sensors (every_n_days, time, duration)
+    # + 1 new backwash_active binary sensor
+    assert len(added_entities) == 31
     assert any(
         getattr(e.entity_description, "key", None) != "water_flow_to_probes"
         for e in added_entities
@@ -547,9 +551,11 @@ async def test_async_setup_profi_clf_redox(hass) -> None:
     # 10 sensors + 7 new (filtration schedule, pool volume, delays) + 5 binary
     # (water_flow, filtration, cl_pump, ph_minus_pump, floc_pump)
     # + 6 consumption (cl, ph_minus, floc × canister + total) + 1 connection_status
+    # + 3 new backwash config sensors (every_n_days, time, duration)
+    # + 1 new backwash_active binary sensor
     # required_floc is intentionally absent: PROFI has independent pump ports (4+) so
     # byte[37] routing does not apply. The exact setpoint byte position is unconfirmed.
-    assert len(added_entities) == 29
+    assert len(added_entities) == 33
     assert any(
         getattr(e.entity_description, "key", None) == "free_chlorine"
         for e in added_entities
