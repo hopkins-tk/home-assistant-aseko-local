@@ -87,6 +87,22 @@ REFERENCE_FRAME_APR = (
     b"crc16: C3C8}\n"
 )
 
+# Reference frame for FW 8.05 devices (header type 805).
+# Same body layout as REFERENCE_FRAME — only the f2 header value changes.
+REFERENCE_FRAME_805 = (
+    b"{v1 123456789 805 0 27 "
+    b"ins: 314 -500 -500 -500 0 0 0 0 1 -500 -500 -500 0 24 6 29 22 27 0 "
+    b"ains: 708 708 774 7790 0 0 779 779 0 0 0 0 0 0 0 0 "
+    b"outs: 0 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 "
+    b"areqs: 74 73 4 5 0 36 36 0 0 0 6 0 36 0 45 0 255 2 2 10 0 15 0 0 0 0 "
+    b"reqs: 0 0 0 0 0 0 0 24 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 "
+    b"0 10 10 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 "
+    b"fncs: 0 0 3 0 0 0 2 0 "
+    b"mods: 2 0 0 1 0 0 0 0 "
+    b"flags: 2 0 0 0 0 0 0 0 "
+    b"crc16: C3C8}\n"
+)
+
 # Reference frame for FW 8.12 devices (header type 812).
 # Same body layout as REFERENCE_FRAME — only the f2 header value changes.
 REFERENCE_FRAME_812 = (
