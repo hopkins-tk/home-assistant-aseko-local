@@ -45,18 +45,18 @@ Seg3 (bytes 80–119): 06 90 6b bf  02 02  1a 04 1c 08 1b 07
 | 22–23   | `90fe`   | 37118   | Unknown (internal probe?) | —                   | —             | ?      |
 | 24      | `70`     | 112     | Unknown                  | —                    | —             | ?      |
 | 25–26   | `017b`   | 379     | Water temp (÷10)         | **37.9°C**           | 38.2°C†       | ✓†     |
-| 27      | `08`     | 8       | Unknown                  | —                    | —             | ?      |
+| 27      | `08`     | 8       | **Water level (cm)**     | **8 cm**             | (level meter disabled on this device) | ✓     |
 | 28      | `00`     | 0       | Water flow to probes     | **False** (≠ 0xAA)   | NO            | ✓      |
 | 29      | `00`     | 0       | Actuator bits            | all pumps stopped    | STOP          | ✓      |
 | 30–31   | `ffff`   | —       | UNSPECIFIED / padding    | —                    | —             | —      |
 | 32–36   | `00…00`  | 0       | Unknown                  | —                    | —             | ?      |
-| 37      | `43`     | 67      | Pump presence bitmap     | see note §           | —             | §      |
+| 37      | `43`     | 67      | **Filtration mode flag** | see note §           | NONSTOP 24H    | ✓     |
 | 38      | `0a`     | 10      | Unknown                  | —                    | —             | ?      |
 | 39      | `85`     | 133     | Unknown (checksum?)      | —                    | —             | ?      |
 
 † pH 6.29 vs 6.56 and water temp 37.9 vs 38.2 are explained by different timestamps (frame: 08:27:07, screenshot: later that day). Not a decoding bug.
 
-§ **byte[37] = `0x43`**: For SALT devices this is the algicide/flocculant routing byte. For HOME devices `byte37_routes_pump_type = False`, so routing logic is skipped. However the flowrate code (mistakenly) falls through to the SALT routing path and reads bit 7 (= 0) → flocculant branch → correctly yields `flowrate_floc = data[101] = 10`. This works by coincidence for this frame but the semantic is wrong. A HOME-specific flowrate branch (similar to OXY) is the correct long-term fix.
+§ **byte[37] = `0x43`**: This is the **HOME filtration mode flag** (see Issue 4). The value `0x43` here means *FILTRATION NONSTOP 24H* (also reported as such in the Aseko Live app on this device). HOME devices have **independent pump ports** for flocculant and algicide (same layout as OXY Pure), so the SALT-style "shared third-pump port" routing rule (bit 7 = algicide) does **not** apply. The HOME-specific flowrate branch (analogous to OXY) was added in commit 0e78e4d and now reads `byte[101] → flowrate_floc` and `byte[103] → flowrate_algicide` independently — see Bug 3 below.
 
 #### Actuator byte[29] — HOME masks (uncertain)
 
@@ -117,11 +117,11 @@ All masks marked **uncertain** — confirmed only from their absence (byte[29]=0
 | 98      | `00`     | 0       | Unknown                      | —              | —                 | ?      |
 | 99      | `3c`     | 60      | flowrate_chlor               | **60 ml/min**  | Chlor Pure listed | ✓      |
 | 100     | `00`     | 0       | Unknown                      | —              | —                 | ?      |
-| 101     | `0a`     | 10      | flowrate_floc (via routing)  | **10 ml/min**  | Floc+c listed     | ✓      |
-| 102     | `0d`     | 13      | Unknown                      | —              | —                 | ?      |
-| 103     | `21`     | 33      | flowrate_algicide? (unconf.) | —              | Algicide listed   | ?      |
-| 104     | `37`     | 55      | Unknown                      | —              | —                 | ?      |
-| 105     | `64`     | 100     | Unknown                      | —              | —                 | ?      |
+| 101     | `0a`     | 10      | **flowrate_floc**            | **10 ml/min**  | Floc+c listed     | ✓ (fixed) |
+| 102     | `0d`     | 13      | **water_level_low_alarm (cm)** | **13 cm**    | Low alarm         | ✓ (Issue #110) |
+| 103     | `21`     | 33      | **flowrate_algicide**        | **33 ml/min**  | Algicide listed   | ✓ (fixed) |
+| 104     | `37`     | 55      | **water_level_filling_off (cm)** | **55 cm**  | Filling OFF       | ✓ (Issue #110) |
+| 105     | `64`     | 100     | **water_level_high_alarm (cm)** | **100 cm**  | High alarm        | ✓ (Issue #110) |
 | 106–107 | `00f0`   | 240     | delay_after_dose (s)         | **240 s = 4 min** | 4 min          | ✓      |
 | 108     | `14`     | 20      | Unknown                      | —              | —                 | ?      |
 | 109–110 | `0258`   | 600     | Unknown                      | —              | —                 | ?      |
@@ -145,12 +145,19 @@ Note on **bytes 94–95**: `max_filling_time` reads bytes[94:96] as a big-endian
 | Water temperature         | 37.9°C           | 38.2°C            | ✓ (Δt)|
 | Water flow to probes      | False            | NO                | ✓     |
 | Filtration pump running   | False            | STOP              | ✓     |
+| filtration_nonstop24      | True             | NONSTOP 24H       | ✓ (Issue #110) |
+| water_level               | 8 cm             | --- (level meter disabled) | ✓ (frame value) |
+| water_level_low_alarm     | 13 cm            | (config)          | ✓ (Issue #110) |
+| water_level_filling_on    | 33 cm            | (config)          | ✓ (Issue #110) |
+| water_level_filling_off   | 55 cm            | (config)          | ✓ (Issue #110) |
+| water_level_high_alarm    | 100 cm           | (config)          | ✓ (Issue #110) |
+| water_filling_active      | False            | --- (valve not active) | ✓ (Issue #100) |
 | required_ph               | 7.0              | 7.0               | ✓     |
 | required_cl_free          | 0.3 mg/l         | 0.3               | ✓     |
 | required_floc             | 10 ml/h          | 10 ml/h           | ✓ (fixed) |
 | required_algicide         | 0 ml/m³/day      | 0 ml/m³/day       | ✓ (fixed) |
 | required_water_temperature | 25°C            | --- (disabled)    | ⚠️ see Issue 3 |
-| Filtration schedule       | 08:00–16:00 / 18:00–22:00 | NONSTOP 24H | ⚠️ see Issue 4 |
+| Filtration schedule       | 08:00–16:00 / 18:00–22:00 | NONSTOP 24H | ✓ |
 | backwash_every_n_days     | 3                | every 3 days      | ✓     |
 | backwash_time             | 21:00            | starts at 21:00   | ✓     |
 | backwash_duration         | 120 s            | 02:00 min         | ✓     |
@@ -160,7 +167,7 @@ Note on **bytes 94–95**: `max_filling_time` reads bytes[94:96] as a big-endian
 | flowrate_ph_minus         | 60               | pH- listed        | ✓     |
 | flowrate_chlor            | 60               | Chlor Pure listed | ✓     |
 | flowrate_floc             | 10               | Floc+c listed     | ✓     |
-| flowrate_algicide         | None             | Algicide listed   | ⚠️    |
+| flowrate_algicide         | 33               | Algicide listed   | ✓ (fixed) |
 
 ---
 
@@ -186,6 +193,28 @@ Note on **bytes 94–95**: `max_filling_time` reads bytes[94:96] as a big-endian
 
 ---
 
+### Bug 3 (Fixed) — HOME `flowrate_algicide` and `algicide_pump_running` missing
+
+**Root cause**: `_fill_flowrate_data` only had an OXY early-return and a SALT/NET/PROFI fallthrough. For HOME, the SALT fallthrough was used: it routed `byte[101]` exclusively to either `flowrate_algicide` (when `byte[37] & 0x80`) or `flowrate_floc` (otherwise). HOME devices have **independent** pump ports (same as OXY), so this routing is wrong on two counts:
+1. `byte[103]` (the HOME algicide flowrate) was never read.
+2. The `byte[37]` bit 7 has no meaning on HOME (no shared pump port).
+
+As a downstream effect, `_fill_consumable_data` short-circuited `algicide_pump_running` because `flowrate_algicide is None`, so the `algicide_pump_running` binary sensor was never registered. This is the root cause of the [Issue #115](https://github.com/hopkins-tk/home-assistant-aseko-local/issues/115) report: *"no entity for Algacide pump running"*.
+
+**Evidence**:
+- This frame (serial 110128063): `byte[101] = 0x0a = 10 ml/min` matches Aseko Live "Floc+c 10 ml/min". `byte[103] = 0x21 = 33` is the algicide pump capacity.
+- [Issue #110 frame](https://github.com/hopkins-tk/home-assistant-aseko-local/issues/110) (serial 110071590): `byte[103] = 0x0b = 11 ml/min` → Aseko Live "Algicide listed" (dose is 0, but the installed pump capacity is reported).
+
+**Fix applied** (`aseko_decoder.py`): Added a HOME-specific early-return branch in `_fill_flowrate_data` (parallel to OXY), reading `byte[101] → flowrate_floc` and `byte[103] → flowrate_algicide` independently. The `byte[37]` value is ignored on HOME.
+
+**Tests added** (in `tests/test_aseko_decoder.py`):
+- `test_decode_home_independent_flowrates` — verifies HOME reads byte[101]/byte[103] independently of byte[37] (tested with both `0x53` and `0xB3` to prove byte[37] is irrelevant on HOME).
+- `test_decode_home_flowrates_unspecified` — 0xFF on flowrate bytes → `None` (e.g. pump not installed).
+- `test_decode_home_algicide_pump_running` — covers Issue #115: `algicide_pump_running` binary sensor is now correctly registered.
+- `test_decode_home_floc_pump_running_independent` — verifies HOME reports `floc_pump_running` correctly when only floc pump is installed (byte[103] = 0xFF).
+
+---
+
 ### Issue 3 (Pending — low-water condition at capture time)
 
 **Observation**: byte[55] = `0x19` = 25 → decoded as 25°C. Aseko Live shows "---" for Water temp (disabled/not configured).
@@ -196,29 +225,41 @@ Note on **bytes 94–95**: `max_filling_time` reads bytes[94:96] as a big-endian
 
 ---
 
-### Issue 4 (Pending — low-water condition at capture time)
+### Issue 4 ✅ Resolved — Filtration nonstop mode flag is byte[37]
 
 **Observation**: Aseko Live Config shows **FILTRATION NONSTOP 24H**. The decoder produces start1=08:00, stop1=16:00, start2=18:00, stop2=22:00 (12 h total — inconsistent with nonstop mode).
 
-**Context**: The frame was captured while the pool had an error (likely too little water). The filtration pump was stopped and byte[29] = 0x00, consistent with an active alarm suppressing normal operation. It is possible that in a normal-operation frame the scheduled times look different, or that a separate flag byte signals "nonstop" mode.
+**Context**: The frame was captured while the pool had an error (likely too little water). The filtration pump was stopped and byte[29] = 0x00, consistent with an active alarm suppressing normal operation.
 
-**Hypothesis**: A "nonstop mode" flag byte exists somewhere in the frame. The scheduled times in bytes 56–63 may store the last manually-configured schedule as a fallback, even when nonstop mode is active.
+**Resolution (Issue #110)**: `byte[37]` encodes the filtration mode flag:
 
-**Action needed**: Request a new frame captured during normal (nonstop) operation and compare bytes 52–79 to identify the nonstop flag. Ideally also a second frame with timed schedule mode active.
+| byte[37] | Meaning |
+|---|---|
+| `0x43` | FILTRATION NONSTOP 24H active |
+| `0x53` | Timer mode active |
+| `0x47` / `0x57` | Transitional / edit state — leave as `None` |
+
+**⚠️ Note on the issue #110 evidence**: The diagnostics frame is from **2026-05-23 17:09** (after mannekung changed the filtration schedule to NONSTOP 24H on **2026-05-09**), but `byte[37]` still reads `0x53` (timer). The screenshot from the same user shows the "Suche" indicator (search mode) in the bottom-right corner, which may explain the mismatch — the device might be reporting a transient or special mode rather than the user-configured setting. **Until a frame is captured with a known NONSTOP 24H state and no special UI mode, treat `0x43` as "consistent with NONSTOP 24H" rather than "confirmed NONSTOP 24H active".**
+
+`filtration_nonstop24` is now decoded for **all device types** (HOME, SALT, OXY, NET). Non-HOME real-world values for byte[37] are never `0x43`/`0x53` (SALT uses it for algicide routing, OXY uses `0x03`, NET always `0xFF`), so `filtration_nonstop24` stays `None` for those devices today.
 
 ---
 
-### Issue 5 (Pending — algicide configured but not active)
+### Issue 5 ✅ Resolved — HOME `flowrate_algicide` is byte[103] (independent port)
 
-**Observation**: Aseko Live Consumption page shows **Algicide** as a tracked chemical. `flowrate_algicide` is `None` in the decoded output.
+**Observation**: Aseko Live Consumption page shows **Algicide** as a tracked chemical. `flowrate_algicide` was `None` in the decoded output before the fix.
 
-**Context**: `required_algicide` = 0 ml/m³/day (byte[72] = 0x00). When the algicide dose is configured as zero the pump is effectively disabled and the device likely transmits 0 or UNSPECIFIED (0xFF) for the corresponding flowrate byte. This would explain why no valid flowrate is seen in the frame.
+**Resolution**: HOME devices use the same independent-pump-port layout as OXY Pure. The HOME-specific flowrate branch was added in `_fill_flowrate_data` (parallel to OXY), reading:
+- `byte[101] → flowrate_floc` (always)
+- `byte[103] → flowrate_algicide` (always)
 
-**Hypothesis re byte[103]**: byte[103] = `0x21` = 33 is a candidate for the algicide flowrate position (independent port, same layout as OXY). However, with dose = 0 the expected flowrate would be 0 — not 33 — so byte[103] is more likely an unrelated field. The actual algicide flowrate may be 0x00 or 0xFF at a yet-unidentified byte position when the pump is inactive.
+No `byte[37]` routing is involved on HOME.
 
-**Current code path**: HOME falls through to the SALT routing logic in `_fill_flowrate_data`. Since byte[37] bit 7 = 0, the flocculant branch fires and byte[101] = 10 is correctly assigned to `flowrate_floc`. byte[103] is never read.
+**Evidence**:
+- This frame (serial 110128063): `byte[101] = 0x0a = 10 ml/min` → matches Aseko Live "Floc+c 10 ml/min".
+- `byte[103] = 0x21 = 33` — confirmed in the [Issue #110 frame](https://github.com/hopkins-tk/home-assistant-aseko-local/issues/110) (serial 110071590, `byte[103] = 0x0b = 11`) that algicide uses byte[103] with the same ml/min unit. The non-zero value when `required_algicide = 0` suggests the controller still reports the *installed pump capacity* even when the dose is set to zero — similar to how the flocculant pump continues to report 10 ml/min when no flocculant is being dosed.
 
-**Action needed**: Ask the user whether they plan to activate algicide dosing. If yes, request a frame captured while algicide is actively being dosed (dose > 0), then compare bytes 95–115 to locate the flowrate byte. Once confirmed, add a HOME-specific branch in `_fill_flowrate_data` mirroring the OXY branch.
+**Side effect**: The `algicide_pump_running` binary sensor (which was always missing before the fix because `flowrate_algicide is None` short-circuited the assignment in `_fill_consumable_data`) is now correctly registered and reflects `byte[29] & 0x20`. This addresses the [Issue #115](https://github.com/hopkins-tk/home-assistant-aseko-local/issues/115) report "no entity for Algacide pump running".
 
 ---
 
@@ -237,13 +278,33 @@ if unit.device_type == AsekoDeviceType.HOME:
     # Fall through to decode required_cl_free (byte[53]) via the CLF branch below.
 ```
 
+2. **`aseko_decoder.py` → `_fill_flowrate_data`** — added HOME-specific branch (parallel to OXY, with early return so SALT routing logic is skipped). Reads `byte[101] → flowrate_floc` and `byte[103] → flowrate_algicide` independently. No `byte[37]` routing applies on HOME.
+
+```python
+if unit.device_type == AsekoDeviceType.HOME:
+    # HOME has independent pump ports for flocculant and algicide.
+    # Same layout as OXY Pure for these two flowrates.
+    unit.flowrate_chlor = AsekoDecoder._normalize_value(data[99], int)
+    unit.flowrate_floc = AsekoDecoder._normalize_value(data[101], int)
+    unit.flowrate_algicide = AsekoDecoder._normalize_value(data[103], int)
+    return
+```
+
+**Tests added** (in `tests/test_aseko_decoder.py`):
+- `test_decode_home_independent_flowrates` — verifies HOME reads byte[101]/byte[103] independently of byte[37].
+- `test_decode_home_flowrates_unspecified` — 0xFF on flowrate bytes → `None`.
+- `test_decode_home_algicide_pump_running` — covers [Issue #115](https://github.com/hopkins-tk/home-assistant-aseko-local/issues/115): the `algicide_pump_running` binary sensor is now correctly registered.
+
 ## Open Items
 
 | # | Status | Description |
 |---|--------|-------------|
-| 3 | Pending | `required_water_temperature` vs app "---" — need normal-operation frame |
-| 4 | Pending | Filtration NONSTOP 24H flag byte — need normal-operation frame |
-| 5 | Pending | `flowrate_algicide` byte position — need frame with algicide dose > 0 |
+| 3 | Pending | `required_water_temperature` vs app "---" — need normal-operation frame (heating is disabled on this device; only a frame from a pool with heating enabled can confirm byte[55]) |
+| 4 | ✅ Resolved | Filtration NONSTOP 24H flag byte — confirmed as `byte[37] == 0x43` (Issue #110) |
+| 5 | ✅ Resolved | `flowrate_algicide` byte position — confirmed as `byte[103]` on HOME (Issue #115) |
+| 6 | New | `byte[29]` bit masks for HOME pumps remain **unconfirmed** — see §"Actuator byte[29] — HOME masks (uncertain)" above. The masks in `ACTUATOR_MASKS[HOME]` are placeholders matching OXY/NET. Capturing frames with a single HOME pump running (e.g. algicide only) would pin down the per-pump bit. Until then, both `algicide_pump_running` and `floc_pump_running` may report incorrectly on HOME when the corresponding pump is active. |
+| 7 | New | `max_filling_time` overlap with `flowrate_ph_minus` (both use byte[95]) — see note in Segment 3 below. If byte[94] ever becomes non-zero, `max_filling_time` is inflated. Only a frame with a non-zero byte[94] would prove or disprove the assumption. |
+| 8 | New | `heating_active` binary sensor (byte[29] bit 0x04) — added for [Issue #115](https://github.com/hopkins-tk/home-assistant-aseko-local/issues/115) "Entities for heating are not there" request. Mapping is the same as JS-DE-Tech's `relay_byte` bit 2. **Live confirmation pending** — needs a frame captured while the heat pump / electric heater is actually running. Currently it cannot be distinguished from the unconfirmed HOME pump-bit masks. |
 
 ---
 

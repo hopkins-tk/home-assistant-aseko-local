@@ -15,6 +15,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import dt as dt_util
 
 from .aseko_data import AsekoData, AsekoDevice
+from .backwash_tracker import BackwashTracker
 from .consumption_tracker import AsekoConsumptionTracker
 
 _LOGGER = logging.getLogger(__name__)
@@ -43,6 +44,8 @@ class AsekoLocalDataUpdateCoordinator(DataUpdateCoordinator[AsekoData]):
         )
         # One tracker per device serial number
         self._trackers: dict[int, AsekoConsumptionTracker] = {}
+        # One backwash tracker per device serial number
+        self._backwash_trackers: dict[int, BackwashTracker] = {}
         # Last raw frame per device serial number (for diagnostics)
         self._last_raw_frames: dict[int, bytes] = {}
         # Last partial (incomplete) raw frame per serial number
@@ -95,6 +98,22 @@ class AsekoLocalDataUpdateCoordinator(DataUpdateCoordinator[AsekoData]):
             if device.serial_number not in self._trackers:
                 self._trackers[device.serial_number] = AsekoConsumptionTracker()
             self._trackers[device.serial_number].update(device, dt_util.now())
+
+            # Update backwash tracker for this device (live detection,
+            # overrides the schedule-based schedule estimate with a real
+            # observed timestamp that survives restarts).
+            if device.serial_number not in self._backwash_trackers:
+                self._backwash_trackers[device.serial_number] = BackwashTracker(
+                    self.hass, device.serial_number
+                )
+            tracker = self._backwash_trackers[device.serial_number]
+            tracker.update(device, dt_util.now())
+            # Override schedule-based estimate with the real observed value.
+            # The sensor reads device.last_backwash, so this transparently
+            # switches from "schedule" to "live" once the tracker has data.
+            observed = tracker.last_backwash
+            if observed is not None:
+                device.last_backwash = observed
 
             _LOGGER.debug(
                 "✅ Stored device %s → known serials now: %s",
@@ -204,6 +223,27 @@ class AsekoLocalDataUpdateCoordinator(DataUpdateCoordinator[AsekoData]):
             [d.serial_number for d in devices],
         )
         return devices
+
+    def get_backwash_tracker(self, serial_number: int) -> BackwashTracker | None:
+        """Return the backwash tracker for a given device serial number."""
+        return self._backwash_trackers.get(serial_number)
+
+    async def async_setup_backwash_trackers(self) -> None:
+        """Load persisted backwash timestamps from storage.
+
+        Called once during integration setup, after the coordinator has
+        at least an empty data set.  Idempotent — safe to call multiple
+        times (the second call is a no-op because trackers are already
+        loaded on first frame via ``devices_update_callback``).
+        """
+        if self.data is None:
+            return
+        for device in self.data.get_all() or []:
+            serial = device.serial_number
+            if serial is None or serial in self._backwash_trackers:
+                continue
+            self._backwash_trackers[serial] = BackwashTracker(self.hass, serial)
+            await self._backwash_trackers[serial].async_load()
 
     def async_start_stale_check(self) -> None:
         """Start a periodic task that pushes updates so entities detect offline state."""

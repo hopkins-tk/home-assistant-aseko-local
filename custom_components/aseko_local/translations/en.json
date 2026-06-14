@@ -42,6 +42,9 @@
       "filtration_pump_running": {
         "name": "Filtration pump running"
       },
+      "heating_active": {
+        "name": "Heating active"
+      },
       "cl_pump_running": {
         "name": "Chlorine pump running"
       },
@@ -62,6 +65,27 @@
       },
       "water_flow_to_probes": {
         "name": "Water flow to probes"
+      },
+      "water_filling_active": {
+        "name": "Water filling active"
+      },
+      "filtration_nonstop24": {
+        "name": "Filtration nonstop 24h"
+      },
+      "alarm_ph_too_many_doses": {
+        "name": "pH alarm: too many doses"
+      },
+      "alarm_orp_too_many_doses": {
+        "name": "ORP/Chlorine alarm: too many doses"
+      },
+      "alarm_no_flow_to_probes": {
+        "name": "No flow to probes alarm"
+      },
+      "alarm_rapid_ph_change": {
+        "name": "Rapid pH change alarm"
+      },
+      "backwash_active": {
+        "name": "Backwash active"
       }
     },
     "sensor": {
@@ -99,6 +123,24 @@
       },
       "required_water_temperature": {
         "name": "Required water temperature"
+      },
+      "water_level": {
+        "name": "Water level"
+      },
+      "water_level_low_alarm": {
+        "name": "Water level low alarm"
+      },
+      "water_level_filling_on": {
+        "name": "Filling ON threshold"
+      },
+      "water_level_filling_off": {
+        "name": "Filling OFF threshold"
+      },
+      "water_level_high_alarm": {
+        "name": "Water level high alarm"
+      },
+      "max_filling_time": {
+        "name": "Max filling time"
       },
       "required_algicide": {
         "name": "Required algicide dose",
@@ -148,6 +190,21 @@
       },
       "last_seen": {
         "name": "Last data update"
+      },
+      "last_backwash": {
+        "name": "Last backwash"
+      },
+      "next_backwash": {
+        "name": "Next backwash"
+      },
+      "backwash_every_n_days": {
+        "name": "Backwash interval"
+      },
+      "backwash_time": {
+        "name": "Backwash start time"
+      },
+      "backwash_duration": {
+        "name": "Backwash duration"
       },
       "chlor_consumed": {
         "name": "Chlorine consumed (since refill)"
