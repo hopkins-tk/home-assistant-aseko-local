@@ -65,6 +65,13 @@
       }
     },
     "sensor": {
+      "filtration_1_start": { "name": "Filtration 1 start" },
+      "filtration_1_stop": { "name": "Filtration 1 stop" },
+      "filtration_2_start": { "name": "Filtration 2 start" },
+      "filtration_2_stop": { "name": "Filtration 2 stop" },
+      "pool_volume": { "name": "Pool volume" },
+      "delay_after_startup": { "name": "Delay after startup" },
+      "delay_after_dose": { "name": "Delay after dose" },
       "air_temperature": {
         "name": "Air temperature"
       },
