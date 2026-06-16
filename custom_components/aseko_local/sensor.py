@@ -13,7 +13,12 @@ from homeassistant.components.sensor import (
     SensorEntityDescription,
     SensorStateClass,
 )
-from homeassistant.const import UnitOfElectricPotential, UnitOfTemperature, UnitOfVolume
+from homeassistant.const import (
+    UnitOfElectricPotential,
+    UnitOfTemperature,
+    UnitOfTime,
+    UnitOfVolume,
+)
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.typing import StateType
@@ -421,6 +426,64 @@ SENSORS: list[AsekoSensorEntityDescription] = [
         device_class=SensorDeviceClass.TIMESTAMP,
         icon="mdi:clock-outline",
         value_fn=lambda device: device.last_seen,
+    ),
+    AsekoSensorEntityDescription(
+        key="filtration_1_start",
+        translation_key="filtration_1_start",
+        icon="mdi:clock-start",
+        value_fn=lambda device: (
+            device.start1.strftime("%H:%M") if device.start1 is not None else None
+        ),
+    ),
+    AsekoSensorEntityDescription(
+        key="filtration_1_stop",
+        translation_key="filtration_1_stop",
+        icon="mdi:clock-end",
+        value_fn=lambda device: (
+            device.stop1.strftime("%H:%M") if device.stop1 is not None else None
+        ),
+    ),
+    AsekoSensorEntityDescription(
+        key="filtration_2_start",
+        translation_key="filtration_2_start",
+        icon="mdi:clock-start",
+        value_fn=lambda device: (
+            device.start2.strftime("%H:%M") if device.start2 is not None else None
+        ),
+    ),
+    AsekoSensorEntityDescription(
+        key="filtration_2_stop",
+        translation_key="filtration_2_stop",
+        icon="mdi:clock-end",
+        value_fn=lambda device: (
+            device.stop2.strftime("%H:%M") if device.stop2 is not None else None
+        ),
+    ),
+    AsekoSensorEntityDescription(
+        key="pool_volume",
+        translation_key="pool_volume",
+        native_unit_of_measurement=UnitOfVolume.CUBIC_METERS,
+        state_class=SensorStateClass.MEASUREMENT,
+        icon="mdi:pool",
+        value_fn=lambda device: device.pool_volume,
+    ),
+    AsekoSensorEntityDescription(
+        key="delay_after_startup",
+        translation_key="delay_after_startup",
+        device_class=SensorDeviceClass.DURATION,
+        native_unit_of_measurement=UnitOfTime.SECONDS,
+        state_class=SensorStateClass.MEASUREMENT,
+        icon="mdi:timer-play-outline",
+        value_fn=lambda device: device.delay_after_startup,
+    ),
+    AsekoSensorEntityDescription(
+        key="delay_after_dose",
+        translation_key="delay_after_dose",
+        device_class=SensorDeviceClass.DURATION,
+        native_unit_of_measurement=UnitOfTime.SECONDS,
+        state_class=SensorStateClass.MEASUREMENT,
+        icon="mdi:timer-outline",
+        value_fn=lambda device: device.delay_after_dose,
     ),
 ]
 
