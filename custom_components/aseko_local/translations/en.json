@@ -82,7 +82,7 @@
         "name": "No flow to probes alarm"
       },
       "alarm_rapid_ph_change": {
-        "name": "Rapid pH change alarm"
+        "name": "Rapid change of pH"
       },
       "backwash_active": {
         "name": "Backwash active"
