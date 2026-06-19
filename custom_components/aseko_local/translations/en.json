@@ -73,7 +73,7 @@
         "name": "Filtration nonstop 24h"
       },
       "alarm_ph_too_many_doses": {
-        "name": "pH alarm: too many doses"
+        "name": "Too many doses of pH"
       },
       "alarm_orp_too_many_doses": {
         "name": "ORP/Chlorine alarm: too many doses"
