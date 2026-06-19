@@ -26,9 +26,9 @@ WATER_FLOW_TO_PROBES = 0xAA
 # Byte 37 bit 0x20 = second filtration period enabled (checkbox on the unit).
 # When clear, the unit still reports the last-configured start2/stop2 times in
 # bytes 60-63, so they must be ignored. Confirmed on ASIN AQUA Salt by toggling
-# the period-2 checkbox and diffing two frames (PR #122 review). Only applied to
-# SALT — other device types report an active period 2 with this bit clear, so
-# the decoder scopes the check to SALT until on/off captures exist for them.
+# the period-2 checkbox and diffing two frames (PR #122 review). The decoder
+# applies this only to the verified device types (FILTRATION_PERIOD2_FLAG_TYPES);
+# other types report period 2 as-is until their mechanism is verified.
 FILTRATION_PERIOD2_ENABLED_MASK = 0x20
 
 # Probe missing flags

@@ -34,6 +34,30 @@ _LOGGER = logging.getLogger(__name__)
 
 T = TypeVar("T")
 
+# Device types that expose a filtration schedule. Aqua NET has no filtration
+# output; unknown/new types are excluded by default so they never get garbage
+# filtration sensors until explicitly verified and added here.
+FILTRATION_TYPES = frozenset(
+    {
+        AsekoDeviceType.SALT,
+        AsekoDeviceType.HOME,
+        AsekoDeviceType.OXY,
+        AsekoDeviceType.PROFI,
+    }
+)
+
+# Device types verified to encode the second-filtration-period enable flag in
+# byte 37 bit 0x20: SALT (on/off frame diff), HOME and OXY (maintainer feedback,
+# PR #122). For any other type the second period is reported as before, because
+# its enable mechanism is unverified — never assume this bit for a new type.
+FILTRATION_PERIOD2_FLAG_TYPES = frozenset(
+    {
+        AsekoDeviceType.SALT,
+        AsekoDeviceType.HOME,
+        AsekoDeviceType.OXY,
+    }
+)
+
 
 class AsekoDecoder:
     """Decoder of Aseko unit data."""
@@ -379,16 +403,15 @@ class AsekoDecoder:
         ts = AsekoDecoder._timestamp(data)
         _LOGGER.debug("Decoded timestamp = %s (raw: %s)", ts, data[6:12].hex())
 
-        # The second filtration period can be disabled on the unit while it still
-        # reports the last-configured start2/stop2 times (bytes 60-63). On
-        # ASIN AQUA Salt, byte 37 bit 0x20 is the enable flag (confirmed by
-        # toggling the checkbox and diffing two frames, PR #122). The bit does
-        # NOT carry this meaning on other device types — a real HOME frame
-        # reports an active period 2 with the bit clear — so the check is scoped
-        # to SALT until on/off captures exist for the other types.
-        filtration2_enabled = (
+        # Filtration schedule, by device type (PR #122):
+        #  - NET / unknown types have no filtration → no schedule reported.
+        #  - The second period can be switched off on the unit while it keeps
+        #    reporting the last-configured start2/stop2 times (bytes 60-63);
+        #    byte 37 bit 0x20 is the enable flag on the verified types.
+        has_filtration = unit_type in FILTRATION_TYPES
+        filtration2_enabled = has_filtration and (
             bool(data[37] & FILTRATION_PERIOD2_ENABLED_MASK)
-            if unit_type == AsekoDeviceType.SALT
+            if unit_type in FILTRATION_PERIOD2_FLAG_TYPES
             else True
         )
 
@@ -400,8 +423,8 @@ class AsekoDecoder:
             water_temperature=int.from_bytes(data[25:27], "big") / 10,
             water_flow_to_probes=(data[28] == WATER_FLOW_TO_PROBES),
             required_water_temperature=AsekoDecoder._normalize_value(data[55], int),
-            start1=AsekoDecoder._time(data[56:58]),
-            stop1=AsekoDecoder._time(data[58:60]),
+            start1=AsekoDecoder._time(data[56:58]) if has_filtration else None,
+            stop1=AsekoDecoder._time(data[58:60]) if has_filtration else None,
             start2=AsekoDecoder._time(data[60:62]) if filtration2_enabled else None,
             stop2=AsekoDecoder._time(data[62:64]) if filtration2_enabled else None,
             backwash_every_n_days=AsekoDecoder._normalize_value(data[68], int),
