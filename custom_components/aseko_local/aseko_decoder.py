@@ -400,11 +400,7 @@ class AsekoDecoder:
         read the SAME byte without conflict.  SALT ignores byte[103] (it is
         the duplicate flocculant slot — see salt_device_analysis.md).
         """
-        if unit.device_type not in {
-            AsekoDeviceType.HOME,
-            AsekoDeviceType.SALT,
-            AsekoDeviceType.OXY,
-        }:
+        if unit.device_type == AsekoDeviceType.NET:
             return
 
         unit.water_level = AsekoDecoder._normalize_value(data[27], int)
