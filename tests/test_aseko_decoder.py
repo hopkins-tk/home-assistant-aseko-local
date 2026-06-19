@@ -146,6 +146,38 @@ def test_decode_home() -> None:
     assert device.timestamp.second == 56
 
 
+def test_decode_filtration_period2_disabled() -> None:
+    """Second filtration period is hidden when disabled (byte 37 bit 0x20 clear).
+
+    The unit keeps reporting the last-configured start2/stop2 times in bytes
+    60-63 even when the period is switched off, so the enable flag must be
+    honoured. Confirmed on an ASIN AQUA Salt by toggling the period-2 checkbox
+    and diffing two frames (PR #122 review).
+    """
+    data = _make_base_bytes()
+    data[37] = 0x93  # bit 0x20 clear -> period 2 disabled
+
+    device = AsekoDecoder.decode(bytes(data))
+
+    # Period 1 is still parsed.
+    assert device.start1 == time(8, 0)
+    assert device.stop1 == time(10, 0)
+    # Period 2 is hidden despite configured bytes 60-63 (14:00 / 16:00).
+    assert device.start2 is None
+    assert device.stop2 is None
+
+
+def test_decode_filtration_period2_enabled() -> None:
+    """Second filtration period is exposed when enabled (byte 37 bit 0x20 set)."""
+    data = _make_base_bytes()
+    data[37] = 0xB3  # bit 0x20 set -> period 2 enabled
+
+    device = AsekoDecoder.decode(bytes(data))
+
+    assert device.start2 == time(14, 0)
+    assert device.stop2 == time(16, 0)
+
+
 def test_decode_electrolyzer_data() -> None:
     """Test decoding of electrolyzer data with right direction."""
 

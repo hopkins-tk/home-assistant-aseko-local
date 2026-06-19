@@ -14,6 +14,7 @@ from .aseko_data import (
     ACTUATOR_MASKS,
 )
 from .const import (
+    FILTRATION_PERIOD2_ENABLED_MASK,
     PROBE_CLF_MISSING,
     PROBE_DOSE_MISSING,
     PROBE_REDOX_MISSING,
@@ -378,6 +379,19 @@ class AsekoDecoder:
         ts = AsekoDecoder._timestamp(data)
         _LOGGER.debug("Decoded timestamp = %s (raw: %s)", ts, data[6:12].hex())
 
+        # The second filtration period can be disabled on the unit while it still
+        # reports the last-configured start2/stop2 times (bytes 60-63). On
+        # ASIN AQUA Salt, byte 37 bit 0x20 is the enable flag (confirmed by
+        # toggling the checkbox and diffing two frames, PR #122). The bit does
+        # NOT carry this meaning on other device types — a real HOME frame
+        # reports an active period 2 with the bit clear — so the check is scoped
+        # to SALT until on/off captures exist for the other types.
+        filtration2_enabled = (
+            bool(data[37] & FILTRATION_PERIOD2_ENABLED_MASK)
+            if unit_type == AsekoDeviceType.SALT
+            else True
+        )
+
         device = AsekoDevice(
             serial_number=int.from_bytes(data[0:4], "big"),
             device_type=unit_type,
@@ -388,8 +402,8 @@ class AsekoDecoder:
             required_water_temperature=AsekoDecoder._normalize_value(data[55], int),
             start1=AsekoDecoder._time(data[56:58]),
             stop1=AsekoDecoder._time(data[58:60]),
-            start2=AsekoDecoder._time(data[60:62]),
-            stop2=AsekoDecoder._time(data[62:64]),
+            start2=AsekoDecoder._time(data[60:62]) if filtration2_enabled else None,
+            stop2=AsekoDecoder._time(data[62:64]) if filtration2_enabled else None,
             backwash_every_n_days=AsekoDecoder._normalize_value(data[68], int),
             backwash_time=AsekoDecoder._time(data[69:71]),
             backwash_duration=data[71] * 10 if data[71] != UNSPECIFIED_VALUE else None,
