@@ -79,7 +79,7 @@
         "name": "Too many doses of disinfection"
       },
       "alarm_no_flow_to_probes": {
-        "name": "No flow to probes alarm"
+        "name": "No flow to probes"
       },
       "alarm_rapid_ph_change": {
         "name": "Rapid change of pH"
