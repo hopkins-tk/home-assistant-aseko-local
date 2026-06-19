@@ -76,7 +76,7 @@
         "name": "Too many doses of pH"
       },
       "alarm_orp_too_many_doses": {
-        "name": "ORP/Chlorine alarm: too many doses"
+        "name": "Too many doses of disinfection"
       },
       "alarm_no_flow_to_probes": {
         "name": "No flow to probes alarm"
