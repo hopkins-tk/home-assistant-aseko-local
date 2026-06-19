@@ -79,7 +79,7 @@
         "name": "Příliš mnoho dávek dezinfekce"
       },
       "alarm_no_flow_to_probes": {
-        "name": "Alarm: žádný průtok k sondám"
+        "name": "Žádný průtok k sondám"
       },
       "alarm_rapid_ph_change": {
         "name": "Alarm: rychlá změna pH"
