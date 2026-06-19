@@ -76,7 +76,7 @@
         "name": "Příliš mnoho dávek pH"
       },
       "alarm_orp_too_many_doses": {
-        "name": "ORP/Chlor alarm: příliš mnoho dávek"
+        "name": "Příliš mnoho dávek dezinfekce"
       },
       "alarm_no_flow_to_probes": {
         "name": "Alarm: žádný průtok k sondám"
