@@ -82,7 +82,7 @@
         "name": "Žádný průtok k sondám"
       },
       "alarm_rapid_ph_change": {
-        "name": "Alarm: rychlá změna pH"
+        "name": "Příliš rychlá změna pH"
       },
       "backwash_active": {
         "name": "Zpětné proplachování aktivní"
