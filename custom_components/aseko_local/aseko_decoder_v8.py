@@ -19,6 +19,7 @@ _SECTION_RE = re.compile(r"(\w+):\s*(.*?)(?=\s+\w+:|$)", re.DOTALL)
 # Unknown values are tolerated — the decoder falls back to NET (all
 # V8 frames observed so far use the same layout regardless of f2).
 _V8_DEVICE_TYPE_BY_HEADER: dict[int, AsekoDeviceType] = {
+    105: AsekoDeviceType.SALT,  # ASIN Aqua Salt NET
     804: AsekoDeviceType.NET,
     805: AsekoDeviceType.NET,
     812: AsekoDeviceType.NET,
