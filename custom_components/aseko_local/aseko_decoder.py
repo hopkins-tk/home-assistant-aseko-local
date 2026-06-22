@@ -14,6 +14,7 @@ from .aseko_data import (
     ACTUATOR_MASKS,
 )
 from .const import (
+    FILTRATION_PERIOD2_ENABLED_MASK,
     PROBE_CLF_MISSING,
     PROBE_DOSE_MISSING,
     PROBE_REDOX_MISSING,
@@ -32,6 +33,30 @@ from .const import (
 _LOGGER = logging.getLogger(__name__)
 
 T = TypeVar("T")
+
+# Device types that expose a filtration schedule. Aqua NET has no filtration
+# output; unknown/new types are excluded by default so they never get garbage
+# filtration sensors until explicitly verified and added here.
+FILTRATION_TYPES = frozenset(
+    {
+        AsekoDeviceType.SALT,
+        AsekoDeviceType.HOME,
+        AsekoDeviceType.OXY,
+        AsekoDeviceType.PROFI,
+    }
+)
+
+# Device types verified to encode the second-filtration-period enable flag in
+# byte 37 bit 0x20: SALT (on/off frame diff), HOME and OXY (maintainer feedback,
+# PR #122). For any other type the second period is reported as before, because
+# its enable mechanism is unverified — never assume this bit for a new type.
+FILTRATION_PERIOD2_FLAG_TYPES = frozenset(
+    {
+        AsekoDeviceType.SALT,
+        AsekoDeviceType.HOME,
+        AsekoDeviceType.OXY,
+    }
+)
 
 
 class AsekoDecoder:
@@ -378,6 +403,18 @@ class AsekoDecoder:
         ts = AsekoDecoder._timestamp(data)
         _LOGGER.debug("Decoded timestamp = %s (raw: %s)", ts, data[6:12].hex())
 
+        # Filtration schedule, by device type (PR #122):
+        #  - NET / unknown types have no filtration → no schedule reported.
+        #  - The second period can be switched off on the unit while it keeps
+        #    reporting the last-configured start2/stop2 times (bytes 60-63);
+        #    byte 37 bit 0x20 is the enable flag on the verified types.
+        has_filtration = unit_type in FILTRATION_TYPES
+        filtration2_enabled = has_filtration and (
+            bool(data[37] & FILTRATION_PERIOD2_ENABLED_MASK)
+            if unit_type in FILTRATION_PERIOD2_FLAG_TYPES
+            else True
+        )
+
         device = AsekoDevice(
             serial_number=int.from_bytes(data[0:4], "big"),
             device_type=unit_type,
@@ -386,10 +423,10 @@ class AsekoDecoder:
             water_temperature=int.from_bytes(data[25:27], "big") / 10,
             water_flow_to_probes=(data[28] == WATER_FLOW_TO_PROBES),
             required_water_temperature=AsekoDecoder._normalize_value(data[55], int),
-            start1=AsekoDecoder._time(data[56:58]),
-            stop1=AsekoDecoder._time(data[58:60]),
-            start2=AsekoDecoder._time(data[60:62]),
-            stop2=AsekoDecoder._time(data[62:64]),
+            start1=AsekoDecoder._time(data[56:58]) if has_filtration else None,
+            stop1=AsekoDecoder._time(data[58:60]) if has_filtration else None,
+            start2=AsekoDecoder._time(data[60:62]) if filtration2_enabled else None,
+            stop2=AsekoDecoder._time(data[62:64]) if filtration2_enabled else None,
             backwash_every_n_days=AsekoDecoder._normalize_value(data[68], int),
             backwash_time=AsekoDecoder._time(data[69:71]),
             backwash_duration=data[71] * 10 if data[71] != UNSPECIFIED_VALUE else None,

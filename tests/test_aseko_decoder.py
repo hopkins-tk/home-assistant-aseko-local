@@ -146,6 +146,38 @@ def test_decode_home() -> None:
     assert device.timestamp.second == 56
 
 
+def test_decode_filtration_period2_disabled() -> None:
+    """Second filtration period is hidden when disabled (byte 37 bit 0x20 clear).
+
+    The unit keeps reporting the last-configured start2/stop2 times in bytes
+    60-63 even when the period is switched off, so the enable flag must be
+    honoured. Confirmed on an ASIN AQUA Salt by toggling the period-2 checkbox
+    and diffing two frames (PR #122 review).
+    """
+    data = _make_base_bytes()
+    data[37] = 0x93  # bit 0x20 clear -> period 2 disabled
+
+    device = AsekoDecoder.decode(bytes(data))
+
+    # Period 1 is still parsed.
+    assert device.start1 == time(8, 0)
+    assert device.stop1 == time(10, 0)
+    # Period 2 is hidden despite configured bytes 60-63 (14:00 / 16:00).
+    assert device.start2 is None
+    assert device.stop2 is None
+
+
+def test_decode_filtration_period2_enabled() -> None:
+    """Second filtration period is exposed when enabled (byte 37 bit 0x20 set)."""
+    data = _make_base_bytes()
+    data[37] = 0xB3  # bit 0x20 set -> period 2 enabled
+
+    device = AsekoDecoder.decode(bytes(data))
+
+    assert device.start2 == time(14, 0)
+    assert device.stop2 == time(16, 0)
+
+
 def test_decode_electrolyzer_data() -> None:
     """Test decoding of electrolyzer data with right direction."""
 
@@ -234,6 +266,15 @@ def test_decode_net() -> None:
 
     device = AsekoDecoder.decode(bytes(data))
     assert device.device_type == AsekoDeviceType.NET
+    # NET (Aqua NET) has no filtration output → no schedule is reported (PR #122),
+    # even though the frame carries values in the schedule bytes.
+    assert device.start1 is None
+    assert device.stop1 is None
+    assert device.start2 is None
+    assert device.stop2 is None
+    # Pool volume and dosing delays are still available on NET.
+    assert device.pool_volume == 5000
+    assert device.delay_after_dose == 30
 
 
 def test_decode_corrupted_timestamp() -> None:
@@ -808,8 +849,11 @@ def test_decode_home_clf_real_frame() -> None:
     # Schedule
     assert device.start1 == time(8, 0)
     assert device.stop1 == time(16, 0)
-    assert device.start2 == time(18, 0)
-    assert device.stop2 == time(22, 0)
+    # Period 2 is disabled on this unit (byte 37 bit 0x20 clear). The 18:00-22:00
+    # bytes are the unit's last-configured/default values and must be hidden.
+    # HOME shares the Salt period-2 enable mechanism (confirmed in PR #122).
+    assert device.start2 is None
+    assert device.stop2 is None
     # Backwash
     assert device.backwash_every_n_days == 3
     assert device.backwash_time == time(21, 0)

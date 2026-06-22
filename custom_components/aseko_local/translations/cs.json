@@ -65,6 +65,13 @@
       }
     },
     "sensor": {
+      "filtration_1_start": { "name": "Filtrace 1 začátek" },
+      "filtration_1_stop": { "name": "Filtrace 1 konec" },
+      "filtration_2_start": { "name": "Filtrace 2 začátek" },
+      "filtration_2_stop": { "name": "Filtrace 2 konec" },
+      "pool_volume": { "name": "Objem bazénu" },
+      "delay_after_startup": { "name": "Prodleva po startu" },
+      "delay_after_dose": { "name": "Prodleva po dávce" },
       "air_temperature": {
         "name": "Teplota vzduchu"
       },

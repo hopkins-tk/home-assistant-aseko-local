@@ -65,6 +65,27 @@
       }
     },
     "sensor": {
+      "filtration_1_start": {
+        "name": "Filtration 1 Start"
+      },
+      "filtration_1_stop": {
+        "name": "Filtration 1 Stopp"
+      },
+      "filtration_2_start": {
+        "name": "Filtration 2 Start"
+      },
+      "filtration_2_stop": {
+        "name": "Filtration 2 Stopp"
+      },
+      "pool_volume": {
+        "name": "Poolvolumen"
+      },
+      "delay_after_startup": {
+        "name": "Verzögerung nach Start"
+      },
+      "delay_after_dose": {
+        "name": "Verzögerung nach Dosierung"
+      },
       "air_temperature": {
         "name": "Lufttemperatur"
       },
