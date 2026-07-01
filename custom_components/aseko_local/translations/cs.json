@@ -42,6 +42,9 @@
       "filtration_pump_running": {
         "name": "Filtrační čerpadlo běží"
       },
+      "heating_active": {
+        "name": "Topení aktivní"
+      },
       "cl_pump_running": {
         "name": "Čerpadlo chloru běží"
       },
@@ -62,6 +65,27 @@
       },
       "water_flow_to_probes": {
         "name": "Průtok vody k sondám"
+      },
+      "water_filling_active": {
+        "name": "Plnění vody aktivní"
+      },
+      "filtration_nonstop24": {
+        "name": "Filtrace nonstop 24h"
+      },
+      "alarm_ph_too_many_doses": {
+        "name": "Příliš mnoho dávek pH"
+      },
+      "alarm_orp_too_many_doses": {
+        "name": "Příliš mnoho dávek dezinfekce"
+      },
+      "alarm_no_flow_to_probes": {
+        "name": "Žádný průtok k sondám"
+      },
+      "alarm_rapid_ph_change": {
+        "name": "Příliš rychlá změna pH"
+      },
+      "backwash_active": {
+        "name": "Zpětné proplachování aktivní"
       }
     },
     "sensor": {
@@ -106,6 +130,24 @@
       },
       "required_water_temperature": {
         "name": "Požadovaná teplota vody"
+      },
+      "water_level": {
+        "name": "Hladina vody"
+      },
+      "water_level_low_alarm": {
+        "name": "Hladina vody — dolní alarm"
+      },
+      "water_level_filling_on": {
+        "name": "Prah zapnutí plnění"
+      },
+      "water_level_filling_off": {
+        "name": "Prah vypnutí plnění"
+      },
+      "water_level_high_alarm": {
+        "name": "Hladina vody — horní alarm"
+      },
+      "max_filling_time": {
+        "name": "Maximální doba plnění"
       },
       "required_algicide": {
         "name": "Požadovaná dávka algicidu",
@@ -155,6 +197,21 @@
       },
       "last_seen": {
         "name": "Poslední aktualizace dat"
+      },
+      "last_backwash": {
+        "name": "Poslední zpětné proplachování"
+      },
+      "next_backwash": {
+        "name": "Príští zpětné proplachování"
+      },
+      "backwash_every_n_days": {
+        "name": "Interval zpětného proplachování"
+      },
+      "backwash_time": {
+        "name": "Čas začátku zpětného proplachování"
+      },
+      "backwash_duration": {
+        "name": "Doba trvání zpětného proplachování"
       },
       "chlor_consumed": {
         "name": "Spotřeba chloru (od doplnění)"

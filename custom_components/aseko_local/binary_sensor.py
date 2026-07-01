@@ -47,6 +47,12 @@ BINARY_SENSORS: tuple[AsekoLocalBinarySensorEntityDescription, ...] = (
         value_fn=lambda device: device.filtration_pump_running,
     ),
     AsekoLocalBinarySensorEntityDescription(
+        key="heating_active",
+        translation_key="heating_active",
+        icon="mdi:radiator",
+        value_fn=lambda device: device.heating_active,
+    ),
+    AsekoLocalBinarySensorEntityDescription(
         key="cl_pump_running",
         translation_key="cl_pump_running",
         icon="mdi:water-pump",
@@ -81,6 +87,48 @@ BINARY_SENSORS: tuple[AsekoLocalBinarySensorEntityDescription, ...] = (
         translation_key="oxy_pump_running",
         icon="mdi:water-pump",
         value_fn=lambda device: device.oxy_pump_running,
+    ),
+    AsekoLocalBinarySensorEntityDescription(
+        key="water_filling_active",
+        translation_key="water_filling_active",
+        icon="mdi:water-plus",
+        value_fn=lambda device: device.water_filling_active,
+    ),
+    AsekoLocalBinarySensorEntityDescription(
+        key="filtration_nonstop24",
+        translation_key="filtration_nonstop24",
+        icon="mdi:clock-check",
+        value_fn=lambda device: device.filtration_nonstop24,
+    ),
+    AsekoLocalBinarySensorEntityDescription(
+        key="alarm_ph_too_many_doses",
+        translation_key="alarm_ph_too_many_doses",
+        icon="mdi:alert",
+        value_fn=lambda device: device.alarm_ph_too_many_doses,
+    ),
+    AsekoLocalBinarySensorEntityDescription(
+        key="alarm_orp_too_many_doses",
+        translation_key="alarm_orp_too_many_doses",
+        icon="mdi:alert",
+        value_fn=lambda device: device.alarm_orp_too_many_doses,
+    ),
+    AsekoLocalBinarySensorEntityDescription(
+        key="alarm_no_flow_to_probes",
+        translation_key="alarm_no_flow_to_probes",
+        icon="mdi:waves-arrow-right",
+        value_fn=lambda device: device.alarm_no_flow_to_probes,
+    ),
+    AsekoLocalBinarySensorEntityDescription(
+        key="alarm_rapid_ph_change",
+        translation_key="alarm_rapid_ph_change",
+        icon="mdi:alert",
+        value_fn=lambda device: device.alarm_rapid_ph_change,
+    ),
+    AsekoLocalBinarySensorEntityDescription(
+        key="backwash_active",
+        translation_key="backwash_active",
+        icon="mdi:water-pump",
+        value_fn=lambda device: device.backwash_active,
     ),
 )
 

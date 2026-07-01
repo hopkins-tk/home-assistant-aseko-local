@@ -196,4 +196,47 @@ Go to **Settings → Devices & Services → Helpers → Create helper → Utilit
 **Step 4 – Add everything to a dashboard card**
 
 Combine the fill-up number input, the *since last reset* sensor, the remaining volume template sensor, and a reset button into a single dashboard card for a complete canister management view.
+## Water level (ASIN Aqua Home, Salt, Oxy)
 
+Devices with a built-in water-level sensor expose the following entities:
+
+| Entity | Unit | Description |
+|---|---|---|
+| `sensor.water_level` | cm | Current water level (real-time) |
+| `binary_sensor.water_filling_active` | — | `True` while the auto-fill valve is open |
+| `sensor.water_level_low_alarm` | cm | Low-level alarm threshold |
+| `sensor.water_level_filling_on` | cm | Threshold that opens the auto-fill valve |
+| `sensor.water_level_filling_off` | cm | Threshold that closes the auto-fill valve |
+| `sensor.water_level_high_alarm` | cm | High-level alarm threshold |
+
+The raw sensor value reports the **distance from the sensor to the water surface** in centimetres. This matches what the Aseko Live app shows, so no further adjustment is needed for a standard installation.
+
+### Optional: Correct the reading with an offset helper
+
+If your sensor is mounted at a different height than the Aseko factory default (e.g. relocated, installed in a skimmer with an unusual standoff), the displayed centimetres will be off by a constant. You can apply a fixed offset using a Home Assistant template helper.
+
+1. **Settings → Devices & Services → Helpers → Create helper → Number** named *Water level offset* with unit `cm`, min `0`, max `+250`, step `1`. Default value `0`.
+2. **Settings → Devices & Services → Helpers → Create helper → Template sensor**:
+
+   | Field | Value |
+   |---|---|
+   | Name | Pool water level (corrected) |
+   | State template | `{{ states('sensor.aseko_local_water_level')\|float(0) + states('input_number.water_level_offset')\|float(0) }}` |
+   | Unit of measurement | cm |
+   | Device class | Distance |
+
+This mirrors the same pattern used for canister volume in the previous section and works for any device that exposes `sensor.<device>_water_level` (HOME, SALT, OXY). Devices without a water-level sensor (e.g. NET) will simply not have these entities.
+
+## Backwash schedule (ASIN Aqua Home, Salt)
+
+Devices with a configured backwash schedule expose:
+
+| Entity | Description |
+|---|---|
+| `sensor.backwash_every_n_days` | Interval in days (`0` = disabled) |
+| `sensor.backwash_time` | Scheduled start time (HH:MM) |
+| `sensor.backwash_duration` | Duration in seconds |
+| `sensor.last_backwash` | Last backwash — schedule-derived until a real backwash cycle is observed, then the live/persistent value is used |
+| `sensor.next_backwash` | Next scheduled slot |
+
+> **Note:** `last_backwash` is initially derived from the configured schedule and frame timestamp. Once the integration observes a real backwash cycle (the backwash relay stays on for at least 60 seconds), it records and persists that timestamp and uses it instead. This survives Home Assistant restarts.

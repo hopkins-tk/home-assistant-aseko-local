@@ -158,6 +158,7 @@ class AsekoDevice:
     water_temperature: float | None = None  # byte 25 & 26
     water_flow_to_probes: bool | None = None  # byte 28 == aah
     filtration_pump_running: bool | None = None  # byte 29 (3-rd bit)
+    heating_active: bool | None = None  # byte 29 (2-nd bit, 0x04)
     cl_pump_running: bool | None = None  # byte 29 (6-th bit)
     ph_minus_pump_running: bool | None = None  # byte 29 (7-th bit)
     ph_plus_pump_running: bool | None = (
@@ -206,12 +207,55 @@ class AsekoDevice:
     backwash_time: time | None = None  # byte 69 & 70
     backwash_duration: int | None = None  # byte 71
 
+    # Backwash running state — byte [29] bit 0x01
+    # True while the backwash valve relay is currently energized.
+    # NOTE: bit 0x01 is the backwash relay across all device types that
+    # have a backwash valve (HOME, SALT, OXY).  NET has no backwash output.
+    # The mapping is the same one JS-DE-Tech uses for `relay_byte` bit 0
+    # ("backwash" relay).  Live confirmation is still pending — see
+    # docs/temp/byte29_salt_pump_masks_analysis.md for context.
+    backwash_active: bool | None = None
+
     pool_volume: int | None = None  # byte 92 & 93
     max_filling_time: int | None = None  # byte 94
 
     air_temperature: float | None = None
+
+    # Water level
+    water_level: int | None = None  # byte [27] (cm, real-time)
+    water_level_low_alarm: int | None = None  # byte [102] (cm, config)
+    water_level_filling_on: int | None = None  # byte [103] (cm, config)
+    water_level_filling_off: int | None = None  # byte [104] (cm, config)
+    water_level_high_alarm: int | None = None  # byte [105] (cm, config)
+
+    # Water filling active — byte [29] bit 0x02
+    water_filling_active: bool | None = None
+
+    # Filtration mode — byte [37]
+    # True = nonstop 24 h (0x43), False = timer (0x53), None = transitional/unknown
+    filtration_nonstop24: bool | None = None
+
+    # Alarm/error bitmask — byte [13]
+    # byte [12] is NOT an error byte (confirmed: NET frame shows 0x00 with active no-flow error)
+    alarm_ph_too_many_doses: bool | None = None  # byte [13] bit 0x01
+    alarm_orp_too_many_doses: bool | None = None  # byte [13] bit 0x02
+    alarm_no_flow_to_probes: bool | None = None  # byte [13] bit 0x04 (confirmed)
+    alarm_rapid_ph_change: bool | None = (
+        None  # byte [13] bit 0x08 (error_codes.md, unconfirmed by capture)
+    )
+
     delay_after_dose: int | None = None  # byte 107 & 108 ? (seconds)
     delay_after_startup: int | None = None  # byte 74 & 75 (seconds)
+
+    # Computed backwash schedule (derived from backwash_time + backwash_every_n_days + timestamp).
+    # last_backwash = most recent daily occurrence of backwash_time at or before
+    #                  the frame timestamp.  After the first detected backwash
+    #                  cycle, the BackwashTracker in coordinator.py overrides
+    #                  this with a real observed timestamp (persistent across
+    #                  restarts).  See custom_components/aseko_local/backwash_tracker.py.
+    # next_backwash = last_backwash + backwash_every_n_days days.
+    last_backwash: datetime | None = None
+    next_backwash: datetime | None = None
 
     # Server-side receive timestamp – set by the coordinator on every incoming frame.
     # Independent of the device clock (which can be wrong or missing on some models).

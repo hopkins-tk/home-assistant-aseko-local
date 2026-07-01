@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 import homeassistant.util
 from typing import Type, TypeVar
 
@@ -353,7 +353,20 @@ class AsekoDecoder:
             unit.flowrate_algicide = AsekoDecoder._normalize_value(data[103], int)
             return
 
-        # Non-OXY devices: byte[99] = chlorine pump flowrate.
+        if unit.device_type == AsekoDeviceType.HOME:
+            # HOME devices have independent pump ports for flocculant and algicide
+            # (same layout as OXY Pure for these two flowrates — confirmed by
+            # real HOME frames from serial 110071590 / 110128063, see Issue #110
+            # and #115).  No byte[37] routing is involved.
+            # byte[99]  = chlorine / Chlor Pure flowrate (matches byte[54] family).
+            # byte[101] = flocculant flowrate (ml/min).
+            # byte[103] = algicide flowrate   (ml/min).
+            unit.flowrate_chlor = AsekoDecoder._normalize_value(data[99], int)
+            unit.flowrate_floc = AsekoDecoder._normalize_value(data[101], int)
+            unit.flowrate_algicide = AsekoDecoder._normalize_value(data[103], int)
+            return
+
+        # SALT / NET / PROFI: byte[99] = chlorine pump flowrate.
         unit.flowrate_chlor = AsekoDecoder._normalize_value(data[99], int)
 
         # byte[101]: shared "third pump slot" — algicide OR flocculant per byte[37].
@@ -366,6 +379,169 @@ class AsekoDecoder:
         elif data[37] != UNSPECIFIED_VALUE:
             unit.flowrate_floc = AsekoDecoder._normalize_value(data[101], int)
         # flowrate_ph_plus (byte 97): mapping unconfirmed
+
+    @staticmethod
+    def _fill_home_water_level_data(unit: AsekoDevice, data: bytes) -> None:
+        """Decode water level fields for HOME, SALT and OXY devices.
+
+        Confirmed byte positions (all sources zero-based):
+          byte [27]  = current water level in cm     (domin211 ✅, issue #110 ✅)
+          byte [29] bit 0x02 = water filling active  (DomSchCoding #100 ✅)
+          byte [102] = low alarm threshold (cm)       (domin211 ✅, issue #110 ✅)
+          byte [103] = filling ON threshold (cm)      (domin211 ✅, DomSchCoding ✅, issue #110 ✅)
+          byte [104] = filling OFF threshold (cm)     (domin211 ✅, DomSchCoding ✅, issue #110 ✅)
+          byte [105] = high alarm threshold (cm)      (domin211 ✅, issue #110 ✅)
+
+        NET is excluded: bytes [102..104] contain unrelated non-FF data on NET devices
+        that would produce incorrect water level threshold readings.
+        Note: byte [103] overlaps with OXY flowrate_algicide AND with HOME
+        flowrate_algicide.  Both OXY and HOME have an early return in
+        _fill_flowrate_data, so flowrate_algicide and water_level_filling_on
+        read the SAME byte without conflict.  SALT ignores byte[103] (it is
+        the duplicate flocculant slot — see salt_device_analysis.md).
+        """
+        if unit.device_type == AsekoDeviceType.NET:
+            return
+
+        unit.water_level = AsekoDecoder._normalize_value(data[27], int)
+        unit.water_filling_active = bool(data[29] & 0x02)
+
+        unit.water_level_low_alarm = AsekoDecoder._normalize_value(data[102], int)
+        unit.water_level_filling_on = AsekoDecoder._normalize_value(data[103], int)
+        unit.water_level_filling_off = AsekoDecoder._normalize_value(data[104], int)
+        unit.water_level_high_alarm = AsekoDecoder._normalize_value(data[105], int)
+
+    @staticmethod
+    def _fill_heating_demand(unit: AsekoDevice, data: bytes) -> None:
+        """Decode the heating demand relay state from byte[29] bit 0x04.
+
+        byte[29] bit 0x04 = heating demand relay (JS-DE-Tech "relay_byte"
+        bit 2).  Set whenever the pool controller is requesting heat from
+        the configured heater source (heat pump, electric heater, etc.).
+
+        Available on HOME, SALT, OXY.  NET does not have a heating output,
+        so the field stays None for NET (and no binary sensor is
+        registered).
+
+        The bit-0x04 mapping is the same one JS-DE-Tech uses and was
+        independently listed by the prior Node-RED decoder.
+        """
+        if unit.device_type == AsekoDeviceType.NET:
+            # NET has no heating output.
+            return
+        unit.heating_active = bool(data[29] & 0x04)
+
+    @staticmethod
+    def _fill_backwash_active(unit: AsekoDevice, data: bytes) -> None:
+        """Decode the backwash relay state from byte[29] bit 0x01.
+
+        byte[29] bit 0x01 = backwash relay active (JS-DE-Tech "relay_byte" bit 0).
+
+        This bit is set across all device types that have a backwash valve
+        (HOME, SALT, OXY).  NET has no backwash output, so the field stays
+        None for NET — it is the user's responsibility to interpret "no entity
+        at all" as "device does not have a backwash output".
+
+        Live confirmation: not yet captured in a frame while a backwash cycle
+        is actually running.  A "no flow to probes" condition (byte[13] bit
+        0x04) was independently confirmed to be associated with byte[28] == 0
+        (and not byte[29] bit 0x01) — see Issue #100, DomSchCoding capture.
+        The bit-0x01 mapping is the same one JS-DE-Tech uses and DomSchCoding
+        identified as a candidate in Issue #100 §"Open: Dynamic State Bytes".
+        """
+        if unit.device_type == AsekoDeviceType.NET:
+            # NET has no backwash valve — leave the field as None so the
+            # binary sensor is not registered.
+            return
+
+        unit.backwash_active = bool(data[29] & 0x01)
+
+    @staticmethod
+    def _fill_backwash_schedule(unit: AsekoDevice) -> None:
+        """Compute estimated last/next backwash datetimes from the schedule config.
+
+        Algorithm:
+          last_backwash = most recent occurrence of backwash_time at or before
+                          the frame timestamp (i.e. today's or yesterday's slot).
+          next_backwash = last_backwash + backwash_every_n_days days.
+
+        Caveat (last_backwash): This is a schedule-based *estimate*.  The actual
+        backwash phase is unknown from the device because it does not transmit
+        when the last backwash physically ran.
+
+        The coordinator (``coordinator.py``) overrides ``last_backwash`` with
+        the value from ``BackwashTracker`` (a persistent store of the last
+        observed ≥60 s relay-on window) once a real backwash has been seen.
+        So:
+            * Before the first observed backwash: the value here is shown
+              (i.e. the latest scheduled slot in the past).
+            * After the first observed backwash: the tracker's value wins
+              (and persists across HA restarts).
+
+        See ``backwash_tracker.py`` for the live-tracking implementation.
+        """
+        if (
+            unit.backwash_every_n_days is None
+            or unit.backwash_time is None
+            or unit.timestamp is None
+        ):
+            return
+
+        # `0` means "schedule disabled" per the device config / README.
+        # In that case the schedule-derived sensors stay None so the user
+        # does not see bogus last/next datetimes that all collapse to
+        # the same value.
+        if unit.backwash_every_n_days <= 0:
+            return
+
+        tz = unit.timestamp.tzinfo
+        today_at_backwash = datetime.combine(
+            unit.timestamp.date(), unit.backwash_time
+        ).replace(tzinfo=tz)
+
+        # If the scheduled time is still in the future today, use yesterday's slot.
+        if today_at_backwash > unit.timestamp:
+            last = today_at_backwash - timedelta(days=1)
+        else:
+            last = today_at_backwash
+
+        unit.last_backwash = last
+        unit.next_backwash = last + timedelta(days=unit.backwash_every_n_days)
+
+    @staticmethod
+    def _fill_alarm_data(unit: AsekoDevice, data: bytes) -> None:
+        """Decode alarm bitmask (byte [13]) for all device types.
+
+        byte [13] bitmask (multiple bits can be set simultaneously):
+          0x01 = pH alarm: too many doses, no value change   (error_codes.md)
+          0x02 = ORP alarm: 30 doses, no value change        (error_codes.md)
+          0x04 = no flow to probes                           (DomSchCoding ✅, NET frame ✅)
+          0x08 = rapid pH change, stops regulation ~2 h      (error_codes.md, unconfirmed)
+
+        byte [12] is NOT an error byte — confirmed 0x00 on NET device while
+        byte [13] = 0x04 (active no-flow error) and byte [28] = 0x00.
+        """
+        unit.alarm_ph_too_many_doses = bool(data[13] & 0x01)
+        unit.alarm_orp_too_many_doses = bool(data[13] & 0x02)
+        unit.alarm_no_flow_to_probes = bool(data[13] & 0x04)
+        unit.alarm_rapid_ph_change = bool(data[13] & 0x08)
+
+    @staticmethod
+    def _fill_filtration_mode(unit: AsekoDevice, data: bytes) -> None:
+        """Decode filtration mode (byte [37]) for all device types.
+
+        byte [37]:
+          0x43 = nonstop 24 h active   (confirmed: HOME ✅)
+          0x53 = timer mode active     (confirmed: HOME ✅, issue #110 ✅)
+          0x47 / 0x57 = transitional edit state → leave as None
+          other values → None (SALT uses 0xb7/0xb3/0x37/0x13 for pump routing;
+                               OXY uses 0x03; NET = 0xFF always → all give None)
+        """
+        if data[37] == 0x43:
+            unit.filtration_nonstop24 = True
+        elif data[37] == 0x53:
+            unit.filtration_nonstop24 = False
+        # all other values (including 0xFF, 0x03, 0x37, 0xb7 …) → leave as None
 
     @staticmethod
     def _fill_consumable_data(unit: AsekoDevice, data: bytes) -> None:
@@ -431,6 +607,12 @@ class AsekoDecoder:
             backwash_time=AsekoDecoder._time(data[69:71]),
             backwash_duration=data[71] * 10 if data[71] != UNSPECIFIED_VALUE else None,
             pool_volume=int.from_bytes(data[92:94], "big"),
+            # max_filling_time is stored in minutes (verified against Aseko Live
+            # app for serial 110071590: raw bytes 94:95 = 0x003c = 60, app shows
+            # 60 min). The earlier "× 30 seconds" interpretation was wrong.
+            # See water_level_backwash_analysis.md and home_device_analysis.md
+            # (Bug 1, the 30 s hypothesis from DomSchCoding #100 was rejected by
+            # the live app screenshot).
             max_filling_time=int.from_bytes(data[94:96], "big"),
             delay_after_startup=int.from_bytes(data[74:76], "big"),
             delay_after_dose=int.from_bytes(data[106:108], "big"),
@@ -445,5 +627,11 @@ class AsekoDecoder:
         # algicide/flocculant is determined by whether the flowrate byte is set (≠ 0xFF).
         AsekoDecoder._fill_flowrate_data(device, data)
         AsekoDecoder._fill_consumable_data(device, data)
+        AsekoDecoder._fill_home_water_level_data(device, data)
+        AsekoDecoder._fill_alarm_data(device, data)
+        AsekoDecoder._fill_filtration_mode(device, data)
+        AsekoDecoder._fill_heating_demand(device, data)
+        AsekoDecoder._fill_backwash_active(device, data)
+        AsekoDecoder._fill_backwash_schedule(device)
 
         return device

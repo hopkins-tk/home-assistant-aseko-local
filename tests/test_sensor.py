@@ -269,7 +269,11 @@ async def test_async_setup_salt_redox(hass) -> None:
     # 11 sensors + 7 new (filtration schedule, pool volume, delays) + 4 binary
     # (water_flow, electrolyzer_active, filtration, ph_minus)
     # + 2 consumption (ph_minus canister + total) + 1 connection_status
-    assert len(added_entities) == 25
+    # + 3 new backwash config sensors (every_n_days, time, duration)
+    # + 2 new backwash schedule sensors (last_backwash, next_backwash)
+    # + 1 new backwash_active binary sensor
+    # + 1 new heating_active binary sensor
+    assert len(added_entities) == 38
     assert any(
         getattr(e.entity_description, "key", None) != "water_flow_to_probes"
         for e in added_entities
@@ -369,7 +373,11 @@ async def test_async_setup_salt_clf(hass) -> None:
     # 12 sensors + 7 new (filtration schedule, pool volume, delays) + 4 binary
     # (water_flow, electrolyzer_active, filtration, ph_minus)
     # + 2 consumption (ph_minus canister + total) + 1 connection_status
-    assert len(added_entities) == 26
+    # + 3 new backwash config sensors (every_n_days, time, duration)
+    # + 2 new backwash schedule sensors (last_backwash, next_backwash)
+    # + 1 new backwash_active binary sensor
+    # + 1 new heating_active binary sensor
+    assert len(added_entities) == 39
     assert any(
         getattr(e.entity_description, "key", None) != "water_flow_to_probes"
         for e in added_entities
@@ -463,7 +471,12 @@ async def test_async_setup_net_clf(hass) -> None:
     # + 4 consumption (ph_minus canister + total, cl canister + total) + 1 connection_status
     # note: required_algicide/required_floc are absent because byte[37]=0xFF (undefined)
     # note: filtration sensors skipped because start/stop times are None in NET test data
-    assert len(added_entities) == 19
+    # + 1 new backwash_active binary sensor
+    # + 1 new heating_active binary sensor
+    # + 3 new backwash config sensors (every_n_days, time, duration)
+    # + 2 new backwash schedule sensors (last_backwash, next_backwash)
+    # + 1 max_filling_time sensor (NET exposes it via data[94:96])
+    assert len(added_entities) == 24
     assert any(
         getattr(e.entity_description, "key", None) == "free_chlorine"
         for e in added_entities
@@ -544,12 +557,35 @@ async def test_async_setup_profi_clf_redox(hass) -> None:
         getattr(e.device, "serial_number", None) == device.serial_number
         for e in added_entities
     )
-    # 10 sensors + 7 new (filtration schedule, pool volume, delays) + 5 binary
-    # (water_flow, filtration, cl_pump, ph_minus_pump, floc_pump)
+    # 16 sensors + 6 binary (water_flow, filtration, cl_pump, ph_minus_pump,
+    # floc_pump, heating_active, water_filling_active, backwash_active)
     # + 6 consumption (cl, ph_minus, floc × canister + total) + 1 connection_status
+    # + 4 alarm binary sensors (ph_too_many_doses, orp_too_many_doses,
+    #   no_flow_to_probes, rapid_ph_change)
+    # + 3 new backwash config sensors (every_n_days, time, duration)
+    # + 2 new backwash schedule sensors (last_backwash, next_backwash)
+    # + 1 max_filling_time sensor (data[94:96])
+    #
+    # Regular sensors (16): free_chlorine, required_free_chlorine,
+    #   free_chlorine_mv, ph, required_ph, rx, water_temp, required_water_temp,
+    #   max_filling_time, flowrate_ph_minus, flowrate_floc,
+    #   backwash_every_n_days, backwash_time, backwash_duration,
+    #   last_backwash, next_backwash
+    # Binary sensors (6): water_flow_to_probes, pump_running, cl_pump_running,
+    #   ph_minus_pump_running, floc_pump_running, water_filling_active
+    # Heating-related (1 binary): heating_active
+    # Backwash-related (1 binary): backwash_active
+    # Alarm-related (4 binary): alarm_ph_too_many_doses, alarm_orp_too_many_doses,
+    #   alarm_no_flow_to_probes, alarm_rapid_ph_change
+    #
     # required_floc is intentionally absent: PROFI has independent pump ports (4+) so
     # byte[37] routing does not apply. The exact setpoint byte position is unconfirmed.
-    assert len(added_entities) == 29
+    #
+    # NOTE: water_filling_active is only present because _fill_home_water_level_data
+    # was widened from a {HOME, SALT, OXY} whitelist to a {NET} blacklist (see
+    # PR #120 review comment by hopkins-tk).  PROFI does have a water-level input
+    # (confirmed via the Aseko Profi manual), so it must be decoded.
+    assert len(added_entities) == 42
     assert any(
         getattr(e.entity_description, "key", None) == "free_chlorine"
         for e in added_entities
@@ -571,5 +607,13 @@ async def test_async_setup_profi_clf_redox(hass) -> None:
     )
     assert not any(
         getattr(e.entity_description, "key", None) == "required_floc"
+        for e in added_entities
+    )
+    # PROFI has a water-level input (confirmed by the Aseko Profi manual), so
+    # _fill_home_water_level_data must run for it.  The water_filling_active
+    # bit (byte[29] & 0x02) is False in this fixture, but the entity must
+    # still be registered.
+    assert any(
+        getattr(e.entity_description, "key", None) == "water_filling_active"
         for e in added_entities
     )
