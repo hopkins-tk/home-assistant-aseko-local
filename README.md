@@ -236,7 +236,7 @@ Devices with a configured backwash schedule expose:
 | `sensor.backwash_every_n_days` | Interval in days (`0` = disabled) |
 | `sensor.backwash_time` | Scheduled start time (HH:MM) |
 | `sensor.backwash_duration` | Duration in seconds |
-| `sensor.last_backwash` | Last scheduled slot (computed from `backwash_time` + `interval`) |
+| `sensor.last_backwash` | Last backwash — schedule-derived until a real backwash cycle is observed, then the live/persistent value is used |
 | `sensor.next_backwash` | Next scheduled slot |
 
-> **Note:** `last_backwash` is derived from the configured schedule and frame timestamp, **not** from detecting an active backwash cycle. The integration does not currently know when the device physically last ran a backwash — see [Issue #100](https://github.com/hopkins-tk/home-assistant-aseko-local/issues/100) for the open question on detecting the `backwash` relay state.
+> **Note:** `last_backwash` is initially derived from the configured schedule and frame timestamp. Once the integration observes a real backwash cycle (the backwash relay stays on for at least 60 seconds), it records and persists that timestamp and uses it instead. This survives Home Assistant restarts.

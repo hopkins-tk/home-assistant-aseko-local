@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from collections.abc import Callable
-from datetime import date, datetime
 
 from homeassistant.components.sensor import (
     RestoreSensor,
@@ -553,11 +552,10 @@ SENSORS: list[AsekoSensorEntityDescription] = [
     AsekoSensorEntityDescription(
         key="backwash_time",
         translation_key="backwash_time",
-        device_class=SensorDeviceClass.TIMESTAMP,
         icon="mdi:clock-start",
         entity_registry_enabled_default=False,
         value_fn=lambda device: (
-            datetime.combine(date.today(), device.backwash_time)
+            device.backwash_time.strftime("%H:%M")
             if device.backwash_time is not None
             else None
         ),

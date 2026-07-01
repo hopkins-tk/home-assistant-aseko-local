@@ -102,10 +102,16 @@ class AsekoLocalDataUpdateCoordinator(DataUpdateCoordinator[AsekoData]):
             # Update backwash tracker for this device (live detection,
             # overrides the schedule-based schedule estimate with a real
             # observed timestamp that survives restarts).
+            #
+            # Lazy-load persisted state on first frame after a restart so
+            # the saved last_backwash survives reloads.  Doing it here
+            # (rather than in ``async_setup_backwash_trackers``) avoids a
+            # race where the tracker is created on the first frame *before*
+            # the setup hook has a chance to load its persisted state.
             if device.serial_number not in self._backwash_trackers:
-                self._backwash_trackers[device.serial_number] = BackwashTracker(
-                    self.hass, device.serial_number
-                )
+                tracker = BackwashTracker(self.hass, device.serial_number)
+                self._backwash_trackers[device.serial_number] = tracker
+                self.hass.async_create_task(tracker.async_load())
             tracker = self._backwash_trackers[device.serial_number]
             tracker.update(device, dt_util.now())
             # Override schedule-based estimate with the real observed value.
@@ -229,12 +235,14 @@ class AsekoLocalDataUpdateCoordinator(DataUpdateCoordinator[AsekoData]):
         return self._backwash_trackers.get(serial_number)
 
     async def async_setup_backwash_trackers(self) -> None:
-        """Load persisted backwash timestamps from storage.
+        """Pre-load persisted backwash timestamps from storage.
 
-        Called once during integration setup, after the coordinator has
-        at least an empty data set.  Idempotent — safe to call multiple
-        times (the second call is a no-op because trackers are already
-        loaded on first frame via ``devices_update_callback``).
+        This is a best-effort warm-up: trackers are also created
+        lazily on the first received frame in
+        :meth:`devices_update_callback`, which is the only path that
+        matters because the integration does not know device serials
+        before any frame arrives.  This method just gives already-known
+        devices a head start on loading from disk.
         """
         if self.data is None:
             return
@@ -242,8 +250,9 @@ class AsekoLocalDataUpdateCoordinator(DataUpdateCoordinator[AsekoData]):
             serial = device.serial_number
             if serial is None or serial in self._backwash_trackers:
                 continue
-            self._backwash_trackers[serial] = BackwashTracker(self.hass, serial)
-            await self._backwash_trackers[serial].async_load()
+            tracker = BackwashTracker(self.hass, serial)
+            self._backwash_trackers[serial] = tracker
+            await tracker.async_load()
 
     def async_start_stale_check(self) -> None:
         """Start a periodic task that pushes updates so entities detect offline state."""

@@ -30,8 +30,15 @@ def _device(backwash_active: bool | None) -> Any:
 
 
 def _hass() -> MagicMock:
-    """Mock Home Assistant — only ``async_create_task`` is needed by the tracker."""
-    return MagicMock()
+    """Mock Home Assistant — only ``async_create_task`` is needed by the tracker.
+
+    ``Store.__init__`` requires ``hass.config.path(...)`` to resolve to a real
+    path-like value, so we return a ``Path`` instead of letting the default
+    ``MagicMock`` raise ``AttributeError`` deep in the constructor.
+    """
+    hass = MagicMock()
+    hass.config.path.side_effect = lambda *parts: "/tmp/aseko_test/" + "/".join(parts)
+    return hass
 
 
 # ── basic accumulation ──────────────────────────────────────────────────────

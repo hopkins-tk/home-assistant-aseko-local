@@ -487,6 +487,13 @@ class AsekoDecoder:
         ):
             return
 
+        # `0` means "schedule disabled" per the device config / README.
+        # In that case the schedule-derived sensors stay None so the user
+        # does not see bogus last/next datetimes that all collapse to
+        # the same value.
+        if unit.backwash_every_n_days <= 0:
+            return
+
         tz = unit.timestamp.tzinfo
         today_at_backwash = datetime.combine(
             unit.timestamp.date(), unit.backwash_time

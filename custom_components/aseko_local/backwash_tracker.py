@@ -68,7 +68,7 @@ class BackwashTracker:
         self._store: Store[dict] = Store(
             hass,
             STORAGE_VERSION,
-            f"{STORAGE_KEY_PREFIX}{serial_number}.json",
+            f"{STORAGE_KEY_PREFIX}{serial_number}",
         )
 
         # State machine: when did the current "relay on" window start?
@@ -174,5 +174,4 @@ class BackwashTracker:
                         recorded_at,
                         self._last_backwash,
                     )
-            self._relay_on_since = None
             self._relay_on_since = None
