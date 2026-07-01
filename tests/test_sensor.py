@@ -270,9 +270,10 @@ async def test_async_setup_salt_redox(hass) -> None:
     # (water_flow, electrolyzer_active, filtration, ph_minus)
     # + 2 consumption (ph_minus canister + total) + 1 connection_status
     # + 3 new backwash config sensors (every_n_days, time, duration)
+    # + 2 new backwash schedule sensors (last_backwash, next_backwash)
     # + 1 new backwash_active binary sensor
     # + 1 new heating_active binary sensor
-    assert len(added_entities) == 31
+    assert len(added_entities) == 38
     assert any(
         getattr(e.entity_description, "key", None) != "water_flow_to_probes"
         for e in added_entities
@@ -373,9 +374,10 @@ async def test_async_setup_salt_clf(hass) -> None:
     # (water_flow, electrolyzer_active, filtration, ph_minus)
     # + 2 consumption (ph_minus canister + total) + 1 connection_status
     # + 3 new backwash config sensors (every_n_days, time, duration)
+    # + 2 new backwash schedule sensors (last_backwash, next_backwash)
     # + 1 new backwash_active binary sensor
     # + 1 new heating_active binary sensor
-    assert len(added_entities) == 32
+    assert len(added_entities) == 39
     assert any(
         getattr(e.entity_description, "key", None) != "water_flow_to_probes"
         for e in added_entities
@@ -469,7 +471,12 @@ async def test_async_setup_net_clf(hass) -> None:
     # + 4 consumption (ph_minus canister + total, cl canister + total) + 1 connection_status
     # note: required_algicide/required_floc are absent because byte[37]=0xFF (undefined)
     # note: filtration sensors skipped because start/stop times are None in NET test data
-    assert len(added_entities) == 23
+    # + 1 new backwash_active binary sensor
+    # + 1 new heating_active binary sensor
+    # + 3 new backwash config sensors (every_n_days, time, duration)
+    # + 2 new backwash schedule sensors (last_backwash, next_backwash)
+    # + 1 max_filling_time sensor (NET exposes it via data[94:96])
+    assert len(added_entities) == 24
     assert any(
         getattr(e.entity_description, "key", None) == "free_chlorine"
         for e in added_entities
@@ -578,7 +585,7 @@ async def test_async_setup_profi_clf_redox(hass) -> None:
     # was widened from a {HOME, SALT, OXY} whitelist to a {NET} blacklist (see
     # PR #120 review comment by hopkins-tk).  PROFI does have a water-level input
     # (confirmed via the Aseko Profi manual), so it must be decoded.
-    assert len(added_entities) == 35
+    assert len(added_entities) == 42
     assert any(
         getattr(e.entity_description, "key", None) == "free_chlorine"
         for e in added_entities
