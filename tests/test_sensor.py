@@ -471,12 +471,42 @@ async def test_async_setup_net_clf(hass) -> None:
     # + 4 consumption (ph_minus canister + total, cl canister + total) + 1 connection_status
     # note: required_algicide/required_floc are absent because byte[37]=0xFF (undefined)
     # note: filtration sensors skipped because start/stop times are None in NET test data
-    # + 1 new backwash_active binary sensor
-    # + 1 new heating_active binary sensor
-    # + 3 new backwash config sensors (every_n_days, time, duration)
-    # + 2 new backwash schedule sensors (last_backwash, next_backwash)
-    # + 1 max_filling_time sensor (NET exposes it via data[94:96])
-    assert len(added_entities) == 24
+    # + 1 heating_active binary sensor
+    # Issue #129: NET has no backwash valve and no filling valve, so the
+    # backwash / water_level / max_filling_time groups are *all* suppressed.
+    # The 5 backwash config + schedule sensors that the old code created
+    # (every_n_days, time, duration, last_backwash, next_backwash) plus
+    # max_filling_time are no longer created for NET, even when the frame
+    # carries non-0xFF data in those byte slots.
+    assert len(added_entities) == 23
+    assert not any(
+        getattr(e.entity_description, "key", None) == "backwash_every_n_days"
+        for e in added_entities
+    )
+    assert not any(
+        getattr(e.entity_description, "key", None) == "backwash_time"
+        for e in added_entities
+    )
+    assert not any(
+        getattr(e.entity_description, "key", None) == "backwash_duration"
+        for e in added_entities
+    )
+    assert not any(
+        getattr(e.entity_description, "key", None) == "last_backwash"
+        for e in added_entities
+    )
+    assert not any(
+        getattr(e.entity_description, "key", None) == "next_backwash"
+        for e in added_entities
+    )
+    assert not any(
+        getattr(e.entity_description, "key", None) == "max_filling_time"
+        for e in added_entities
+    )
+    assert not any(
+        getattr(e.entity_description, "key", None) == "water_level"
+        for e in added_entities
+    )
     assert any(
         getattr(e.entity_description, "key", None) == "free_chlorine"
         for e in added_entities
@@ -568,7 +598,7 @@ async def test_async_setup_profi_clf_redox(hass) -> None:
     #
     # Regular sensors (16): free_chlorine, required_free_chlorine,
     #   free_chlorine_mv, ph, required_ph, rx, water_temp, required_water_temp,
-    #   max_filling_time, flowrate_ph_minus, flowrate_floc,
+    #   flowrate_ph_minus, flowrate_floc,
     #   backwash_every_n_days, backwash_time, backwash_duration,
     #   last_backwash, next_backwash
     # Binary sensors (6): water_flow_to_probes, pump_running, cl_pump_running,
@@ -585,7 +615,12 @@ async def test_async_setup_profi_clf_redox(hass) -> None:
     # was widened from a {HOME, SALT, OXY} whitelist to a {NET} blacklist (see
     # PR #120 review comment by hopkins-tk).  PROFI does have a water-level input
     # (confirmed via the Aseko Profi manual), so it must be decoded.
-    assert len(added_entities) == 42
+    #
+    # Issue #129: PROFI has no filling valve (it has 5+ independent pump ports
+    # but no documented filling input), so max_filling_time is suppressed even
+    # though bytes 94-95 carry a real value. -1 entity compared to the PR #120
+    # baseline.
+    assert len(added_entities) == 41
     assert any(
         getattr(e.entity_description, "key", None) == "free_chlorine"
         for e in added_entities
@@ -615,5 +650,11 @@ async def test_async_setup_profi_clf_redox(hass) -> None:
     # still be registered.
     assert any(
         getattr(e.entity_description, "key", None) == "water_filling_active"
+        for e in added_entities
+    )
+    # Issue #129: PROFI has no filling valve, so max_filling_time stays None
+    # and no entity is created even though bytes 94-95 carry a real value.
+    assert not any(
+        getattr(e.entity_description, "key", None) == "max_filling_time"
         for e in added_entities
     )

@@ -58,6 +58,35 @@ FILTRATION_PERIOD2_FLAG_TYPES = frozenset(
     }
 )
 
+# Device types that have a backwash valve/output and therefore expose a
+# backwash schedule (bytes 68-71) plus a backwash-active bit (byte 29 bit 0x01).
+# NET (Aqua NET) is a measurement + dosing unit only — it has neither a filter
+# nor a backwash valve, so the corresponding sensors must be suppressed.
+# Issue #129: prior to this filter, the decoder blindly read bytes 68-71 on
+# every device type, so a NET frame carrying non-0xFF data in those slots
+# would surface phantom backwash entities.
+BACKWASH_TYPES = frozenset(
+    {
+        AsekoDeviceType.SALT,
+        AsekoDeviceType.HOME,
+        AsekoDeviceType.OXY,
+        AsekoDeviceType.PROFI,
+    }
+)
+
+# Device types that have a water-level probe + filling-valve output and
+# therefore expose the water_level live value plus the four threshold setpoints
+# (bytes 27, 102-105) and the max_filling_time (bytes 94-95).
+# NET (Aqua NET) and PROFI do not have a filling valve → skip the whole group.
+# Mirrors the existing _fill_home_water_level_data() NET early-return.
+WATER_LEVEL_TYPES = frozenset(
+    {
+        AsekoDeviceType.SALT,
+        AsekoDeviceType.HOME,
+        AsekoDeviceType.OXY,
+    }
+)
+
 
 class AsekoDecoder:
     """Decoder of Aseko unit data."""
@@ -209,6 +238,20 @@ class AsekoDecoder:
                 data.hex(),
             )
             return datetime.now(tz=homeassistant.util.dt.get_default_time_zone())
+
+    @staticmethod
+    def _max_filling_time_from_bytes(data: bytes) -> int | None:
+        """Decode max_filling_time (bytes 94-95) as a 2-byte big-endian minute value.
+
+        Returns None for the 0xFFFF sentinel (device does not implement the
+        feature) so that downstream consumers see ``None`` instead of ``65535``.
+        Issue #129: a bare ``int.from_bytes(...)`` would otherwise turn
+        unspecified frame data into a bogus 65535-minute value on NET/PROFI.
+        """
+        value = int.from_bytes(data, "big")
+        if value == 0xFFFF:
+            return None
+        return value
 
     @staticmethod
     def _time(data: bytes) -> time | None:
@@ -480,6 +523,11 @@ class AsekoDecoder:
 
         See ``backwash_tracker.py`` for the live-tracking implementation.
         """
+        # Defensive: the schedule fields are already gated on BACKWASH_TYPES in
+        # decode(), but we re-check the device type here so this method stays
+        # safe even if it is ever called from a code path that didn't pre-filter.
+        if unit.device_type is None or unit.device_type not in BACKWASH_TYPES:
+            return
         if (
             unit.backwash_every_n_days is None
             or unit.backwash_time is None
@@ -590,6 +638,11 @@ class AsekoDecoder:
             if unit_type in FILTRATION_PERIOD2_FLAG_TYPES
             else True
         )
+        # Issue #129: gate backwash schedule + active bit on device type so
+        # measurement-only units (NET) do not surface phantom backwash entities
+        # from non-0xFF frame data.
+        has_backwash = unit_type in BACKWASH_TYPES
+        has_water_level = unit_type in WATER_LEVEL_TYPES
 
         device = AsekoDevice(
             serial_number=int.from_bytes(data[0:4], "big"),
@@ -603,9 +656,15 @@ class AsekoDecoder:
             stop1=AsekoDecoder._time(data[58:60]) if has_filtration else None,
             start2=AsekoDecoder._time(data[60:62]) if filtration2_enabled else None,
             stop2=AsekoDecoder._time(data[62:64]) if filtration2_enabled else None,
-            backwash_every_n_days=AsekoDecoder._normalize_value(data[68], int),
-            backwash_time=AsekoDecoder._time(data[69:71]),
-            backwash_duration=data[71] * 10 if data[71] != UNSPECIFIED_VALUE else None,
+            backwash_every_n_days=(
+                AsekoDecoder._normalize_value(data[68], int) if has_backwash else None
+            ),
+            backwash_time=(AsekoDecoder._time(data[69:71]) if has_backwash else None),
+            backwash_duration=(
+                data[71] * 10
+                if has_backwash and data[71] != UNSPECIFIED_VALUE
+                else None
+            ),
             pool_volume=int.from_bytes(data[92:94], "big"),
             # max_filling_time is stored in minutes (verified against Aseko Live
             # app for serial 110071590: raw bytes 94:95 = 0x003c = 60, app shows
@@ -613,7 +672,16 @@ class AsekoDecoder:
             # See water_level_backwash_analysis.md and home_device_analysis.md
             # (Bug 1, the 30 s hypothesis from DomSchCoding #100 was rejected by
             # the live app screenshot).
-            max_filling_time=int.from_bytes(data[94:96], "big"),
+            #
+            # Gated on WATER_LEVEL_TYPES: NET (Aqua NET) and PROFI have no filling
+            # valve, so bytes 94-95 either carry unrelated data or are 0xFFFF.
+            # A bare int.from_bytes(..., "big") would otherwise turn 0xFFFF into
+            # 65535 — fix that by normalising to None on 0xFFFF as well.
+            max_filling_time=(
+                AsekoDecoder._max_filling_time_from_bytes(data[94:96])
+                if has_water_level
+                else None
+            ),
             delay_after_startup=int.from_bytes(data[74:76], "big"),
             delay_after_dose=int.from_bytes(data[106:108], "big"),
         )

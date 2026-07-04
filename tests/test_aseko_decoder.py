@@ -272,6 +272,22 @@ def test_decode_net() -> None:
     assert device.stop1 is None
     assert device.start2 is None
     assert device.stop2 is None
+    # Issue #129: NET has no backwash valve, so the schedule must stay None
+    # regardless of what the frame carries in bytes 68-71.
+    assert device.backwash_every_n_days is None
+    assert device.backwash_time is None
+    assert device.backwash_duration is None
+    assert device.last_backwash is None
+    assert device.next_backwash is None
+    assert device.backwash_active is None
+    # NET has no filling valve, so the water_level group is empty too.
+    assert device.water_level is None
+    assert device.water_level_low_alarm is None
+    assert device.water_level_filling_on is None
+    assert device.water_level_filling_off is None
+    assert device.water_level_high_alarm is None
+    assert device.water_filling_active is None
+    assert device.max_filling_time is None
     # Pool volume and dosing delays are still available on NET.
     assert device.pool_volume == 5000
     assert device.delay_after_dose == 30
@@ -318,6 +334,85 @@ def test_decode_unknown_unit_type() -> None:
     # Must not raise – decoder returns a device with device_type=None
     device = AsekoDecoder.decode(bytes(data))
     assert device.device_type is None
+
+
+def test_decode_net_no_backwash_with_garbage_bytes() -> None:
+    """Issue #129: A NET frame carrying non-0xFF data in the backwash/water-level
+    byte slots must not surface phantom backwash or water-level entities.
+
+    Pre-fix behaviour: the decoder blindly read bytes 68-71, 27, 102-105 and
+    94-95 on every device type. When a NET device happened to send non-0xFF
+    values in those slots, the integration created disabled backwash /
+    water-level entities with semantically meaningless numbers (e.g.
+    max_filling_time=65535 from bytes 0xFFFF being decoded as a 16-bit int).
+
+    Post-fix behaviour: device-type gating on BACKWASH_TYPES / WATER_LEVEL_TYPES
+    forces the corresponding device fields to None on NET, which causes
+    _build_sensor_entities() in sensor.py to skip the entity altogether.
+    """
+    data = _make_base_bytes()
+    data[4] = 0x09  # NET (CLF probe, default for _make_base_bytes is SALT)
+    # Garbage values in the slots that belong to backwash / water-level.
+    # These mimic the real-world case where a measurement-only device
+    # reports random non-0xFF data in slots it does not implement.
+    data[27] = 53  # would-be water_level (cm)
+    data[68] = 7  # would-be backwash_every_n_days
+    data[69] = 9  # would-be backwash_time hour
+    data[70] = 30  # would-be backwash_time min
+    data[71] = 12  # would-be backwash_duration (×10 s)
+    data[102] = 13  # would-be water_level_low_alarm
+    data[103] = 21  # would-be water_level_filling_on
+    data[104] = 60  # would-be water_level_filling_off
+    data[105] = 100  # would-be water_level_high_alarm
+    data[94:96] = bytes([0xFF, 0xFF])  # would-be max_filling_time → must be None
+
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.device_type == AsekoDeviceType.NET
+    # None of these may leak through on a NET device, no matter what the frame carries.
+    assert device.backwash_every_n_days is None
+    assert device.backwash_time is None
+    assert device.backwash_duration is None
+    assert device.last_backwash is None
+    assert device.next_backwash is None
+    assert device.backwash_active is None
+    assert device.water_level is None
+    assert device.water_level_low_alarm is None
+    assert device.water_level_filling_on is None
+    assert device.water_level_filling_off is None
+    assert device.water_level_high_alarm is None
+    assert device.water_filling_active is None
+    assert device.max_filling_time is None
+
+
+def test_max_filling_time_unspecified_sentinel() -> None:
+    """Issue #129: 0xFFFF in bytes 94-95 must decode to None, not 65535.
+
+    Pre-fix behaviour: a bare ``int.from_bytes(data[94:96], "big")`` returned
+    65535 for the 0xFFFF sentinel, surfacing a nonsensical "max filling time
+    = 65535 min" sensor on devices that do not implement filling (NET, PROFI).
+    """
+    data = _make_base_bytes()  # default SALT — has max_filling_time
+    data[4] = 0x09  # but flip to NET
+    data[94:96] = bytes([0xFF, 0xFF])  # UNSPECIFIED sentinel
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.device_type == AsekoDeviceType.NET
+    assert device.max_filling_time is None
+
+
+def test_max_filling_time_real_value_home() -> None:
+    """Sanity check: on a HOME device, a real value still decodes correctly.
+
+    This guards against an accidental regression where the new
+    _max_filling_time_from_bytes() helper breaks the verified
+    "60 min from 0x003c" mapping (Issue #110).
+    """
+    data = _make_base_bytes()
+    data[4] = 0x02  # UNIT_TYPE_HOME_CLF — any HOME subtype works
+    data[6:12] = bytes([24, 6, 15, 12, 34, 56])
+    data[94:96] = (60).to_bytes(2, "big")  # 60 min
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.device_type == AsekoDeviceType.HOME
+    assert device.max_filling_time == 60
 
 
 def test_decode_issue_17() -> None:
