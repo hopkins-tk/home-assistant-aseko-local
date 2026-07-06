@@ -93,6 +93,15 @@
       "filtration_1_stop": { "name": "Filtrace 1 konec" },
       "filtration_2_start": { "name": "Filtrace 2 začátek" },
       "filtration_2_stop": { "name": "Filtrace 2 konec" },
+      "filtration_mode": {
+        "name": "Režim filtrace",
+        "state": {
+          "nonstop_24h": "Nonstop 24 h",
+          "timer_period_1": "Časové období 1",
+          "timer_period_1_and_2": "Časová období 1 a 2",
+          "off_manual": "Vypnuto (ručně)"
+        }
+      },
       "pool_volume": { "name": "Objem bazénu" },
       "delay_after_startup": { "name": "Prodleva po startu" },
       "delay_after_dose": { "name": "Prodleva po dávce" },

@@ -9,6 +9,7 @@ from .aseko_data import (
     AsekoDevice,
     AsekoDeviceType,
     AsekoElectrolyzerDirection,
+    AsekoFiltrationMode,
     AsekoProbeType,
     AsekoThirdPumpSlot,
     ACTUATOR_MASKS,
@@ -583,20 +584,64 @@ class AsekoDecoder:
 
     @staticmethod
     def _fill_filtration_mode(unit: AsekoDevice, data: bytes) -> None:
-        """Decode filtration mode (byte [37]) for all device types.
+        """Decode filtration mode from byte[37] into `filtration_mode` (enum).
 
-        byte [37]:
-          0x43 = nonstop 24 h active   (confirmed: HOME ✅)
-          0x53 = timer mode active     (confirmed: HOME ✅, issue #110 ✅)
-          0x47 / 0x57 = transitional edit state → leave as None
-          other values → None (SALT uses 0xb7/0xb3/0x37/0x13 for pump routing;
-                               OXY uses 0x03; NET = 0xFF always → all give None)
+        Two encodings are observed on HOME v7 devices (firmware-dependent).
+        For all other device types, byte[37] is used for different purposes
+        (SALT: algicide routing, OXY: pump-presence bitmap, NET: always 0xFF),
+        so the field stays None.
+
+        Old encoding (home_device_analysis.md, serial 110128063, byte 4 = 0x02):
+          high nibble 0x4 / 0x5
+          0x43 = nonstop 24h
+          0x53 = timer
+          0x47 / 0x57 = transitional edit state — leave as None
+          Old encoding cannot distinguish P1 vs P1&P2 — we default to
+          TIMER_PERIOD_1_AND_2 (the period-2 bit 0x20 is set in the
+          observed 0x53 value).
+
+        New encoding (Issue #133, serial 110169464, byte 4 = 0x03):
+          high nibble 0x0 / 0x1 / 0x3
+          0x01 = nonstop 24h
+          0x11 = P1 only
+          0x31 = P1 & P2
+          0x35 = OFF (manual override) — bit 0x04 set
+
+        The legacy `filtration_nonstop24` boolean field is kept for backwards
+        compatibility and is derived from `filtration_mode` here.
         """
-        if data[37] == 0x43:
-            unit.filtration_nonstop24 = True
-        elif data[37] == 0x53:
-            unit.filtration_nonstop24 = False
-        # all other values (including 0xFF, 0x03, 0x37, 0xb7 …) → leave as None
+        if unit.device_type != AsekoDeviceType.HOME:
+            return
+
+        b = data[37]
+        if b == UNSPECIFIED_VALUE:
+            return
+
+        mode: AsekoFiltrationMode | None = None
+        # Old encoding: high nibble 0x4 / 0x5
+        if b == 0x43:
+            mode = AsekoFiltrationMode.NONSTOP_24H
+        elif b == 0x53:
+            mode = AsekoFiltrationMode.TIMER_PERIOD_1_AND_2
+        # 0x47 / 0x57 are documented as "transitional edit state" in
+        # home_device_analysis.md Issue 4 — leave as None.
+        # New encoding: high nibble 0x0 / 0x1 / 0x3
+        elif b == 0x01:
+            mode = AsekoFiltrationMode.NONSTOP_24H
+        elif b == 0x11:
+            mode = AsekoFiltrationMode.TIMER_PERIOD_1
+        elif b == 0x31:
+            mode = AsekoFiltrationMode.TIMER_PERIOD_1_AND_2
+        elif b == 0x35:
+            mode = AsekoFiltrationMode.OFF_MANUAL
+        # else: leave as None (transitional / unrecognised HOME value)
+
+        if mode is None:
+            return
+
+        unit.filtration_mode = mode
+        # Mirror onto the legacy boolean for backwards compatibility.
+        unit.filtration_nonstop24 = mode == AsekoFiltrationMode.NONSTOP_24H
 
     @staticmethod
     def _fill_consumable_data(unit: AsekoDevice, data: bytes) -> None:
@@ -626,6 +671,23 @@ class AsekoDecoder:
 
         if masks.oxy and unit.flowrate_oxy is not None:
             unit.oxy_pump_running = bool(data[29] & masks.oxy)
+
+        # Issue #133: on HOME v7 firmware B, byte[29] bit 3 stays set even
+        # when the user has manually switched the pump off on the unit
+        # (the override state lives in byte[37], not byte[29]). Trust the
+        # explicit OFF_MANUAL mode flag instead of the schedule-driven bit.
+        # Gated on HOME so SALT / OXY / NET / PROFI behaviour is unchanged.
+        if (
+            unit.device_type == AsekoDeviceType.HOME
+            and unit.filtration_mode == AsekoFiltrationMode.OFF_MANUAL
+            and unit.filtration_pump_running is True
+        ):
+            _LOGGER.debug(
+                "Manual OFF override active (filtration_mode=OFF_MANUAL) — "
+                "forcing filtration_pump_running to False (byte[29]=0x%02x)",
+                data[29],
+            )
+            unit.filtration_pump_running = False
 
     @staticmethod
     def decode(data: bytes) -> AsekoDevice:
@@ -701,10 +763,13 @@ class AsekoDecoder:
         # Flowrate must be decoded before consumable data: pump presence for
         # algicide/flocculant is determined by whether the flowrate byte is set (≠ 0xFF).
         AsekoDecoder._fill_flowrate_data(device, data)
+        # Filtration mode must be decoded before consumable data (Issue #133):
+        # the OFF_MANUAL state in byte[37] short-circuits
+        # `filtration_pump_running` in `_fill_consumable_data`.
+        AsekoDecoder._fill_filtration_mode(device, data)
         AsekoDecoder._fill_consumable_data(device, data)
         AsekoDecoder._fill_home_water_level_data(device, data)
         AsekoDecoder._fill_alarm_data(device, data)
-        AsekoDecoder._fill_filtration_mode(device, data)
         AsekoDecoder._fill_heating_demand(device, data)
         AsekoDecoder._fill_backwash_active(device, data)
         AsekoDecoder._fill_backwash_schedule(device)

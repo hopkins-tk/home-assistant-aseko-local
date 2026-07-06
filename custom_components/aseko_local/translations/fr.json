@@ -101,6 +101,15 @@
             "filtration_2_stop": {
                 "name": "Fin filtration 2"
             },
+            "filtration_mode": {
+                "name": "Mode de filtration",
+                "state": {
+                  "nonstop_24h": "24 h en continu",
+                  "timer_period_1": "Plage horaire 1",
+                  "timer_period_1_and_2": "Plages horaires 1 et 2",
+                  "off_manual": "Arrêt (manuel)"
+                }
+            },
             "pool_volume": {
                 "name": "Volume du bassin"
             },

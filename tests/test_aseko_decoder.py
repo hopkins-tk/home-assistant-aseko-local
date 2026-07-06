@@ -7,6 +7,7 @@ import pytest
 from custom_components.aseko_local.aseko_data import (
     AsekoDeviceType,
     AsekoElectrolyzerDirection,
+    AsekoFiltrationMode,
     AsekoProbeType,
 )
 from custom_components.aseko_local.aseko_decoder import AsekoDecoder
@@ -1237,19 +1238,22 @@ def test_filtration_nonstop24_none_for_non_home() -> None:
 def test_filtration_nonstop24_decoded_for_all_device_types() -> None:
     """filtration_nonstop24 is decoded for NET, OXY, SALT when byte[37] = 0x43/0x53.
 
-    The guard was removed — any device reporting 0x43 gets True, 0x53 gets False.
+    Issue #133: the per-device guard was re-introduced. NET, OXY and SALT
+    use byte[37] for entirely different purposes (algicide routing, pump
+    presence, UNSPECIFIED). On those devices the field stays None — only
+    HOME interprets byte[37] as a filtration mode flag.
     """
     for device_byte in (0x09, 0x05, 0x0E):  # NET, OXY, SALT
         data = _make_base_bytes()
         data[4] = device_byte
         data[37] = 0x43
-        assert AsekoDecoder.decode(bytes(data)).filtration_nonstop24 is True, (
-            f"byte[4]={device_byte:#x}"
+        assert AsekoDecoder.decode(bytes(data)).filtration_nonstop24 is None, (
+            f"byte[4]={device_byte:#x} (non-HOME: must stay None)"
         )
 
         data[37] = 0x53
-        assert AsekoDecoder.decode(bytes(data)).filtration_nonstop24 is False, (
-            f"byte[4]={device_byte:#x}"
+        assert AsekoDecoder.decode(bytes(data)).filtration_nonstop24 is None, (
+            f"byte[4]={device_byte:#x} (non-HOME: must stay None)"
         )
 
 
@@ -1285,6 +1289,158 @@ def test_home_filtration_nonstop24() -> None:
 
     data[37] = 0x57  # transitional edit state → None
     assert AsekoDecoder.decode(bytes(data)).filtration_nonstop24 is None
+
+
+# ── Issue #133: HOME v7 firmware B (4-state enum + manual OFF override) ──────
+
+
+def test_filtration_mode_new_encoding_24h() -> None:
+    """Firmware B byte[37] = 0x01 → NONSTOP_24H (serial 110169464)."""
+    data = _make_home_bytes()
+    data[37] = 0x01  # new encoding: nonstop 24h
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.filtration_mode == AsekoFiltrationMode.NONSTOP_24H
+    assert device.filtration_nonstop24 is True  # legacy mirror
+
+
+def test_filtration_mode_new_encoding_p1() -> None:
+    """Firmware B byte[37] = 0x11 → TIMER_PERIOD_1 (P1 only, P2 disabled)."""
+    data = _make_home_bytes()
+    data[37] = 0x11  # new encoding: P1 only
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.filtration_mode == AsekoFiltrationMode.TIMER_PERIOD_1
+    assert device.filtration_nonstop24 is False
+
+
+def test_filtration_mode_new_encoding_p1_and_p2() -> None:
+    """Firmware B byte[37] = 0x31 → TIMER_PERIOD_1_AND_2 (both periods)."""
+    data = _make_home_bytes()
+    data[37] = 0x31  # new encoding: P1 & P2
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.filtration_mode == AsekoFiltrationMode.TIMER_PERIOD_1_AND_2
+    assert device.filtration_nonstop24 is False
+
+
+def test_filtration_mode_new_encoding_off_manual() -> None:
+    """Firmware B byte[37] = 0x35 → OFF_MANUAL (user toggled OFF on the unit)."""
+    data = _make_home_bytes()
+    data[37] = 0x35  # new encoding: OFF (manual override)
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.filtration_mode == AsekoFiltrationMode.OFF_MANUAL
+    assert device.filtration_nonstop24 is False
+
+
+def test_filtration_mode_old_encoding_24h() -> None:
+    """Firmware A byte[37] = 0x43 → NONSTOP_24H (serial 110128063)."""
+    data = _make_home_bytes()
+    data[37] = 0x43
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.filtration_mode == AsekoFiltrationMode.NONSTOP_24H
+    assert device.filtration_nonstop24 is True
+
+
+def test_filtration_mode_old_encoding_timer() -> None:
+    """Firmware A byte[37] = 0x53 → TIMER_PERIOD_1_AND_2 (cannot distinguish P1 vs P1&P2)."""
+    data = _make_home_bytes()
+    data[37] = 0x53
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.filtration_mode == AsekoFiltrationMode.TIMER_PERIOD_1_AND_2
+    assert device.filtration_nonstop24 is False
+
+
+def test_filtration_mode_old_encoding_transitional() -> None:
+    """Firmware A byte[37] = 0x47 / 0x57 → leave as None (transitional edit state)."""
+    for transitional in (0x47, 0x57):
+        data = _make_home_bytes()
+        data[37] = transitional
+        device = AsekoDecoder.decode(bytes(data))
+        assert device.filtration_mode is None
+        assert device.filtration_nonstop24 is None
+
+
+def test_filtration_mode_unspecified() -> None:
+    """byte[37] = 0xFF → None (defensive, also covers NET-like values on HOME)."""
+    data = _make_home_bytes()
+    data[37] = 0xFF
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.filtration_mode is None
+    assert device.filtration_nonstop24 is None
+
+
+def test_filtration_mode_none_for_non_home() -> None:
+    """filtration_mode stays None for NET, OXY, SALT, PROFI regardless of byte[37].
+
+    These device types use byte[37] for different purposes:
+      SALT: algicide routing (bits 0x10/0x80), observed 0xb7/0xb3/0x37/0x13
+      OXY:  pump-presence bitmap, observed 0x03
+      NET:  always 0xFF
+    Gating on `device_type == HOME` is the only safe interpretation.
+    """
+    for device_byte, real_byte37 in (
+        (0x09, 0xFF),  # NET
+        (0x05, 0x03),  # OXY
+        (0x0E, 0xB7),  # SALT
+        (0x10, 0x53),  # PROFI
+    ):
+        data = _make_base_bytes()
+        data[4] = device_byte
+        data[37] = real_byte37
+        device = AsekoDecoder.decode(bytes(data))
+        assert device.filtration_mode is None, (
+            f"byte[4]={device_byte:#x}, byte[37]={real_byte37:#x}"
+        )
+
+
+def test_filtration_pump_running_off_when_manual_override() -> None:
+    """byte[29] bit 3 stays set in OFF_MANUAL mode, but pump must read as False.
+
+    The @dtpugh issue: with the user manually switched the pump off, byte[29]
+    bit 3 (filtration relay) is still 0x08 in the frame. The decoder trusts
+    the explicit OFF_MANUAL flag in byte[37] and forces False.
+    """
+    data = _make_home_bytes()
+    data[4] = 0x03  # HOME REDOX (firmware B device)
+    data[29] = 0x08  # schedule-driven output bit SET (would normally mean "running")
+    data[37] = 0x35  # OFF (manual override)
+
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.filtration_mode == AsekoFiltrationMode.OFF_MANUAL
+    assert device.filtration_pump_running is False
+
+
+def test_filtration_pump_running_on_when_not_override() -> None:
+    """Regression guard: outside OFF_MANUAL, byte[29] bit 3 still drives the entity."""
+    data = _make_home_bytes()
+    data[4] = 0x03
+    data[29] = 0x08
+    data[37] = 0x11  # P1 only — pump should be on per the schedule
+
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.filtration_mode == AsekoFiltrationMode.TIMER_PERIOD_1
+    assert device.filtration_pump_running is True
+
+
+def test_filtration_pump_running_not_overridden_on_salt() -> None:
+    """The OFF_MANUAL short-circuit is gated on HOME — SALT behaviour unchanged."""
+    data = _make_base_bytes()
+    data[4] = 0x0E  # SALT
+    data[29] = 0x08
+    data[37] = 0x35  # would be OFF_MANUAL on HOME — irrelevant on SALT
+
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.filtration_mode is None  # SALT: never set
+    assert device.filtration_pump_running is True  # unchanged: byte[29] bit 3 wins
+
+
+def test_filtration_pump_running_off_when_pump_actually_off() -> None:
+    """byte[29] = 0x00 (no pump running) + OFF_MANUAL → still False (no-op)."""
+    data = _make_home_bytes()
+    data[4] = 0x03
+    data[29] = 0x00
+    data[37] = 0x35
+
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.filtration_pump_running is False
 
 
 def test_home_alarm_bitmask_byte13() -> None:

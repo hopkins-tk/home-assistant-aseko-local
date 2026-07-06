@@ -36,6 +36,23 @@ class AsekoElectrolyzerDirection(Enum):
     WAITING = "waiting"
 
 
+class AsekoFiltrationMode(Enum):
+    """Enumeration of the 4 filtration schedule states.
+
+    Surfaced by the new `filtration_mode` sensor (Issue #133) and used
+    internally to override `filtration_pump_running` when the user has
+    manually switched the pump off on a HOME v7 device (firmware B).
+
+    Enum values map directly to the translation keys in
+    translations/{en,de,cs,fr}.json under entity.sensor.filtration_mode.state.
+    """
+
+    NONSTOP_24H = "nonstop_24h"
+    TIMER_PERIOD_1 = "timer_period_1"
+    TIMER_PERIOD_1_AND_2 = "timer_period_1_and_2"
+    OFF_MANUAL = "off_manual"
+
+
 class AsekoThirdPumpSlot:
     """Semantics of byte[37] differ by device type.
 
@@ -234,6 +251,23 @@ class AsekoDevice:
     # Filtration mode — byte [37]
     # True = nonstop 24 h (0x43), False = timer (0x53), None = transitional/unknown
     filtration_nonstop24: bool | None = None
+
+    # Filtration mode — 4-state enum (Issue #133).
+    # Decoded from byte[37] on HOME v7 devices. Two encodings exist:
+    #   Firmware A (serial 110128063, byte 4 = 0x02): high nibble 0x4 / 0x5
+    #     0x43 → NONSTOP_24H
+    #     0x53 → TIMER_PERIOD_1_AND_2 (cannot distinguish P1 vs P1&P2)
+    #     0x47 / 0x57 → transitional edit state, leave as None
+    #   Firmware B (serial 110169464, byte 4 = 0x03): high nibble 0x0 / 0x1 / 0x3
+    #     0x01 → NONSTOP_24H
+    #     0x11 → TIMER_PERIOD_1
+    #     0x31 → TIMER_PERIOD_1_AND_2
+    #     0x15 → OFF_MANUAL (P1 + manual override, bit 0x04 set)
+    #     0x35 → OFF_MANUAL (P1&P2 + manual override, bit 0x04 set)
+    # For SALT / OXY / PROFI the mode is derived from schedule bytes 56-63
+    # and the period-2 enable bit (byte[37] bit 0x20).
+    # NET is excluded — no filtration output (see Issue #66).
+    filtration_mode: AsekoFiltrationMode | None = None
 
     # Alarm/error bitmasks — bytes [12] (HOME dosing warnings) and [13]
     # byte [12] 0x20 = chlorine/disinfection dosing warning (HOME ✅, issue #134)

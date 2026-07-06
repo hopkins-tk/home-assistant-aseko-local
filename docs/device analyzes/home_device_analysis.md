@@ -225,23 +225,65 @@ As a downstream effect, `_fill_consumable_data` short-circuited `algicide_pump_r
 
 ---
 
-### Issue 4 ✅ Resolved — Filtration nonstop mode flag is byte[37]
+### Issue 4 ✅ Resolved — Filtration nonstop mode flag is byte[37] (firmware A)
 
 **Observation**: Aseko Live Config shows **FILTRATION NONSTOP 24H**. The decoder produces start1=08:00, stop1=16:00, start2=18:00, stop2=22:00 (12 h total — inconsistent with nonstop mode).
 
 **Context**: The frame was captured while the pool had an error (likely too little water). The filtration pump was stopped and byte[29] = 0x00, consistent with an active alarm suppressing normal operation.
 
-**Resolution (Issue #110)**: `byte[37]` encodes the filtration mode flag:
+**Resolution (Issue #110)**: `byte[37]` encodes the filtration mode flag on this firmware revision (firmware A, serial 110128063, byte 4 = 0x02):
 
 | byte[37] | Meaning |
 |---|---|
 | `0x43` | FILTRATION NONSTOP 24H active |
-| `0x53` | Timer mode active |
+| `0x53` | Timer mode active (P1 or P1&P2, indistinguishable) |
 | `0x47` / `0x57` | Transitional / edit state — leave as `None` |
 
 **⚠️ Note on the issue #110 evidence**: The diagnostics frame is from **2026-05-23 17:09** (after mannekung changed the filtration schedule to NONSTOP 24H on **2026-05-09**), but `byte[37]` still reads `0x53` (timer). The screenshot from the same user shows the "Suche" indicator (search mode) in the bottom-right corner, which may explain the mismatch — the device might be reporting a transient or special mode rather than the user-configured setting. **Until a frame is captured with a known NONSTOP 24H state and no special UI mode, treat `0x43` as "consistent with NONSTOP 24H" rather than "confirmed NONSTOP 24H active".**
 
 `filtration_nonstop24` is now decoded for **all device types** (HOME, SALT, OXY, NET). Non-HOME real-world values for byte[37] are never `0x43`/`0x53` (SALT uses it for algicide routing, OXY uses `0x03`, NET always `0xFF`), so `filtration_nonstop24` stays `None` for those devices today.
+
+**⚠️ Note on a second HOME v7 encoding (firmware B)**: [Issue #133](https://github.com/hopkins-tk/home-assistant-aseko-local/issues/133) (serial 110169464, byte 4 = 0x03) reports that a *different* HOME v7 firmware uses completely different byte 37 values. See Issue 6 below for the full encoding table and the implications for the `filtration_nonstop24` sensor.
+
+---
+
+### Issue 6 ✅ Resolved — Two HOME v7 firmware revisions use different byte 37 encodings
+
+**Observation**: [@dtpugh's report](https://github.com/hopkins-tk/home-assistant-aseko-local/issues/133) on a HOME REDOX (serial 110169464, byte 4 = 0x03) shows that the existing `_fill_filtration_mode` decoder cannot read byte 37 at all: every observed value falls through to `None`, so neither `filtration_nonstop24` nor any other filtration-mode entity appears. Cross-frame analysis of four captured frames (24h nonstop, P1 only, P1 & P2, OFF manual) shows that the new firmware uses a fundamentally different bit layout.
+
+**Comparison of HOME v7 byte 37 encodings**:
+
+| Mode              | Firmware A (this file) | Firmware B (Issue #133) |
+|-------------------|------------------------|-------------------------|
+| 24h nonstop       | `0x43` (`0b0100_0011`) | `0x01` (`0b0000_0001`) |
+| Timer (P1)        | `0x53` (`0b0101_0011`) | `0x11` (`0b0001_0001`) |
+| Timer (P1 & P2)   | `0x53` (indistinguishable) | `0x31` (`0b0011_0001`) |
+| OFF (manual)      | (not observed)         | `0x35` (`0b0011_0101`) |
+| Transitional      | `0x47` / `0x57`        | (not observed)          |
+
+The two encodings are **disjoint by high nibble** (firmware A: 0x4/0x5; firmware B: 0x0/0x1/0x3) and therefore distinguishable on a single byte, without resorting to the serial number.
+
+**Firmware B bit semantics** (consistent with the existing `FILTRATION_PERIOD2_ENABLED_MASK = 0x20`):
+
+| Bit  | Mask  | Meaning |
+|------|-------|---------|
+| 0    | 0x01  | Filtration present (always set when a filter is configured) |
+| 2    | 0x04  | Manual override active |
+| 4    | 0x10  | Period 1 enabled |
+| 5    | 0x20  | Period 2 enabled |
+
+Mode decoding:
+- **24h nonstop** ⇔ `(byte[37] & 0x30) == 0`
+- **Timer mode** ⇔ `(byte[37] & 0x30) != 0`
+- **Manual override** ⇔ `(byte[37] & 0x04) != 0`
+
+**Cross-validation against other device types**: the firmware B high-nibble range overlaps with values that SALT and OXY use for different purposes (SALT `0x37`/`0x13` for algicide routing, OXY `0x03` for pump presence). The new encoding is therefore **gated on `device_type == HOME`** in the decoder. SALT / OXY / NET / PROFI continue to leave `filtration_mode` as `None`.
+
+**Resolution**: replace the existing `_fill_filtration_mode` with a 6-line `if/elif` chain that handles both encodings on HOME only, and introduce a 4-state `AsekoFiltrationMode` enum (`NONSTOP_24H`, `TIMER_PERIOD_1`, `TIMER_PERIOD_1_AND_2`, `OFF_MANUAL`). A new `filtration_mode` sensor (device_class = `ENUM`, options = the 4 states) surfaces the full state to Home Assistant. The legacy `filtration_nonstop24` binary sensor is kept for backwards compatibility but its default visibility is flipped to `False` on HOME.
+
+**Behavioural fix for `filtration_pump_running`**: byte 29 bit 3 is set in **all four** firmware B frames — including the OFF frame — but the new `OFF_MANUAL` state carries the explicit user intent. In `_fill_consumable_data`, the decoder now short-circuits `filtration_pump_running` to `False` when `filtration_mode == OFF_MANUAL` (gated on HOME, so SALT/OXY/NET behaviour is unchanged). This addresses the user's secondary complaint that the pump state entity stays ON when the user has manually switched the pump off. The remaining open question is whether SALT devices have an analogous manual-override mechanism — no SALT OFF frame has been captured yet, so the short-circuit is intentionally HOME-only.
+
+**Full working notes**: see [docs/temp/Issue-133.md](../temp/Issue-133.md) for the complete frame diff (only 19 of 120 bytes change between the four modes), the cross-validation table, and the test plan.
 
 ---
 
@@ -300,11 +342,13 @@ if unit.device_type == AsekoDeviceType.HOME:
 | # | Status | Description |
 |---|--------|-------------|
 | 3 | Pending | `required_water_temperature` vs app "---" — need normal-operation frame (heating is disabled on this device; only a frame from a pool with heating enabled can confirm byte[55]) |
-| 4 | ✅ Resolved | Filtration NONSTOP 24H flag byte — confirmed as `byte[37] == 0x43` (Issue #110) |
+| 4 | ✅ Resolved | Filtration NONSTOP 24H flag byte — confirmed as `byte[37] == 0x43` (Issue #110, **firmware A**) |
 | 5 | ✅ Resolved | `flowrate_algicide` byte position — confirmed as `byte[103]` on HOME (Issue #115) |
-| 6 | New | `byte[29]` bit masks for HOME pumps remain **unconfirmed** — see §"Actuator byte[29] — HOME masks (uncertain)" above. The masks in `ACTUATOR_MASKS[HOME]` are placeholders matching OXY/NET. Capturing frames with a single HOME pump running (e.g. algicide only) would pin down the per-pump bit. Until then, both `algicide_pump_running` and `floc_pump_running` may report incorrectly on HOME when the corresponding pump is active. |
-| 7 | New | `max_filling_time` overlap with `flowrate_ph_minus` (both use byte[95]) — see note in Segment 3 below. If byte[94] ever becomes non-zero, `max_filling_time` is inflated. Only a frame with a non-zero byte[94] would prove or disprove the assumption. |
-| 8 | New | `heating_active` binary sensor (byte[29] bit 0x04) — added for [Issue #115](https://github.com/hopkins-tk/home-assistant-aseko-local/issues/115) "Entities for heating are not there" request. Mapping is the same as JS-DE-Tech's `relay_byte` bit 2. **Live confirmation pending** — needs a frame captured while the heat pump / electric heater is actually running. Currently it cannot be distinguished from the unconfirmed HOME pump-bit masks. |
+| 6 | ✅ Resolved | **Second HOME v7 byte 37 encoding (firmware B)** — see Issue 6 above. New `AsekoFiltrationMode` enum + `filtration_mode` enum sensor + manual-OFF short-circuit for `filtration_pump_running` (Issue #133). |
+| 7 | New | `byte[29]` bit masks for HOME pumps remain **unconfirmed** — see §"Actuator byte[29] — HOME masks (uncertain)" above. The masks in `ACTUATOR_MASKS[HOME]` are placeholders matching OXY/NET. Capturing frames with a single HOME pump running (e.g. algicide only) would pin down the per-pump bit. Until then, both `algicide_pump_running` and `floc_pump_running` may report incorrectly on HOME when the corresponding pump is active. |
+| 8 | New | `max_filling_time` overlap with `flowrate_ph_minus` (both use byte[95]) — see note in Segment 3 below. If byte[94] ever becomes non-zero, `max_filling_time` is inflated. Only a frame with a non-zero byte[94] would prove or disprove the assumption. |
+| 9 | New | `heating_active` binary sensor (byte[29] bit 0x04) — added for [Issue #115](https://github.com/hopkins-tk/home-assistant-aseko-local/issues/115) "Entities for heating are not there" request. Mapping is the same as JS-DE-Tech's `relay_byte` bit 2. **Live confirmation pending** — needs a frame captured while the heat pump / electric heater is actually running. Currently it cannot be distinguished from the unconfirmed HOME pump-bit masks. |
+| 10 | New | Bytes 31, 38, 65 in the firmware B OFF frame all rise by ~1 (0x00→0x02, 0x02→0x03, 0xa3→0xa4) — possible additional "manual override active" sub-flags, not used by the decoder today. Single observation, no meaning assigned. |
 
 ---
 
