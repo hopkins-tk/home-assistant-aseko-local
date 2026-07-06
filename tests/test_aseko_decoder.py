@@ -1211,49 +1211,45 @@ def test_water_level_decoded_for_oxy_and_salt() -> None:
         assert device.water_level_high_alarm == 15, f"byte[4]={device_byte:#x}"
 
 
-def test_filtration_nonstop24_none_for_non_home() -> None:
-    """filtration_nonstop24 is None for NET, OXY, SALT when byte[37] has non-mode values.
+def test_filtration_nonstop24_none_for_net() -> None:
+    """filtration_nonstop24 is None for NET only (no filtration output).
 
-    Real-world byte[37] values for these devices:
-      NET = 0xFF (always UNSPECIFIED)
-      OXY = 0x03 (third-pump config, not filtration flag)
-      SALT = 0xb7, 0xb3, 0x37, 0x13 (algicide/floc routing)
-    None of those are 0x43 (nonstop) or 0x53 (timer), so filtration_nonstop24 stays None.
+    Issue #133 follow-up: SALT / OXY / PROFI now also expose a filtration
+    mode. NET is the only AsekoDeviceType that has no filtration output
+    (Issue #66), so the legacy boolean stays None on NET.
     """
-    for device_byte, real_byte37 in (
-        (0x09, 0xFF),  # NET — 0xFF always
-        (0x05, 0x03),  # OXY — third-pump config byte
-        (0x0E, 0xB7),  # SALT — algicide routing
-    ):
-        data = _make_base_bytes()
-        data[4] = device_byte
-        data[37] = real_byte37
+    data = _make_base_bytes()
+    data[4] = 0x09  # NET
+    data[37] = 0xFF  # NET byte 37 is always unspecified
 
-        device = AsekoDecoder.decode(bytes(data))
-        assert device.filtration_nonstop24 is None, (
-            f"byte[4]={device_byte:#x}, byte[37]={real_byte37:#x}"
-        )
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.filtration_nonstop24 is None
 
 
 def test_filtration_nonstop24_decoded_for_all_device_types() -> None:
-    """filtration_nonstop24 is decoded for NET, OXY, SALT when byte[37] = 0x43/0x53.
+    """filtration_nonstop24 mirrors the new 4-state filtration_mode enum.
 
-    Issue #133: the per-device guard was re-introduced. NET, OXY and SALT
-    use byte[37] for entirely different purposes (algicide routing, pump
-    presence, UNSPECIFIED). On those devices the field stays None — only
-    HOME interprets byte[37] as a filtration mode flag.
+    For SALT / OXY / PROFI: the value is derived from the schedule bytes
+    56-63 (no schedule → NONSTOP_24H, otherwise timer with or without P2
+    depending on byte 37 bit 0x20 / start2 presence). With the base test
+    fixture (P1 + P2 schedule, byte 37 bit 0x20 set on SALT 0xb7 via
+    _make_base_bytes default), the legacy boolean reads False.
+
+    For NET: stays None (NET is excluded from FILTRATION_TYPES).
     """
-    for device_byte in (0x09, 0x05, 0x0E):  # NET, OXY, SALT
+    # NET: no filtration output → legacy boolean stays None
+    data = _make_base_bytes()
+    data[4] = 0x09  # NET
+    data[37] = 0xFF
+    assert AsekoDecoder.decode(bytes(data)).filtration_nonstop24 is None
+
+    # SALT / OXY / PROFI: with default schedule (P1 + P2), legacy bool = False
+    for device_byte in (0x0E, 0x05, 0x10):  # SALT, OXY, PROFI
         data = _make_base_bytes()
         data[4] = device_byte
-        data[37] = 0x43
-        assert AsekoDecoder.decode(bytes(data)).filtration_nonstop24 is None, (
-            f"byte[4]={device_byte:#x} (non-HOME: must stay None)"
-        )
-
-        data[37] = 0x53
-        assert AsekoDecoder.decode(bytes(data)).filtration_nonstop24 is None, (
-            f"byte[4]={device_byte:#x} (non-HOME: must stay None)"
+        # keep default schedule + byte[37]
+        assert AsekoDecoder.decode(bytes(data)).filtration_nonstop24 is False, (
+            f"byte[4]={device_byte:#x}"
         )
 
 
@@ -1367,28 +1363,70 @@ def test_filtration_mode_unspecified() -> None:
     assert device.filtration_nonstop24 is None
 
 
-def test_filtration_mode_none_for_non_home() -> None:
-    """filtration_mode stays None for NET, OXY, SALT, PROFI regardless of byte[37].
+def test_filtration_mode_none_for_net() -> None:
+    """filtration_mode stays None for NET — no filtration output (Issue #66).
 
-    These device types use byte[37] for different purposes:
-      SALT: algicide routing (bits 0x10/0x80), observed 0xb7/0xb3/0x37/0x13
-      OXY:  pump-presence bitmap, observed 0x03
-      NET:  always 0xFF
-    Gating on `device_type == HOME` is the only safe interpretation.
+    NET is the only AsekoDeviceType excluded from FILTRATION_TYPES, so the
+    decoder returns without setting filtration_mode. SALT, HOME, OXY and
+    PROFI all populate the field.
     """
-    for device_byte, real_byte37 in (
-        (0x09, 0xFF),  # NET
-        (0x05, 0x03),  # OXY
-        (0x0E, 0xB7),  # SALT
-        (0x10, 0x53),  # PROFI
-    ):
+    data = _make_base_bytes()
+    data[4] = 0x09  # NET CLF
+    data[37] = 0xFF  # NET byte 37 is always unspecified
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.device_type == AsekoDeviceType.NET
+    assert device.filtration_mode is None
+
+
+def test_filtration_mode_derived_for_salt_oxy_profi() -> None:
+    """For SALT / OXY / PROFI the mode is derived from the schedule bytes 56-63.
+
+    The base test fixture has start1 = 08:00 / stop1 = 10:00 / start2 = 14:00 /
+    stop2 = 16:00 (see _make_base_bytes). With both periods set, the derived
+    mode is TIMER_PERIOD_1_AND_2 regardless of the byte[37] value (SALT
+    0xb7, OXY 0x03, PROFI 0x53) — those bits are algicide routing / pump
+    presence / unknown, NOT filtration-mode flags.
+    """
+    for device_byte in (0x0E, 0x05, 0x10):  # SALT, OXY, PROFI
         data = _make_base_bytes()
         data[4] = device_byte
-        data[37] = real_byte37
+        # keep default schedule (08:00, 10:00, 14:00, 16:00) and byte[37]
         device = AsekoDecoder.decode(bytes(data))
-        assert device.filtration_mode is None, (
-            f"byte[4]={device_byte:#x}, byte[37]={real_byte37:#x}"
+        assert device.filtration_mode == AsekoFiltrationMode.TIMER_PERIOD_1_AND_2, (
+            f"byte[4]={device_byte:#x}"
         )
+
+
+def test_filtration_mode_salt_p1_only_when_period2_disabled() -> None:
+    """SALT with byte[37] bit 0x20 clear (period-2 disabled) → TIMER_PERIOD_1.
+
+    Mirrors test_decode_filtration_period2_disabled but checks the new
+    `filtration_mode` enum (not the legacy boolean).
+    """
+    data = _make_base_bytes()
+    data[4] = 0x0E  # SALT
+    data[60:64] = bytes([0xFF, 0xFF, 0xFF, 0xFF])  # no period 2 schedule
+    data[37] = 0x93  # bit 0x20 clear, period 2 disabled
+
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.filtration_mode == AsekoFiltrationMode.TIMER_PERIOD_1
+
+
+def test_filtration_mode_salt_nonstop_when_no_schedule() -> None:
+    """SALT with start1 = 0xFF (no schedule) → NONSTOP_24H.
+
+    Bytes 56-63 are read directly here (this test runs the decoder end-to-end
+    on a SALT fixture, and `_fill_filtration_mode` runs before the schedule
+    is decoded into `unit.start1`).
+    """
+    data = _make_base_bytes()
+    data[4] = 0x0E  # SALT
+    data[56:60] = bytes([0xFF, 0xFF, 0xFF, 0xFF])  # no period 1
+    data[60:64] = bytes([0xFF, 0xFF, 0xFF, 0xFF])  # no period 2
+    data[37] = 0xB7  # SALT algicide routing — irrelevant for mode derivation
+
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.filtration_mode == AsekoFiltrationMode.NONSTOP_24H
 
 
 def test_filtration_pump_running_off_when_manual_override() -> None:
@@ -1421,14 +1459,21 @@ def test_filtration_pump_running_on_when_not_override() -> None:
 
 
 def test_filtration_pump_running_not_overridden_on_salt() -> None:
-    """The OFF_MANUAL short-circuit is gated on HOME — SALT behaviour unchanged."""
+    """The OFF_MANUAL short-circuit is gated on HOME — SALT behaviour unchanged.
+
+    On SALT the override does not apply even if byte[37] is a value that
+    means OFF_MANUAL on HOME (0x35), because SALT uses byte[37] for
+    algicide routing and never reaches the OFF_MANUAL branch.
+    """
     data = _make_base_bytes()
     data[4] = 0x0E  # SALT
     data[29] = 0x08
     data[37] = 0x35  # would be OFF_MANUAL on HOME — irrelevant on SALT
 
     device = AsekoDecoder.decode(bytes(data))
-    assert device.filtration_mode is None  # SALT: never set
+    # SALT byte[37] does not encode OFF_MANUAL → mode is derived from
+    # the schedule (default base fixture: P1 + P2 → TIMER_PERIOD_1_AND_2).
+    assert device.filtration_mode == AsekoFiltrationMode.TIMER_PERIOD_1_AND_2
     assert device.filtration_pump_running is True  # unchanged: byte[29] bit 3 wins
 
 

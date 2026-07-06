@@ -8,6 +8,31 @@
 
 ---
 
+## Firmware Revisions
+
+Two HOME v7 firmware revisions are observed in the wild. They use **different
+byte 37 layouts** for the filtration mode flag but share every other byte
+position. The two revisions are referred to throughout this document as
+**Firmware A** and **Firmware B**:
+
+| | Firmware A | Firmware B |
+|---|---|---|
+| Serial (known) | 110128063 (`0x06906bbf`) | 110169464 (`0x06912578`) |
+| `byte[37]` mode values | high nibble `0x4` / `0x5` | high nibble `0x0` / `0x1` / `0x3` |
+| Known states | nonstop 24h, timer, transitional | nonstop 24h, P1, P1&P2, OFF manual, transitional |
+| Source | This file (Issue #110) | [Issue #133](../temp/Issue-133.md) |
+| Period 2 enable flag | bit 5 (`0x20`) — same as firmware B | bit 5 (`0x20`) |
+| Manual OFF signal | not present in captured frames | bit 2 (`0x04`) — see `byte[37]` table |
+
+The two revisions are **disjoint by high nibble of byte 37**, so a single
+byte check distinguishes them without resorting to the serial number.
+Where a fact in this document differs between the two revisions (only
+`byte[37]` today), both values are listed side by side in the
+*byte[37] — Filtration mode flag* table under "Device Specifications"
+below. All other byte positions are identical across A and B.
+
+---
+
 ## Raw Frame (120 bytes)
 
 The Aseko protocol sends 3×40-byte segments in a single TCP payload.
@@ -50,24 +75,13 @@ Seg3 (bytes 80–119): 06 90 6b bf  02 02  1a 04 1c 08 1b 07
 | 29      | `00`     | 0       | Actuator bits            | all pumps stopped    | STOP          | ✓      |
 | 30–31   | `ffff`   | —       | UNSPECIFIED / padding    | —                    | —             | —      |
 | 32–36   | `00…00`  | 0       | Unknown                  | —                    | —             | ?      |
-| 37      | `43`     | 67      | **Filtration mode flag** | see note §           | NONSTOP 24H    | ✓     |
+| 37      | `43`     | 67      | **Filtration mode flag (firmware A)** | see note §  | NONSTOP 24H    | ✓     |
 | 38      | `0a`     | 10      | Unknown                  | —                    | —             | ?      |
 | 39      | `85`     | 133     | Unknown (checksum?)      | —                    | —             | ?      |
 
 † pH 6.29 vs 6.56 and water temp 37.9 vs 38.2 are explained by different timestamps (frame: 08:27:07, screenshot: later that day). Not a decoding bug.
 
-§ **byte[37] = `0x43`**: This is the **HOME filtration mode flag** (see Issue 4). The value `0x43` here means *FILTRATION NONSTOP 24H* (also reported as such in the Aseko Live app on this device). HOME devices have **independent pump ports** for flocculant and algicide (same layout as OXY Pure), so the SALT-style "shared third-pump port" routing rule (bit 7 = algicide) does **not** apply. The HOME-specific flowrate branch (analogous to OXY) was added in commit 0e78e4d and now reads `byte[101] → flowrate_floc` and `byte[103] → flowrate_algicide` independently — see Bug 3 below.
-
-#### Actuator byte[29] — HOME masks (uncertain)
-
-| Bit   | Mask   | Field                  | Value (0x00) |
-|-------|--------|------------------------|-------------|
-| bit 3 | `0x08` | filtration_pump_running | False ✓     |
-| bit 6 | `0x40` | cl_pump_running        | False ✓     |
-| bit 7 | `0x80` | ph_minus_pump_running  | False ✓     |
-| bit 5 | `0x20` | algicide / floc running | False ✓    |
-
-All masks marked **uncertain** — confirmed only from their absence (byte[29]=0x00 when nothing is running). Need frames captured while individual pumps are active to confirm per-pump bits.
+§ **byte[37] = `0x43`**: HOME filtration mode flag, firmware A. The value `0x43` means *FILTRATION NONSTOP 24H* here. HOME devices have **independent pump ports** for flocculant and algicide (same layout as OXY Pure), so the SALT-style "shared third-pump port" routing rule (bit 7 = algicide) does **not** apply. The full encoding table (firmware A vs B) is in the *Device Specifications → byte[37]* section below.
 
 ---
 
@@ -81,24 +95,30 @@ All masks marked **uncertain** — confirmed only from their absence (byte[29]=0
 | 46–51   | `1a 04 1c 08 1b 07` | — | Timestamp (repeated)       | 2026-04-28 08:27:07 | —            | ✓      |
 | 52      | `46`     | 70      | required_ph (÷10)             | **7.0**        | 7.0               | ✓      |
 | 53      | `03`     | 3       | required_cl_free (÷10)        | **0.3 mg/l**   | 0.3               | ✓      |
-| 54      | `0a`     | 10      | required_floc                 | **10 ml/h** ✓  | 10 ml/h           | ✓ (fixed) |
-| 55      | `19`     | 25      | required_water_temperature    | 25°C ⚠️        | — (disabled)      | ⚠️     |
-| 56–57   | `08 00`  | —       | start1                        | 08:00          | NONSTOP 24H ⚠️    | ⚠️     |
-| 58–59   | `10 00`  | —       | stop1                         | 16:00          | NONSTOP 24H ⚠️    | ⚠️     |
-| 60–61   | `12 00`  | —       | start2                        | 18:00          | NONSTOP 24H ⚠️    | ⚠️     |
-| 62–63   | `16 00`  | —       | stop2                         | 22:00          | NONSTOP 24H ⚠️    | ⚠️     |
+| 54      | `0a`     | 10      | required_floc                 | **10 ml/h**    | 10 ml/h           | ✓      |
+| 55      | `19`     | 25      | required_water_temperature    | 25°C           | — (disabled)      | ⚠ Open Item 3 |
+| 56–57   | `08 00`  | —       | start1                        | 08:00          | last-configured   | ✓     |
+| 58–59   | `10 00`  | —       | stop1                         | 16:00          | last-configured   | ✓     |
+| 60–61   | `12 00`  | —       | start2                        | 18:00          | last-configured   | ✓     |
+| 62–63   | `16 00`  | —       | stop2                         | 22:00          | last-configured   | ✓     |
 | 64–65   | `027c`   | 636     | Unknown                       | —              | —                 | ?      |
 | 66–67   | `017b`   | 379     | Unknown (= water temp raw)    | —              | —                 | ?      |
 | 68      | `03`     | 3       | backwash_every_n_days         | **3 days**     | every 3 days      | ✓      |
 | 69–70   | `15 00`  | —       | backwash_time                 | **21:00**      | starts at 21:00   | ✓      |
 | 71      | `0c`     | 12      | backwash_duration (×10 s)     | **120 s = 2 min** | takes 02:00 min | ✓    |
-| 72      | `00`     | 0       | required_algicide             | **0 ml/m³/day** ✓ | 0 ml/m³/day    | ✓ (fixed) |
+| 72      | `00`     | 0       | required_algicide             | **0 ml/m³/day** | 0 ml/m³/day     | ✓      |
 | 73      | `28`     | 40      | Unknown                       | —              | —                 | ?      |
 | 74–75   | `01e0`   | 480     | delay_after_startup (s)       | **480 s = 8 min** | 8 min          | ✓      |
 | 76      | `2a`     | 42      | Unknown                       | —              | —                 | ?      |
 | 77      | `30`     | 48      | Unknown                       | —              | —                 | ?      |
 | 78      | `a0`     | 160     | Unknown                       | —              | —                 | ?      |
 | 79      | `d8`     | 216     | Unknown                       | —              | —                 | ?      |
+
+> **Schedule vs. mode flag**: bytes 56-63 always carry the last-configured
+> schedule (the unit does not clear them when switching to NONSTOP 24h). The
+> actual mode is reported separately in `byte[37]`. See the *byte[37]
+> — Filtration mode flag* section under "Device Specifications" below for the
+> two encodings.
 
 ---
 
@@ -156,8 +176,8 @@ Note on **bytes 94–95**: `max_filling_time` reads bytes[94:96] as a big-endian
 | required_cl_free          | 0.3 mg/l         | 0.3               | ✓     |
 | required_floc             | 10 ml/h          | 10 ml/h           | ✓ (fixed) |
 | required_algicide         | 0 ml/m³/day      | 0 ml/m³/day       | ✓ (fixed) |
-| required_water_temperature | 25°C            | --- (disabled)    | ⚠️ see Issue 3 |
-| Filtration schedule       | 08:00–16:00 / 18:00–22:00 | NONSTOP 24H | ✓ |
+| required_water_temperature | 25°C            | --- (disabled)    | ⚠ Open Item 3 |
+| Filtration schedule       | 08:00–16:00 / 18:00–22:00 (last-configured) | NONSTOP 24H | ✓ (mode from `byte[37]`, schedule bytes always present) |
 | backwash_every_n_days     | 3                | every 3 days      | ✓     |
 | backwash_time             | 21:00            | starts at 21:00   | ✓     |
 | backwash_duration         | 120 s            | 02:00 min         | ✓     |
@@ -171,184 +191,160 @@ Note on **bytes 94–95**: `max_filling_time` reads bytes[94:96] as a big-endian
 
 ---
 
-## Bugs Found
+## Device Specifications
 
-### Bug 1 (Fixed) — `required_floc` not decoded for HOME devices
+### Pump ports
 
-**Root cause**: `_fill_required_data` decodes byte[54] as either `required_floc` or `required_algicide` only when `masks.byte37_routes_pump_type is True`. For HOME devices `byte37_routes_pump_type = False` (correct — HOME has independent pump ports), so the entire byte[54] block was silently skipped.
+HOME has **4 independent pump ports** (same layout as OXY Pure), unlike SALT
+which has a shared third-pump port. There is no SALT-style algicide/flocculant
+routing via `byte[37]` bit 7.
 
-**Evidence**: byte[54] = `0x0a` = 10 → required_floc = 10 ml/h. Aseko Live Config confirms **Flocc: 10 ml/hour**.
+| Port  | Pump                | `flowrate_*` byte | `flowrate_*` value | `byte[29]` bit (uncertain) | `byte[29]` mask |
+|-------|---------------------|-------------------|--------------------|-----------------------------|-----------------|
+| 1     | pH− (Ph minus)      | `byte[95]`        | `flowrate_ph_minus`  | bit 7                       | `0x80`          |
+| 2     | Chlorine / OXY Pure | `byte[99]`        | `flowrate_chlor`     | bit 6                       | `0x40`          |
+| 3     | Flocculant          | `byte[101]`       | `flowrate_floc`      | bit 5                       | `0x20`          |
+| 4     | Algicide            | `byte[103]`       | `flowrate_algicide`  | bit 4 (PROFI/SALT) / bit 5 (HOME, shared) | `0x20` |
 
-**Fix applied** (`aseko_decoder.py`): Added a HOME-specific branch (parallel to OXY) that unconditionally decodes byte[54] as `required_floc`. Test: `test_decode_home_clf_real_frame`.
+> **Note on cl/oxy routing**: the chlorine pump port can be configured as
+> Chlorine OR OXY Pure (same physical port, same bit in `byte[29]`). The
+> routing byte is not yet confirmed from frames — see Open Item 7.
 
----
+### Setpoints
 
-### Bug 2 (Fixed) — `required_algicide` not decoded for HOME devices
+| Field                   | Byte(s)   | Unit             | Notes |
+|-------------------------|-----------|------------------|-------|
+| `required_ph`           | `byte[52]`| (raw ÷ 10)        |       |
+| `required_cl_free`      | `byte[53]`| mg/L (raw ÷ 10)   | HOME CLF variant only |
+| `required_redox`        | `byte[53]`| mV (raw × 10)     | HOME REDOX variant only |
+| `required_floc`         | `byte[54]`| ml/h              | Same byte position as SALT algicide; gated by `byte[37] != 0xFF` |
+| `required_algicide`     | `byte[72]`| ml/m³/day         | HOME-only, same byte position as OXY Pure |
+| `required_water_temperature` | `byte[55]` | °C            | Disabled on this device — see Open Item 3 |
 
-**Root cause**: Same as Bug 1 — the byte[54]/byte[72] routing block was skipped for HOME. HOME uses the same byte positions as OXY Pure.
+### Schedule (bytes 56-63)
 
-**Evidence**: Aseko Live Config shows **Algicide: 0 ml/m³/day**. Frame byte[72] = `0x00` = 0.
+| Field   | Byte(s)   | Decoded      | Notes |
+|---------|-----------|--------------|-------|
+| `start1` | `byte[56:58]` | HH:MM     | Gated on `FILTRATION_TYPES` (HOME in) |
+| `stop1`  | `byte[58:60]` | HH:MM     | Gated on `FILTRATION_TYPES` |
+| `start2` | `byte[60:62]` | HH:MM     | Gated on `FILTRATION_TYPES` AND `filtration2_enabled` |
+| `stop2`  | `byte[62:64]` | HH:MM     | Gated on `FILTRATION_TYPES` AND `filtration2_enabled` |
 
-**Fix applied** (`aseko_decoder.py`): The same HOME branch also decodes byte[72] as `required_algicide` (identical to OXY layout). Test: `test_decode_home_clf_real_frame`.
+### `byte[37]` — Filtration mode flag (two encodings observed)
 
----
+> See the **Firmware Revisions** section at the top of this document for
+> background on why two encodings exist. The two are **disjoint by high
+> nibble** of `byte[37]` and therefore distinguishable on a single byte.
+> Working notes for firmware B: [docs/temp/Issue-133.md](../temp/Issue-133.md).
 
-### Bug 3 (Fixed) — HOME `flowrate_algicide` and `algicide_pump_running` missing
+HOME v7 firmware comes in two revisions that use **disjoint** byte 37 layouts.
+Both revisions are confirmed live (firmware A: serial 110128063, byte 4 = 0x02;
+firmware B: serial 110169464, byte 4 = 0x03 — see [Issue #133](../temp/Issue-133.md)).
 
-**Root cause**: `_fill_flowrate_data` only had an OXY early-return and a SALT/NET/PROFI fallthrough. For HOME, the SALT fallthrough was used: it routed `byte[101]` exclusively to either `flowrate_algicide` (when `byte[37] & 0x80`) or `flowrate_floc` (otherwise). HOME devices have **independent** pump ports (same as OXY), so this routing is wrong on two counts:
-1. `byte[103]` (the HOME algicide flowrate) was never read.
-2. The `byte[37]` bit 7 has no meaning on HOME (no shared pump port).
+| Mode              | Firmware A | Firmware B | Binary (A / B)               |
+|-------------------|------------|------------|------------------------------|
+| 24h nonstop       | `0x43`     | `0x01`     | `0100_0011` / `0000_0001`    |
+| Timer (P1)        | `0x53`*    | `0x11`     | `0101_0011` / `0001_0001`    |
+| Timer (P1 & P2)   | `0x53`*    | `0x31`     | `0101_0011` / `0011_0001`    |
+| OFF (manual)      | (n/o)      | `0x35`     | — / `0011_0101`              |
+| Transitional      | `0x47` / `0x57` | (n/o) | `0100_0111` / `0101_0111` / — |
 
-As a downstream effect, `_fill_consumable_data` short-circuited `algicide_pump_running` because `flowrate_algicide is None`, so the `algicide_pump_running` binary sensor was never registered. This is the root cause of the [Issue #115](https://github.com/hopkins-tk/home-assistant-aseko-local/issues/115) report: *"no entity for Algacide pump running"*.
+\* Firmware A cannot distinguish P1-only from P1&P2 from `byte[37]` alone — both
+share the value `0x53`. The decoder uses the existing `FILTRATION_PERIOD2_ENABLED_MASK = 0x20`
+(bit 5) to separate them, treating `0x53` as P1&P2 by default. The actual distinction
+on firmware A comes from the per-period enable bit, not the mode flag.
 
-**Evidence**:
-- This frame (serial 110128063): `byte[101] = 0x0a = 10 ml/min` matches Aseko Live "Floc+c 10 ml/min". `byte[103] = 0x21 = 33` is the algicide pump capacity.
-- [Issue #110 frame](https://github.com/hopkins-tk/home-assistant-aseko-local/issues/110) (serial 110071590): `byte[103] = 0x0b = 11 ml/min` → Aseko Live "Algicide listed" (dose is 0, but the installed pump capacity is reported).
+(n/o = not observed in captured frames.)
 
-**Fix applied** (`aseko_decoder.py`): Added a HOME-specific early-return branch in `_fill_flowrate_data` (parallel to OXY), reading `byte[101] → flowrate_floc` and `byte[103] → flowrate_algicide` independently. The `byte[37]` value is ignored on HOME.
+**Firmware B bit semantics**:
 
-**Tests added** (in `tests/test_aseko_decoder.py`):
-- `test_decode_home_independent_flowrates` — verifies HOME reads byte[101]/byte[103] independently of byte[37] (tested with both `0x53` and `0xB3` to prove byte[37] is irrelevant on HOME).
-- `test_decode_home_flowrates_unspecified` — 0xFF on flowrate bytes → `None` (e.g. pump not installed).
-- `test_decode_home_algicide_pump_running` — covers Issue #115: `algicide_pump_running` binary sensor is now correctly registered.
-- `test_decode_home_floc_pump_running_independent` — verifies HOME reports `floc_pump_running` correctly when only floc pump is installed (byte[103] = 0xFF).
+| Bit  | Mask  | Meaning                                       |
+|------|-------|-----------------------------------------------|
+| 0    | `0x01`| Filtration present (always set)               |
+| 2    | `0x04`| Manual override active (user toggled OFF)     |
+| 4    | `0x10`| Period 1 enabled                              |
+| 5    | `0x20`| Period 2 enabled                              |
 
----
-
-### Issue 3 (Pending — low-water condition at capture time)
-
-**Observation**: byte[55] = `0x19` = 25 → decoded as 25°C. Aseko Live shows "---" for Water temp (disabled/not configured).
-
-**Context**: The frame was captured while Aseko Live was showing an error, most likely caused by insufficient water in the pool (evidenced by cl_free = 0 and filtration pump stopped). The device may report a placeholder/default value in certain fields during an error or standby state, which would explain the "---" in the app despite byte[55] being non-zero.
-
-**Action needed**: Request a new frame when the pool is running normally and compare byte[55] — if the water temperature control feature is enabled and active, the decoded value should match the app. Until then this issue remains unresolved.
-
----
-
-### Issue 4 ✅ Resolved — Filtration nonstop mode flag is byte[37] (firmware A)
-
-**Observation**: Aseko Live Config shows **FILTRATION NONSTOP 24H**. The decoder produces start1=08:00, stop1=16:00, start2=18:00, stop2=22:00 (12 h total — inconsistent with nonstop mode).
-
-**Context**: The frame was captured while the pool had an error (likely too little water). The filtration pump was stopped and byte[29] = 0x00, consistent with an active alarm suppressing normal operation.
-
-**Resolution (Issue #110)**: `byte[37]` encodes the filtration mode flag on this firmware revision (firmware A, serial 110128063, byte 4 = 0x02):
-
-| byte[37] | Meaning |
-|---|---|
-| `0x43` | FILTRATION NONSTOP 24H active |
-| `0x53` | Timer mode active (P1 or P1&P2, indistinguishable) |
-| `0x47` / `0x57` | Transitional / edit state — leave as `None` |
-
-**⚠️ Note on the issue #110 evidence**: The diagnostics frame is from **2026-05-23 17:09** (after mannekung changed the filtration schedule to NONSTOP 24H on **2026-05-09**), but `byte[37]` still reads `0x53` (timer). The screenshot from the same user shows the "Suche" indicator (search mode) in the bottom-right corner, which may explain the mismatch — the device might be reporting a transient or special mode rather than the user-configured setting. **Until a frame is captured with a known NONSTOP 24H state and no special UI mode, treat `0x43` as "consistent with NONSTOP 24H" rather than "confirmed NONSTOP 24H active".**
-
-`filtration_nonstop24` is now decoded for **all device types** (HOME, SALT, OXY, NET). Non-HOME real-world values for byte[37] are never `0x43`/`0x53` (SALT uses it for algicide routing, OXY uses `0x03`, NET always `0xFF`), so `filtration_nonstop24` stays `None` for those devices today.
-
-**⚠️ Note on a second HOME v7 encoding (firmware B)**: [Issue #133](https://github.com/hopkins-tk/home-assistant-aseko-local/issues/133) (serial 110169464, byte 4 = 0x03) reports that a *different* HOME v7 firmware uses completely different byte 37 values. See Issue 6 below for the full encoding table and the implications for the `filtration_nonstop24` sensor.
-
----
-
-### Issue 6 ✅ Resolved — Two HOME v7 firmware revisions use different byte 37 encodings
-
-**Observation**: [@dtpugh's report](https://github.com/hopkins-tk/home-assistant-aseko-local/issues/133) on a HOME REDOX (serial 110169464, byte 4 = 0x03) shows that the existing `_fill_filtration_mode` decoder cannot read byte 37 at all: every observed value falls through to `None`, so neither `filtration_nonstop24` nor any other filtration-mode entity appears. Cross-frame analysis of four captured frames (24h nonstop, P1 only, P1 & P2, OFF manual) shows that the new firmware uses a fundamentally different bit layout.
-
-**Comparison of HOME v7 byte 37 encodings**:
-
-| Mode              | Firmware A (this file) | Firmware B (Issue #133) |
-|-------------------|------------------------|-------------------------|
-| 24h nonstop       | `0x43` (`0b0100_0011`) | `0x01` (`0b0000_0001`) |
-| Timer (P1)        | `0x53` (`0b0101_0011`) | `0x11` (`0b0001_0001`) |
-| Timer (P1 & P2)   | `0x53` (indistinguishable) | `0x31` (`0b0011_0001`) |
-| OFF (manual)      | (not observed)         | `0x35` (`0b0011_0101`) |
-| Transitional      | `0x47` / `0x57`        | (not observed)          |
-
-The two encodings are **disjoint by high nibble** (firmware A: 0x4/0x5; firmware B: 0x0/0x1/0x3) and therefore distinguishable on a single byte, without resorting to the serial number.
-
-**Firmware B bit semantics** (consistent with the existing `FILTRATION_PERIOD2_ENABLED_MASK = 0x20`):
-
-| Bit  | Mask  | Meaning |
-|------|-------|---------|
-| 0    | 0x01  | Filtration present (always set when a filter is configured) |
-| 2    | 0x04  | Manual override active |
-| 4    | 0x10  | Period 1 enabled |
-| 5    | 0x20  | Period 2 enabled |
-
-Mode decoding:
+Mode decoding on firmware B:
 - **24h nonstop** ⇔ `(byte[37] & 0x30) == 0`
 - **Timer mode** ⇔ `(byte[37] & 0x30) != 0`
 - **Manual override** ⇔ `(byte[37] & 0x04) != 0`
 
-**Cross-validation against other device types**: the firmware B high-nibble range overlaps with values that SALT and OXY use for different purposes (SALT `0x37`/`0x13` for algicide routing, OXY `0x03` for pump presence). The new encoding is therefore **gated on `device_type == HOME`** in the decoder. SALT / OXY / NET / PROFI continue to leave `filtration_mode` as `None`.
+**Note on `0x43` (firmware A)**: treat this as "consistent with NONSTOP 24H" rather
+than "confirmed NONSTOP 24H active". A frame captured in May 2026 from
+mannekung's device (after switching to NONSTOP 24H) still showed `0x53` (timer)
+with the Aseko app in "Suche" (search) mode — see [Issue #110 frame
+discussion](https://github.com/hopkins-tk/home-assistant-aseko-local/issues/110).
 
-**Resolution**: replace the existing `_fill_filtration_mode` with a 6-line `if/elif` chain that handles both encodings on HOME only, and introduce a 4-state `AsekoFiltrationMode` enum (`NONSTOP_24H`, `TIMER_PERIOD_1`, `TIMER_PERIOD_1_AND_2`, `OFF_MANUAL`). A new `filtration_mode` sensor (device_class = `ENUM`, options = the 4 states) surfaces the full state to Home Assistant. The legacy `filtration_nonstop24` binary sensor is kept for backwards compatibility but its default visibility is flipped to `False` on HOME.
+**Note on `0x35` (firmware B, manual OFF)**: when this value appears, `byte[29]`
+bit 3 (`filtration_pump_running`) is still set in the frame — the firmware does
+not clear the schedule-driven bit on manual override. The decoder compensates
+by short-circuiting `filtration_pump_running` to `False` whenever
+`filtration_mode == OFF_MANUAL`. This is a HOME-only behaviour; no SALT/OXY/PROFI
+OFF frame has been captured yet.
 
-**Behavioural fix for `filtration_pump_running`**: byte 29 bit 3 is set in **all four** firmware B frames — including the OFF frame — but the new `OFF_MANUAL` state carries the explicit user intent. In `_fill_consumable_data`, the decoder now short-circuits `filtration_pump_running` to `False` when `filtration_mode == OFF_MANUAL` (gated on HOME, so SALT/OXY/NET behaviour is unchanged). This addresses the user's secondary complaint that the pump state entity stays ON when the user has manually switched the pump off. The remaining open question is whether SALT devices have an analogous manual-override mechanism — no SALT OFF frame has been captured yet, so the short-circuit is intentionally HOME-only.
+### `byte[29]` — Actuator bitmask (HOME)
 
-**Full working notes**: see [docs/temp/Issue-133.md](../temp/Issue-133.md) for the complete frame diff (only 19 of 120 bytes change between the four modes), the cross-validation table, and the test plan.
+Bit positions in `byte[29]` for HOME pump states. The masks in
+`ACTUATOR_MASKS[HOME]` are placeholders — they match OXY/NET but the per-pump
+bits for HOME-specific pumps (algicide, flocculant) are **not yet confirmed**
+by live capture (see Open Item 7).
+
+| Bit  | Mask  | Field                       | Confidence |
+|------|-------|-----------------------------|------------|
+| 0    | `0x01`| backwash valve relay        | ✓ confirmed (HOME/SALT/OXY all use this bit) |
+| 1    | `0x02`| water-filling active        | ✓ confirmed (NET/NOT-HOME, see Issue #100)    |
+| 2    | `0x04`| heating active              | ⚠ unconfirmed — see Open Item 9                |
+| 3    | `0x08`| filtration pump running     | ✓ confirmed (all FILTRATION_TYPES)            |
+| 4    | `0x10`| algicide pump running       | see Open Item 7        |
+| 5    | `0x20`| flocculant pump running     | see Open Item 7        |
+| 6    | `0x40`| cl pump running             | see Open Item 7        |
+| 7    | `0x80`| pH− pump running            | see Open Item 7        |
+
+### `byte[29]` vs `filtration_mode` (firmware B manual OFF)
+
+Cross-frame analysis of @dtpugh's four firmware B frames (24h nonstop, P1 only,
+P1 & P2, OFF manual) shows that `byte[29]` bit 3 stays set in **all four**
+frames — including the OFF frame. The override state lives in `byte[37]` bit 2
+(firmware B only, value `0x35`), not in `byte[29]`. The decoder compensates for
+this HOME-only behaviour in `_fill_consumable_data` (see `_fill_filtration_mode`
+in `aseko_decoder.py`).
 
 ---
-
-### Issue 5 ✅ Resolved — HOME `flowrate_algicide` is byte[103] (independent port)
-
-**Observation**: Aseko Live Consumption page shows **Algicide** as a tracked chemical. `flowrate_algicide` was `None` in the decoded output before the fix.
-
-**Resolution**: HOME devices use the same independent-pump-port layout as OXY Pure. The HOME-specific flowrate branch was added in `_fill_flowrate_data` (parallel to OXY), reading:
-- `byte[101] → flowrate_floc` (always)
-- `byte[103] → flowrate_algicide` (always)
-
-No `byte[37]` routing is involved on HOME.
-
-**Evidence**:
-- This frame (serial 110128063): `byte[101] = 0x0a = 10 ml/min` → matches Aseko Live "Floc+c 10 ml/min".
-- `byte[103] = 0x21 = 33` — confirmed in the [Issue #110 frame](https://github.com/hopkins-tk/home-assistant-aseko-local/issues/110) (serial 110071590, `byte[103] = 0x0b = 11`) that algicide uses byte[103] with the same ml/min unit. The non-zero value when `required_algicide = 0` suggests the controller still reports the *installed pump capacity* even when the dose is set to zero — similar to how the flocculant pump continues to report 10 ml/min when no flocculant is being dosed.
-
-**Side effect**: The `algicide_pump_running` binary sensor (which was always missing before the fix because `flowrate_algicide is None` short-circuited the assignment in `_fill_consumable_data`) is now correctly registered and reflects `byte[29] & 0x20`. This addresses the [Issue #115](https://github.com/hopkins-tk/home-assistant-aseko-local/issues/115) report "no entity for Algacide pump running".
-
----
-
-## Applied Fixes
-
-1. **`aseko_decoder.py` → `_fill_required_data`** — added HOME device branch (parallel to OXY, no early return so `required_cl_free` / `required_redox` are still decoded via the CLF branch):
-   - byte[54] → `required_floc` (ml/h)
-   - byte[72] → `required_algicide` (ml/m³/day)
-
-```python
-# HOME: has both CLF/REDOX setpoint at byte[53] AND independent floc/algicide setpoints.
-# Same byte layout as OXY Pure for these two fields (confirmed 2026-04-28, frame analysis).
-if unit.device_type == AsekoDeviceType.HOME:
-    unit.required_floc = AsekoDecoder._normalize_value(data[54], int)
-    unit.required_algicide = AsekoDecoder._normalize_value(data[72], int)
-    # Fall through to decode required_cl_free (byte[53]) via the CLF branch below.
-```
-
-2. **`aseko_decoder.py` → `_fill_flowrate_data`** — added HOME-specific branch (parallel to OXY, with early return so SALT routing logic is skipped). Reads `byte[101] → flowrate_floc` and `byte[103] → flowrate_algicide` independently. No `byte[37]` routing applies on HOME.
-
-```python
-if unit.device_type == AsekoDeviceType.HOME:
-    # HOME has independent pump ports for flocculant and algicide.
-    # Same layout as OXY Pure for these two flowrates.
-    unit.flowrate_chlor = AsekoDecoder._normalize_value(data[99], int)
-    unit.flowrate_floc = AsekoDecoder._normalize_value(data[101], int)
-    unit.flowrate_algicide = AsekoDecoder._normalize_value(data[103], int)
-    return
-```
-
-**Tests added** (in `tests/test_aseko_decoder.py`):
-- `test_decode_home_independent_flowrates` — verifies HOME reads byte[101]/byte[103] independently of byte[37].
-- `test_decode_home_flowrates_unspecified` — 0xFF on flowrate bytes → `None`.
-- `test_decode_home_algicide_pump_running` — covers [Issue #115](https://github.com/hopkins-tk/home-assistant-aseko-local/issues/115): the `algicide_pump_running` binary sensor is now correctly registered.
 
 ## Open Items
 
-| # | Status | Description |
-|---|--------|-------------|
-| 3 | Pending | `required_water_temperature` vs app "---" — need normal-operation frame (heating is disabled on this device; only a frame from a pool with heating enabled can confirm byte[55]) |
-| 4 | ✅ Resolved | Filtration NONSTOP 24H flag byte — confirmed as `byte[37] == 0x43` (Issue #110, **firmware A**) |
-| 5 | ✅ Resolved | `flowrate_algicide` byte position — confirmed as `byte[103]` on HOME (Issue #115) |
-| 6 | ✅ Resolved | **Second HOME v7 byte 37 encoding (firmware B)** — see Issue 6 above. New `AsekoFiltrationMode` enum + `filtration_mode` enum sensor + manual-OFF short-circuit for `filtration_pump_running` (Issue #133). |
-| 7 | New | `byte[29]` bit masks for HOME pumps remain **unconfirmed** — see §"Actuator byte[29] — HOME masks (uncertain)" above. The masks in `ACTUATOR_MASKS[HOME]` are placeholders matching OXY/NET. Capturing frames with a single HOME pump running (e.g. algicide only) would pin down the per-pump bit. Until then, both `algicide_pump_running` and `floc_pump_running` may report incorrectly on HOME when the corresponding pump is active. |
-| 8 | New | `max_filling_time` overlap with `flowrate_ph_minus` (both use byte[95]) — see note in Segment 3 below. If byte[94] ever becomes non-zero, `max_filling_time` is inflated. Only a frame with a non-zero byte[94] would prove or disprove the assumption. |
-| 9 | New | `heating_active` binary sensor (byte[29] bit 0x04) — added for [Issue #115](https://github.com/hopkins-tk/home-assistant-aseko-local/issues/115) "Entities for heating are not there" request. Mapping is the same as JS-DE-Tech's `relay_byte` bit 2. **Live confirmation pending** — needs a frame captured while the heat pump / electric heater is actually running. Currently it cannot be distinguished from the unconfirmed HOME pump-bit masks. |
-| 10 | New | Bytes 31, 38, 65 in the firmware B OFF frame all rise by ~1 (0x00→0x02, 0x02→0x03, 0xa3→0xa4) — possible additional "manual override active" sub-flags, not used by the decoder today. Single observation, no meaning assigned. |
+| # | Description |
+|---|-------------|
+| 3 | `required_water_temperature` vs app "---" — need a normal-operation frame from a pool with heating enabled to confirm `byte[55]` mapping. |
+| 7 | `byte[29]` per-pump bits for HOME (algicide, flocculant, cl, pH−) are unconfirmed. The masks in `ACTUATOR_MASKS[HOME]` are placeholders matching OXY/NET. Capturing frames with a single HOME pump running (e.g. algicide only) would pin down the per-pump bit. Until then, `algicide_pump_running` and `floc_pump_running` may report incorrectly on HOME. |
+| 8 | `max_filling_time` overlap with `flowrate_ph_minus` (both use `byte[95]`). If `byte[94]` ever becomes non-zero, `max_filling_time` is inflated. Only a frame with a non-zero `byte[94]` would prove or disprove the assumption. |
+| 9 | `heating_active` binary sensor (`byte[29]` bit `0x04`) — needs a frame captured while the heat pump / electric heater is actually running. Currently it cannot be distinguished from the unconfirmed HOME pump-bit masks (Open Item 7). |
+| 10 | Bytes 31, 38, 65 in the firmware B OFF frame all rise by ~1 (0x00→0x02, 0x02→0x03, 0xa3→0xa4) — possible additional "manual override active" sub-flags, not used by the decoder today. Single observation, no meaning assigned. |
+
+---
+
+## Test Coverage
+
+Tests for the HOME decoder live in `tests/test_aseko_decoder.py`:
+
+| Test | Covers |
+|------|--------|
+| `test_decode_home` | End-to-end HOME REDOX frame decoding, including schedule + max_filling_time |
+| `test_decode_home_clf_real_frame` | Issue #110: real HOME CLF frame with `max_filling_time = 60` |
+| `test_decode_home_independent_flowrates` | Issue #115: HOME reads `byte[101]` and `byte[103]` independently of `byte[37]` |
+| `test_decode_home_flowrates_unspecified` | 0xFF on flowrate bytes → `None` (pump not installed) |
+| `test_decode_home_algicide_pump_running` | Issue #115: `algicide_pump_running` binary sensor is registered |
+| `test_decode_home_floc_pump_running_independent` | HOME reports `floc_pump_running` correctly when only floc pump is installed |
+| `test_filtration_mode_new_encoding_24h` | Issue #133 firmware B: `byte[37]=0x01` → `NONSTOP_24H` |
+| `test_filtration_mode_new_encoding_p1` | Issue #133 firmware B: `byte[37]=0x11` → `TIMER_PERIOD_1` |
+| `test_filtration_mode_new_encoding_p1_and_p2` | Issue #133 firmware B: `byte[37]=0x31` → `TIMER_PERIOD_1_AND_2` |
+| `test_filtration_mode_new_encoding_off_manual` | Issue #133 firmware B: `byte[37]=0x35` → `OFF_MANUAL` |
+| `test_filtration_mode_old_encoding_24h` | Issue #110 firmware A: `byte[37]=0x43` → `NONSTOP_24H` |
+| `test_filtration_mode_old_encoding_timer` | Issue #110 firmware A: `byte[37]=0x53` → `TIMER_PERIOD_1_AND_2` |
+| `test_filtration_pump_running_off_when_manual_override` | Issue #133: `byte[37]=0x35` forces `filtration_pump_running=False` |
+| `test_filtration_pump_running_on_when_not_override` | Regression guard: `byte[29]&0x08` still drives the entity outside OFF_MANUAL |
+| `test_filtration_pump_running_not_overridden_on_salt` | Override short-circuit is HOME-only |
 
 ---
 
@@ -358,3 +354,7 @@ if unit.device_type == AsekoDeviceType.HOME:
 - Actuator masks: `custom_components/aseko_local/aseko_data.py` → `ACTUATOR_MASKS[AsekoDeviceType.HOME]`
 - OXY analysis (reference for shared byte layout): `docs/device analyzes/oxy_device_analysis.md`
 - NET v8 analysis: `docs/device analyzes/net_v8_device_analysis.md`
+- Issue #110: byte[37] firmware A (`0x43` = nonstop 24h) — original finding, frames in this file
+- Issue #115: HOME `algicide_pump_running` missing — fixed by independent-pump-port branch
+- Issue #133: byte[37] firmware B (4-state mode + manual OFF) — fixed by `_fill_filtration_mode` rewrite
+- Working notes: `docs/temp/Issue-133.md`

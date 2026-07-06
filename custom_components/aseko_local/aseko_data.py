@@ -253,20 +253,29 @@ class AsekoDevice:
     filtration_nonstop24: bool | None = None
 
     # Filtration mode — 4-state enum (Issue #133).
-    # Decoded from byte[37] on HOME v7 devices. Two encodings exist:
+    # Set for every device type in FILTRATION_TYPES = {SALT, HOME, OXY, PROFI}.
+    # NET is excluded — no filtration output (see Issue #66).
+    #
+    # HOME v7 devices encode the 4-state mode directly in byte[37] with two
+    # firmware variants:
     #   Firmware A (serial 110128063, byte 4 = 0x02): high nibble 0x4 / 0x5
     #     0x43 → NONSTOP_24H
     #     0x53 → TIMER_PERIOD_1_AND_2 (cannot distinguish P1 vs P1&P2)
-    #     0x47 / 0x57 → transitional edit state, leave as None
+    #     0x47 / 0x57 → leave as None (transitional edit state)
     #   Firmware B (serial 110169464, byte 4 = 0x03): high nibble 0x0 / 0x1 / 0x3
     #     0x01 → NONSTOP_24H
     #     0x11 → TIMER_PERIOD_1
     #     0x31 → TIMER_PERIOD_1_AND_2
     #     0x15 → OFF_MANUAL (P1 + manual override, bit 0x04 set)
     #     0x35 → OFF_MANUAL (P1&P2 + manual override, bit 0x04 set)
-    # For SALT / OXY / PROFI the mode is derived from schedule bytes 56-63
-    # and the period-2 enable bit (byte[37] bit 0x20).
-    # NET is excluded — no filtration output (see Issue #66).
+    #
+    # SALT / OXY / PROFI do not put a filtration mode flag in byte[37]
+    # (SALT: algicide/flocculant routing + dosage encoding; OXY: pump-
+    # presence bitmap; PROFI: no live frame captured). For those types
+    # the mode is derived from the schedule bytes 56-63 and the period-2
+    # enable bit (byte 37 bit 0x20, already covered by FILTRATION_PERIOD2_FLAG_TYPES).
+    # This guarantees that a single `filtration_mode` sensor shows the
+    # same 4 states on every filtration-capable device.
     filtration_mode: AsekoFiltrationMode | None = None
 
     # Alarm/error bitmasks — bytes [12] (HOME dosing warnings) and [13]

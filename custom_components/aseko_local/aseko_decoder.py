@@ -584,57 +584,79 @@ class AsekoDecoder:
 
     @staticmethod
     def _fill_filtration_mode(unit: AsekoDevice, data: bytes) -> None:
-        """Decode filtration mode from byte[37] into `filtration_mode` (enum).
+        """Decode filtration mode into `filtration_mode` (enum).
 
-        Two encodings are observed on HOME v7 devices (firmware-dependent).
-        For all other device types, byte[37] is used for different purposes
-        (SALT: algicide routing, OXY: pump-presence bitmap, NET: always 0xFF),
-        so the field stays None.
+        Runs for every device type in FILTRATION_TYPES = {SALT, HOME, OXY, PROFI}.
+        NET is excluded — it has no filtration output (see Issue #66).
 
-        Old encoding (home_device_analysis.md, serial 110128063, byte 4 = 0x02):
-          high nibble 0x4 / 0x5
-          0x43 = nonstop 24h
-          0x53 = timer
-          0x47 / 0x57 = transitional edit state — leave as None
-          Old encoding cannot distinguish P1 vs P1&P2 — we default to
-          TIMER_PERIOD_1_AND_2 (the period-2 bit 0x20 is set in the
-          observed 0x53 value).
+        HOME v7 devices encode the full 4-state mode in byte[37] with two
+        firmware variants (Issue #133):
 
-        New encoding (Issue #133, serial 110169464, byte 4 = 0x03):
-          high nibble 0x0 / 0x1 / 0x3
-          0x01 = nonstop 24h
-          0x11 = P1 only
-          0x31 = P1 & P2
-          0x35 = OFF (manual override) — bit 0x04 set
+          Old encoding (home_device_analysis.md, serial 110128063, byte 4 = 0x02):
+            high nibble 0x4 / 0x5
+            0x43 = nonstop 24h
+            0x53 = timer (P1 or P1&P2, indistinguishable)
+            0x47 / 0x57 = transitional edit state — leave as None
 
-        The legacy `filtration_nonstop24` boolean field is kept for backwards
-        compatibility and is derived from `filtration_mode` here.
+          New encoding (Issue #133, serial 110169464, byte 4 = 0x03):
+            high nibble 0x0 / 0x1 / 0x3
+            0x01 = nonstop 24h
+            0x11 = P1 only
+            0x31 = P1 & P2
+            0x35 = OFF (manual override) — bit 0x04 set
+
+        SALT / OXY / PROFI do not put a filtration mode flag in byte[37]
+        (SALT uses it for algicide/flocculant routing + dosage encoding,
+        OXY uses it for the pump-presence bitmap, PROFI has no live frame
+        captured yet). For those device types the mode is derived from
+        the schedule fields that are already decoded:
+
+          NONSTOP_24H           ⇔ start1 is None (no schedule)
+          TIMER_PERIOD_1        ⇔ start1 set, period-2 byte 0x20 clear
+          TIMER_PERIOD_1_AND_2  ⇔ start1 set, period-2 byte 0x20 set
+          OFF_MANUAL            ⇔ only HOME firmware B (0x35)
+
+        The legacy `filtration_nonstop24` boolean field is kept for
+        backwards compatibility and is derived from `filtration_mode` here.
         """
-        if unit.device_type != AsekoDeviceType.HOME:
-            return
-
-        b = data[37]
-        if b == UNSPECIFIED_VALUE:
+        if unit.device_type is None or unit.device_type not in FILTRATION_TYPES:
             return
 
         mode: AsekoFiltrationMode | None = None
-        # Old encoding: high nibble 0x4 / 0x5
-        if b == 0x43:
-            mode = AsekoFiltrationMode.NONSTOP_24H
-        elif b == 0x53:
-            mode = AsekoFiltrationMode.TIMER_PERIOD_1_AND_2
-        # 0x47 / 0x57 are documented as "transitional edit state" in
-        # home_device_analysis.md Issue 4 — leave as None.
-        # New encoding: high nibble 0x0 / 0x1 / 0x3
-        elif b == 0x01:
-            mode = AsekoFiltrationMode.NONSTOP_24H
-        elif b == 0x11:
-            mode = AsekoFiltrationMode.TIMER_PERIOD_1
-        elif b == 0x31:
-            mode = AsekoFiltrationMode.TIMER_PERIOD_1_AND_2
-        elif b == 0x35:
-            mode = AsekoFiltrationMode.OFF_MANUAL
-        # else: leave as None (transitional / unrecognised HOME value)
+        b = data[37]
+
+        if unit.device_type == AsekoDeviceType.HOME:
+            # HOME: byte[37] carries the mode flag (two firmware variants).
+            if b != UNSPECIFIED_VALUE:
+                if b == 0x43 or b == 0x01:
+                    mode = AsekoFiltrationMode.NONSTOP_24H
+                elif b == 0x53:
+                    mode = AsekoFiltrationMode.TIMER_PERIOD_1_AND_2
+                elif b == 0x11:
+                    mode = AsekoFiltrationMode.TIMER_PERIOD_1
+                elif b == 0x31:
+                    mode = AsekoFiltrationMode.TIMER_PERIOD_1_AND_2
+                elif b == 0x35:
+                    mode = AsekoFiltrationMode.OFF_MANUAL
+                # 0x47 / 0x57 are documented as "transitional edit state"
+                # in home_device_analysis.md Issue 4 — leave as None.
+        else:
+            # SALT / OXY / PROFI: byte[37] does not encode filtration mode.
+            # Derive from the raw schedule bytes 56-63 (read here directly
+            # because this function runs before the schedule is decoded into
+            # `unit.start1` / `unit.start2`).
+            p1_set = data[56] != UNSPECIFIED_VALUE and data[57] != UNSPECIFIED_VALUE
+            p2_set = data[60] != UNSPECIFIED_VALUE and data[61] != UNSPECIFIED_VALUE
+            if not p1_set:
+                # No period 1 schedule → device is in NONSTOP_24H mode
+                # (or filtration is not actually configured on PROFI).
+                mode = AsekoFiltrationMode.NONSTOP_24H
+            elif p2_set or bool(b & FILTRATION_PERIOD2_ENABLED_MASK):
+                # Period 2 enabled (per byte 37 bit 0x20) or period 2 times
+                # are present in bytes 60-63.
+                mode = AsekoFiltrationMode.TIMER_PERIOD_1_AND_2
+            else:
+                mode = AsekoFiltrationMode.TIMER_PERIOD_1
 
         if mode is None:
             return

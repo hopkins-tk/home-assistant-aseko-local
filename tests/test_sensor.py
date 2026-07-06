@@ -273,7 +273,8 @@ async def test_async_setup_salt_redox(hass) -> None:
     # + 2 new backwash schedule sensors (last_backwash, next_backwash)
     # + 1 new backwash_active binary sensor
     # + 1 new heating_active binary sensor
-    assert len(added_entities) == 38
+    # + 1 new filtration_mode sensor (Issue #133) — SALT has filtration
+    assert len(added_entities) == 40
     assert any(
         getattr(e.entity_description, "key", None) != "water_flow_to_probes"
         for e in added_entities
@@ -377,7 +378,8 @@ async def test_async_setup_salt_clf(hass) -> None:
     # + 2 new backwash schedule sensors (last_backwash, next_backwash)
     # + 1 new backwash_active binary sensor
     # + 1 new heating_active binary sensor
-    assert len(added_entities) == 39
+    # + 1 new filtration_mode sensor (Issue #133) — SALT has filtration
+    assert len(added_entities) == 41
     assert any(
         getattr(e.entity_description, "key", None) != "water_flow_to_probes"
         for e in added_entities
@@ -620,7 +622,10 @@ async def test_async_setup_profi_clf_redox(hass) -> None:
     # but no documented filling input), so max_filling_time is suppressed even
     # though bytes 94-95 carry a real value. -1 entity compared to the PR #120
     # baseline.
-    assert len(added_entities) == 41
+    #
+    # Issue #133: PROFI is in FILTRATION_TYPES, so the new filtration_mode
+    # sensor is now created. +1 entity compared to the PR #120 baseline.
+    assert len(added_entities) == 43
     assert any(
         getattr(e.entity_description, "key", None) == "free_chlorine"
         for e in added_entities
