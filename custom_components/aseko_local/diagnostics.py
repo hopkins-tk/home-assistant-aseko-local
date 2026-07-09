@@ -105,6 +105,7 @@ _BYTE_LABELS: dict[int, str] = {
 _V8_INS_LABELS: dict[int, str] = {
     0: "water_temperature_raw (÷10 = °C)",
     8: "water_flow_to_probes (1=flowing)",
+    12: "no_flow_alarm (bit 0x100 = active; SALT NET only)",
     13: "unknown",
     14: "unknown",
     15: "unknown",
@@ -120,11 +121,16 @@ _V8_AINS_LABELS: dict[int, str] = {
     3: "unknown",
     6: "redox (mV; -500=absent)",
     7: "unknown (tracks redox)",
+    8: "salinity × 10 (SALT/SALT NET; ÷10 = g/L)",
+    9: "algicide flow rate × 10 (SALT NET; best guess)",
+    10: "electrolyzer power × 10 (SALT/SALT NET; ÷10 = g/h or %)",
 }
 
 _V8_OUTS_LABELS: dict[int, str] = {
-    2: "filtration_pump_running (1=on)",
+    2: "filtration_pump_running (any non-zero = on; NET=1, SALT NET=2)",
     8: "ph_minus_pump_running (1=dosing)",
+    9: "cl_pump_running (1=dosing)",
+    15: "algicide_pump_running (SALT NET; any non-zero = on)",
 }
 
 _V8_AREQS_LABELS: dict[int, str] = {
@@ -144,11 +150,17 @@ _V8_AREQS_LABELS: dict[int, str] = {
     18: "delay_after_dose (min)",
     19: "unknown",
     21: "unknown",
-    25: "unknown",
+    25: "required_algicide (SALT NET; ml/m³/day) / unknown (NET)",
 }
 
 _V8_REQS_LABELS: dict[int, str] = {
-    7: "filtration_hours_per_day (unconfirmed)",
+    5: "unknown (always 8 on SALT NET, 0 on NET)",
+    7: "filtration_hours_per_day (unconfirmed; SALT NET=20, NET=24)",
+}
+
+_V8_FLAGS_LABELS: dict[int, str] = {
+    0: "constant 2 (NET and SALT NET)",
+    3: "no_flow_alarm (1 = active; SALT NET; matches ins[12] bit 0x100)",
 }
 
 _SECTION_RE = re.compile(r"(\w+):\s*(.*?)(?=\s+\w+:|$)", re.DOTALL)
@@ -211,6 +223,7 @@ def _parse_v8_frame(raw: bytes) -> dict[str, Any] | None:
         "outs": _V8_OUTS_LABELS,
         "areqs": _V8_AREQS_LABELS,
         "reqs": _V8_REQS_LABELS,
+        "flags": _V8_FLAGS_LABELS,
     }
     for match in _SECTION_RE.finditer(body):
         name = match.group(1)

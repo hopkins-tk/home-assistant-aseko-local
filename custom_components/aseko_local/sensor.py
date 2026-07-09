@@ -514,6 +514,21 @@ SENSORS: list[AsekoSensorEntityDescription] = [
         ),
     ),
     AsekoSensorEntityDescription(
+        key="filtration_mode",
+        translation_key="filtration_mode",
+        icon="mdi:pump",
+        device_class=SensorDeviceClass.ENUM,
+        options=[
+            "nonstop_24h",
+            "timer_period_1",
+            "timer_period_1_and_2",
+            "off_manual",
+        ],
+        value_fn=lambda device: (
+            device.filtration_mode.value if device.filtration_mode is not None else None
+        ),
+    ),
+    AsekoSensorEntityDescription(
         key="pool_volume",
         translation_key="pool_volume",
         native_unit_of_measurement=UnitOfVolume.CUBIC_METERS,

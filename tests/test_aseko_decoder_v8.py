@@ -4,6 +4,7 @@ import pytest
 
 from custom_components.aseko_local.aseko_data import (
     AsekoDeviceType,
+    AsekoFiltrationMode,
     AsekoProbeType,
 )
 from custom_components.aseko_local.aseko_decoder_v8 import AsekoV8Decoder
@@ -412,3 +413,311 @@ def test_both_pumps_independent():
     device = AsekoV8Decoder.decode(frame)
     assert device.ph_minus_pump_running is True
     assert device.cl_pump_running is True
+
+
+# ---------------------------------------------------------------------------
+# Issue #131 — ASIN AQUA Salt NET (v8 text frame, header type 100)
+# Reference frames captured by @mirovra (serial 110215844, July 2026).
+# Working notes: docs/temp/Issue-131-analyze.md
+# ---------------------------------------------------------------------------
+
+# F1: filtration ON, water flow YES, electrolysis 40.1, no dosing
+# Original diagnostic JSON: docs/temp/Issue-131.json
+SALT_NET_FRAME_F1 = (
+    b"{v1 110215844 100 0 31 "
+    b"ins: 323 -500 -500 -500 0 0 0 0 1 -500 -500 -500 0 24 6 29 10 28 0 "
+    b"ains: 752 752 716 7210 0 0 721 721 49 0 401 0 0 0 0 0 "
+    b"outs: 0 0 2 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 "
+    b"areqs: 74 72 4 0 5 33 33 0 0 0 33 33 33 0 55 255 255 5 5 10 0 15 0 0 0 3 "
+    b"reqs: 0 0 0 0 0 8 0 20 0 2 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 "
+    b"0 10 10 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 "
+    b"fncs: 0 0 1 0 0 0 10 0 "
+    b"mods: 2 0 0 1 0 0 0 0 "
+    b"flags: 2 0 0 0 0 0 0 0 "
+    b"crc16: 6142}\n"
+)
+
+# F2: filtration OFF, no flow to probes (no-flow alarm active)
+# docs/temp/Issue-131-scenario1-off.json
+SALT_NET_FRAME_F2 = (
+    b"{v1 110215844 100 0 31 "
+    b"ins: 290 -500 -500 -500 0 0 0 0 0 -500 -500 -500 256 24 6 30 21 49 0 "
+    b"ains: 733 733 673 6780 0 0 678 678 48 0 336 0 0 0 0 0 "
+    b"outs: 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 "
+    b"areqs: 74 72 4 0 5 33 33 0 0 0 33 33 33 0 55 255 255 5 5 10 0 15 0 0 0 3 "
+    b"reqs: 0 0 0 0 0 8 0 20 0 2 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 "
+    b"0 10 10 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 "
+    b"fncs: 0 0 1 0 0 0 10 0 "
+    b"mods: 2 0 0 1 0 0 0 0 "
+    b"flags: 2 0 0 1 0 0 0 0 "
+    b"crc16: 02F6}\n"
+)
+
+# F3: filtration ON, algicide pump running (best guess from §3.3 / §11)
+# docs/temp/Issue-131-scenario2-filtration.json
+SALT_NET_FRAME_F3 = (
+    b"{v1 110215844 100 0 31 "
+    b"ins: 319 -500 -500 -500 0 0 0 0 1 -500 -500 -500 0 24 6 30 16 48 0 "
+    b"ains: 739 739 715 7200 0 0 720 720 50 19 372 0 0 0 0 0 "
+    b"outs: 0 0 2 0 0 0 0 0 0 0 0 0 0 0 0 2 0 0 0 0 "
+    b"areqs: 74 72 4 0 5 33 33 0 0 0 33 33 33 0 55 255 255 5 5 10 0 15 0 0 0 3 "
+    b"reqs: 0 0 0 0 0 8 0 20 0 2 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 "
+    b"0 10 10 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 "
+    b"fncs: 0 0 1 0 0 0 10 0 "
+    b"mods: 2 0 0 1 0 0 0 0 "
+    b"flags: 2 0 0 0 0 0 0 0 "
+    b"crc16: E55D}\n"
+)
+
+
+@pytest.fixture
+def device_salt_net_f1():
+    return AsekoV8Decoder.decode(SALT_NET_FRAME_F1)
+
+
+@pytest.fixture
+def device_salt_net_f2():
+    return AsekoV8Decoder.decode(SALT_NET_FRAME_F2)
+
+
+@pytest.fixture
+def device_salt_net_f3():
+    return AsekoV8Decoder.decode(SALT_NET_FRAME_F3)
+
+
+# --- Identity & header ---
+
+
+def test_salt_net_device_type(device_salt_net_f1):
+    """Header type 100 must decode to AsekoDeviceType.SALT_NET."""
+    assert device_salt_net_f1.device_type == AsekoDeviceType.SALT_NET
+
+
+def test_salt_net_serial(device_salt_net_f1):
+    assert device_salt_net_f1.serial_number == 110215844
+
+
+# --- Common measurements (NET-compatible) ---
+
+
+def test_salt_net_water_temperature_f1(device_salt_net_f1):
+    assert device_salt_net_f1.water_temperature == pytest.approx(32.3)
+
+
+def test_salt_net_ph_f1(device_salt_net_f1):
+    assert device_salt_net_f1.ph == pytest.approx(7.52)
+
+
+def test_salt_net_redox_f1(device_salt_net_f1):
+    assert device_salt_net_f1.redox == 721
+
+
+def test_salt_net_water_flow_yes_f1(device_salt_net_f1):
+    assert device_salt_net_f1.water_flow_to_probes is True
+
+
+def test_salt_net_water_flow_no_f2(device_salt_net_f2):
+    """F2 has ins[8] = 0 (no flow) — water_flow_to_probes must be False."""
+    assert device_salt_net_f2.water_flow_to_probes is False
+
+
+def test_salt_net_pool_volume(device_salt_net_f1):
+    assert device_salt_net_f1.pool_volume == 55
+
+
+def test_salt_net_delay_after_startup_5min(device_salt_net_f1):
+    """SALT NET uses 5 min delay (NET v8 uses 2 min)."""
+    assert device_salt_net_f1.delay_after_startup == 5
+
+
+def test_salt_net_delay_after_dose_5min(device_salt_net_f1):
+    assert device_salt_net_f1.delay_after_dose == 5
+
+
+def test_salt_net_required_ph(device_salt_net_f1):
+    assert device_salt_net_f1.required_ph == pytest.approx(7.4)
+
+
+def test_salt_net_required_redox(device_salt_net_f1):
+    """areqs[1] = 72 → 72 × 10 = 720 mV."""
+    assert device_salt_net_f1.required_redox == 720
+
+
+# --- SALT-NET-specific measurements ---
+
+
+def test_salt_net_salinity_f1(device_salt_net_f1):
+    """ains[8] = 49 → 4.9 g/L."""
+    assert device_salt_net_f1.salinity == pytest.approx(4.9)
+
+
+def test_salt_net_salinity_f2(device_salt_net_f2):
+    """ains[8] = 48 → 4.8 g/L."""
+    assert device_salt_net_f2.salinity == pytest.approx(4.8)
+
+
+def test_salt_net_salinity_f3(device_salt_net_f3):
+    """ains[8] = 50 → 5.0 g/L."""
+    assert device_salt_net_f3.salinity == pytest.approx(5.0)
+
+
+def test_salt_net_electrolyzer_power_f1(device_salt_net_f1):
+    """ains[10] = 401 → 40.1 g/h (or %)."""
+    assert device_salt_net_f1.electrolyzer_power == pytest.approx(40.1)
+
+
+def test_salt_net_electrolyzer_power_f2(device_salt_net_f2):
+    """ains[10] = 336 → 33.6 g/h (or %)."""
+    assert device_salt_net_f2.electrolyzer_power == pytest.approx(33.6)
+
+
+def test_salt_net_electrolyzer_active_when_power_nonzero(device_salt_net_f1):
+    """electrolyzer_active derived from electrolyzer_power > 0."""
+    assert device_salt_net_f1.electrolyzer_active is True
+
+
+def test_salt_net_required_algicide(device_salt_net_f1):
+    """areqs[25] = 3 → 3 ml/m³/day (SALT NET only, NET v8 areqs is too short)."""
+    assert device_salt_net_f1.required_algicide == 3
+
+
+def test_salt_net_filtration_hours_per_day(device_salt_net_f1):
+    """reqs[7] = 20 → 20 h/day (probable, unconfirmed by user)."""
+    assert device_salt_net_f1.filtration_hours_per_day == 20
+
+
+# --- Pump states (SALT-NET-specific semantics) ---
+
+
+def test_salt_net_filtration_on_f1(device_salt_net_f1):
+    """outs[2] = 2 means 'filtration ON' on SALT NET (NET v8 uses 1)."""
+    assert device_salt_net_f1.filtration_pump_running is True
+
+
+def test_salt_net_filtration_off_f2(device_salt_net_f2):
+    """F2 has outs[2] = 0 → filtration off."""
+    assert device_salt_net_f2.filtration_pump_running is False
+
+
+def test_salt_net_algicide_off_f1(device_salt_net_f1):
+    """F1 has outs[15] = 0 → algicide pump off."""
+    assert device_salt_net_f1.algicide_pump_running is False
+
+
+def test_salt_net_algicide_on_f3(device_salt_net_f3):
+    """F3 has outs[15] = 2 → algicide pump on (best guess from §3.3)."""
+    assert device_salt_net_f3.algicide_pump_running is True
+
+
+def test_salt_net_algicide_flow_f3(device_salt_net_f3):
+    """F3 has ains[9] = 19 → 1.9 ml/min algicide flow (best guess)."""
+    assert device_salt_net_f3.flowrate_algicide == pytest.approx(1.9)
+
+
+def test_salt_net_algicide_flow_off_f1(device_salt_net_f1):
+    """F1 has ains[9] = 0 → algicide flow is 0.0 (not None, since 0 is not the -500 sentinel)."""
+    assert device_salt_net_f1.flowrate_algicide == 0.0
+
+
+# --- No-flow alarm dual encoding (Issue #131 §10) ---
+
+
+def test_salt_net_no_flow_alarm_clear_f1(device_salt_net_f1):
+    """F1: ins[12] = 0 → alarm not active.
+
+    Writes to the same AsekoDevice field as the v7 decoder — the binary
+    sensor in binary_sensor.py is protocol-agnostic. See
+    salt_net_v8_device_analysis.md §10 and the AsekoDevice
+    `alarm_no_flow_to_probes` docstring.
+    """
+    assert device_salt_net_f1.alarm_no_flow_to_probes is False
+
+
+def test_salt_net_no_flow_alarm_active_f2(device_salt_net_f2):
+    """F2: ins[12] = 256 (0x100) → alarm active."""
+    assert device_salt_net_f2.alarm_no_flow_to_probes is True
+
+
+def test_salt_net_no_flow_alarm_clear_f3(device_salt_net_f3):
+    """F3: ins[12] = 0 → alarm not active."""
+    assert device_salt_net_f3.alarm_no_flow_to_probes is False
+
+
+# --- Filtration mode derivation for SALT NET v8 (Issue #131 + #133) ---
+
+
+def test_salt_net_filtration_mode_off_f2(device_salt_net_f2):
+    """F2: outs[2] = 0 (filtration off) + reqs[7] = 20 → OFF_MANUAL.
+
+    The v8 frame does not carry a byte[37]-style mode flag, so the
+    decoder derives the mode from outs[2] and filtration_hours_per_day.
+    See salt_net_v8_device_analysis.md §6.2 and Issue #133.
+    """
+    assert device_salt_net_f2.filtration_mode == AsekoFiltrationMode.OFF_MANUAL
+
+
+def test_salt_net_filtration_mode_timer_f3(device_salt_net_f3):
+    """F3: outs[2] = 2 (filtration on) + reqs[7] = 20 (< 24) → TIMER_PERIOD_1.
+
+    The SALT NET v8 firmware does not expose a second filtration period
+    in the decoded sections, so the decoder cannot distinguish
+    TIMER_PERIOD_1 from TIMER_PERIOD_1_AND_2 — this matches the old
+    HOME v7 firmware A behaviour (see issue-133 §6.2 "Old encoding").
+    """
+    assert device_salt_net_f3.filtration_mode == AsekoFiltrationMode.TIMER_PERIOD_1
+
+
+def test_salt_net_filtration_mode_timer_f1(device_salt_net_f1):
+    """F1: outs[2] = 2 (filtration on) + reqs[7] = 20 (< 24) → TIMER_PERIOD_1.
+
+    F1 was captured during mirovra's "filtration on, no dosing" scenario.
+    The schedule is 20 h/day so this is TIMER_PERIOD_1, not NONSTOP_24H.
+    """
+    assert device_salt_net_f1.filtration_mode == AsekoFiltrationMode.TIMER_PERIOD_1
+
+
+def test_net_v8_filtration_mode_is_none(device_sep):
+    """NET v8 is not in FILTRATION_TYPES — filtration_mode stays None.
+
+    NET has no filtration output (Issue #66). The decoder must not
+    synthesize a mode for it.
+    """
+    assert device_sep.filtration_mode is None
+
+
+# --- Regression guards for NET v8 ---
+
+
+def test_net_v8_does_not_get_salt_net_specific_fields():
+    """A NET v8 frame should not get phantom SALT-NET-specific fields.
+
+    The SALT NET frame is a strict superset of NET v8, so the NET v8
+    frame's ains[8..15] are zero-padded (real value 0, not absent). The
+    decoder is gated on device_type == SALT_NET to avoid surfacing
+    phantom 0-value entities for `salinity`, `electrolyzer_power`,
+    `algicide_pump_running`, `flowrate_algicide`, `required_algicide`,
+    and `filtration_hours_per_day` on NET devices.
+    """
+    device = AsekoV8Decoder.decode(REFERENCE_FRAME)
+    assert device.device_type == AsekoDeviceType.NET
+    # ains[8..15] are all 0 on the NET v8 reference frame but the decoder
+    # is gated on device_type == SALT_NET, so all SALT-NET-specific
+    # fields stay None on NET.
+    assert device.salinity is None
+    assert device.electrolyzer_power is None
+    # electrolyzer_active is derived: power > 0 ⇒ False on NET (power is None)
+    assert device.electrolyzer_active is False
+    assert device.flowrate_algicide is None
+    assert device.algicide_pump_running is None
+    assert device.required_algicide is None
+    assert device.filtration_hours_per_day is None
+
+
+def test_net_v8_no_flow_alarm_default_false(device_sep):
+    """NET v8 with ins[12] = 0 → alarm_no_flow_to_probes = False (not None).
+
+    NET v8 frames have ins[12] = 0 in all known captures, so the alarm
+    field should be present and False, not None. Same field as v7
+    writes to (AsekoDevice.alarm_no_flow_to_probes).
+    """
+    assert device_sep.alarm_no_flow_to_probes is False

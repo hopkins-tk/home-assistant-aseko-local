@@ -15,6 +15,7 @@ class AsekoDeviceType(Enum):
     OXY = "ASIN AQUA Oxygen"
     PROFI = "ASIN AQUA Profi"
     SALT = "ASIN AQUA Salt"
+    SALT_NET = "ASIN AQUA Salt NET"
 
 
 class AsekoProbeType(Enum):
@@ -34,6 +35,23 @@ class AsekoElectrolyzerDirection(Enum):
     LEFT = "left"
     RIGHT = "right"
     WAITING = "waiting"
+
+
+class AsekoFiltrationMode(Enum):
+    """Enumeration of the 4 filtration schedule states.
+
+    Surfaced by the new `filtration_mode` sensor (Issue #133) and used
+    internally to override `filtration_pump_running` when the user has
+    manually switched the pump off on a HOME v7 device (firmware B).
+
+    Enum values map directly to the translation keys in
+    translations/{en,de,cs,fr}.json under entity.sensor.filtration_mode.state.
+    """
+
+    NONSTOP_24H = "nonstop_24h"
+    TIMER_PERIOD_1 = "timer_period_1"
+    TIMER_PERIOD_1_AND_2 = "timer_period_1_and_2"
+    OFF_MANUAL = "off_manual"
 
 
 class AsekoThirdPumpSlot:
@@ -66,7 +84,8 @@ class AsekoThirdPumpSlot:
 
 @dataclass(frozen=True)
 class AsekoActuatorMasks:
-    """Byte 29 bit masks for actuator state detection (pumps + electrolyzer), per device type."""
+    """Byte 29 bit masks for actuator state detection (pumps + electrolyzer), per device type.
+    Used only for V7 devices."""
 
     filtration: int = 0x00
     cl: int = 0x00
@@ -88,6 +107,7 @@ class AsekoActuatorMasks:
 
 
 ACTUATOR_MASKS: dict[AsekoDeviceType, AsekoActuatorMasks] = {
+    # Masks only for V7
     AsekoDeviceType.OXY: AsekoActuatorMasks(
         filtration=0x08,  # confirmed: all captured frames
         algicide=0x10,  # confirmed: 2026-04-11 Winnetoux log – byte[29] 0x08→0x18 at algicide pump on
@@ -113,6 +133,18 @@ ACTUATOR_MASKS: dict[AsekoDeviceType, AsekoActuatorMasks] = {
         electrolyzer_running=0x10,  # confirmed: 25 frames → 0x18=0x08|0x10 (PR #87)
         electrolyzer_running_right=0x10,  # confirmed: same dataset
         electrolyzer_running_left=0x50,  # tentative: Apr 2 single frame 0x58=0x08|0x10|0x40
+    ),
+    AsekoDeviceType.SALT_NET: AsekoActuatorMasks(
+        filtration=0x00,
+        cl=0x00,
+        ph_minus=0x00,
+        algicide=0x00,
+        flocculant=0x00,
+        oxy=0x00,
+        electrolyzer_running=0x00,
+        electrolyzer_running_right=0x00,
+        electrolyzer_running_left=0x00,
+        byte37_routes_pump_type=False,  # SALT NET has dedicated pump ports, no byte[37] routing
     ),
     AsekoDeviceType.HOME: AsekoActuatorMasks(
         filtration=0x08,  # uncertain
@@ -193,8 +225,13 @@ class AsekoDevice:
     )
 
     # algicide/flocculant based on byte 37: bit 0x80 set = algicide, 0 = flocculant, 0xFF = undefined
-    required_algicide: int | None = None  # byte 54
+    required_algicide: int | None = None  # byte 54 (v7 SALT) / areqs[24] (v8 SALT_NET)
     required_floc: int | None = None  # byte 54
+
+    # Filtration hours per day (best guess) — reqs[7] on v8 SALT NET
+    # (NET v8 also reports it at the same position, but typically 24 h).
+    # Unconfirmed by user. See docs/device analyzes/salt_net_v8_device_analysis.md §8.
+    filtration_hours_per_day: int | None = None
 
     required_water_temperature: int | None = None  # byte 55
 
@@ -235,13 +272,45 @@ class AsekoDevice:
     # True = nonstop 24 h (0x43), False = timer (0x53), None = transitional/unknown
     filtration_nonstop24: bool | None = None
 
-    # Alarm/error bitmask — byte [13]
-    # byte [12] is NOT an error byte (confirmed: NET frame shows 0x00 with active no-flow error)
-    alarm_ph_too_many_doses: bool | None = None  # byte [13] bit 0x01
-    alarm_orp_too_many_doses: bool | None = None  # byte [13] bit 0x02
-    alarm_no_flow_to_probes: bool | None = None  # byte [13] bit 0x04 (confirmed)
+    # Filtration mode — 4-state enum (Issue #133).
+    # Set for every device type in FILTRATION_TYPES = {SALT, HOME, OXY, PROFI,
+    # SALT_NET}. NET is excluded — no filtration output (see Issue #66).
+    #
+    # HOME v7 devices encode the 4-state mode directly in byte[37] with two
+    # firmware variants:
+    #   Firmware A (serial 110128063, byte 4 = 0x02): high nibble 0x4 / 0x5
+    #     0x43 → NONSTOP_24H
+    #     0x53 → TIMER_PERIOD_1_AND_2 (cannot distinguish P1 vs P1&P2)
+    #     0x47 / 0x57 → leave as None (transitional edit state)
+    #   Firmware B (serial 110169464, byte 4 = 0x03): high nibble 0x0 / 0x1 / 0x3
+    #     0x01 → NONSTOP_24H
+    #     0x11 → TIMER_PERIOD_1
+    #     0x31 → TIMER_PERIOD_1_AND_2
+    #     0x35 → OFF_MANUAL
+    #
+    # SALT / OXY / PROFI do not put a filtration mode flag in byte[37]
+    # (SALT: algicide/flocculant routing + dosage encoding; OXY: pump-
+    # presence bitmap; PROFI: no live frame captured). For those types
+    # the mode is derived from the schedule bytes 56-63 and the period-2
+    # enable bit (byte 37 bit 0x20, already covered by FILTRATION_PERIOD2_FLAG_TYPES).
+    # SALT_NET (v8) has no equivalent byte[37] mode flag; the decoder
+    # derives the mode from the schedule bytes and the period-2 enable
+    # bit. This guarantees that a single `filtration_mode` sensor shows
+    # the same 4 states on every filtration-capable device.
+    filtration_mode: AsekoFiltrationMode | None = None
+
+    # Filtration hours per day (best guess) — reqs[7] on v8 SALT NET
+    # (NET v8 also reports it at the same position, but typically 24 h).
+    # Unconfirmed by user. See docs/device analyzes/salt_net_v8_device_analysis.md §8.
+    filtration_hours_per_day: int | None = None
+
+    alarm_ph_too_many_doses: bool | None = None  # v7 byte [13] bit 0x01
+    alarm_orp_too_many_doses: bool | None = None  # v7 byte [13] bit 0x02
+    alarm_no_flow_to_probes: bool | None = (
+        None  # v7 byte [13] bit 0x04 | v8 ins[12] bit 0x100
+    )
     alarm_rapid_ph_change: bool | None = (
-        None  # byte [13] bit 0x08 (error_codes.md, unconfirmed by capture)
+        None  # v7 byte [13] bit 0x08 (error_codes.md, unconfirmed by capture)
     )
 
     delay_after_dose: int | None = None  # byte 107 & 108 ? (seconds)
