@@ -5,13 +5,15 @@ from typing import Type, TypeVar
 
 
 from .aseko_data import (
-    AsekoActuatorMasks,
     AsekoDevice,
     AsekoDeviceType,
     AsekoElectrolyzerDirection,
     AsekoProbeType,
-    AsekoThirdPumpSlot,
+)
+from .aseko_v7_helpers import (
     ACTUATOR_MASKS,
+    AsekoActuatorMasks,
+    AsekoThirdPumpSlot,
 )
 from .const import (
     FILTRATION_PERIOD2_ENABLED_MASK,
@@ -621,6 +623,99 @@ class AsekoDecoder:
             unit.oxy_pump_running = bool(data[29] & masks.oxy)
 
     @staticmethod
+    def _fill_installed_pumps(unit: AsekoDevice, data: bytes) -> None:
+        """Populate unit.installed_pumps from the v7 ACTUATOR_MASKS
+        and the flow-rate presence in the frame.
+
+        Single source of truth for "which dosing pumps does this device
+        physically have". Consumed by sensor.py to register consumption
+        entities and by the consumption tracker. The v8 decoder
+        populates the same field from the v8 capability map (see
+        aseko_v8_helpers.installed_pumps_from_fncs).
+
+        **Per-pump presence rules (matches the historic v7 entity-layer
+        logic in `PUMP_MASK_FIELD` / `PUMP_RUNNING_ATTR`):**
+          - **CL pump:** mask-based. If `ACTUATOR_MASKS[<device>].cl != 0`,
+            the device family has a CL pump slot. Presence is inferred
+            from the device type alone — the historic code did not
+            gate CL consumption on `flowrate_chlor`. NET, PROFI, and
+            HOME thus report CL consumption even when the wire frame
+            carries 0xFF at byte[99] (e.g. when the user has disabled
+            the chemical at the device).
+          - **pH− pump:** mask-based. Same rationale as CL: every v7
+            Aseko device has the pH− slot, the v7 entity layer did
+            not gate on `flowrate_ph_minus`, and the v7
+            `_fill_consumable_data` always sets
+            `ph_minus_pump_running = bool(data[29] & masks.ph_minus)`.
+          - **Algicide / Flocculant / OXY:** flowrate-based. These
+            chemicals have *configurable* presence (the user may
+            attach a pump or not), and the v7 wire format encodes
+            presence as a non-0xFF flow-rate byte. A device that does
+            not have algicide configured carries 0xFF in the algicide
+            flow-rate slot, and the v7 `_fill_consumable_data` leaves
+            `algicide_pump_running = None` in that case. The historic
+            PUMP_RUNNING_ATTR check then skipped the algicide
+            consumption entity.
+          - **SALT v7** has only one third-pump slot (algicide XOR
+            flocculant), routed by `byte[37] & 0x80`. The
+            `flowrate_algicide` / `flowrate_floc` are mutually
+            exclusive: the device populates exactly one of them per
+            `byte[37]` routing bit. We add only the configured
+            chemical to `installed_pumps`.
+
+        The v8 decoder uses a different (fncs-based) presence model
+        because the v8 wire format has no `byte[29]` actuator
+        bitmask and no per-pump flow-rate bytes — see
+        `aseko_v8_helpers.installed_pumps_from_fncs`.
+        """
+        if unit.device_type is None:
+            return
+        masks = ACTUATOR_MASKS.get(unit.device_type)
+        if masks is None:
+            return
+
+        pumps: set[str] = set()
+        if masks.cl:
+            # CL pump: mask-based (see docstring). Matches the
+            # historic v7 `PUMP_MASK_FIELD` logic that the test
+            # `test_async_setup_profi_clf_redox` and
+            # `test_async_setup_net_clf` were written against.
+            pumps.add("cl")
+        if masks.ph_minus:
+            # pH−: mask-based, same rationale. pH− is universal on
+            # every v7 Aseko device.
+            pumps.add("ph_minus")
+        # SALT (v7) shares the algicide/flocculant physical port and
+        # routes via byte[37] (AsekoThirdPumpSlot.SALT_ALGICIDE_ROUTING):
+        # the user configures ONE chemical on the port. We pick the
+        # right one based on (a) byte[37] routing and (b) the
+        # flow-rate presence. The flow-rate is the
+        # authoritative presence discriminator: if the device has
+        # the algicide chemical configured, `flowrate_algicide` is
+        # non-None; if it has flocculant configured, `flowrate_floc`
+        # is non-None.
+        if unit.device_type == AsekoDeviceType.SALT and data[37] != UNSPECIFIED_VALUE:
+            if bool(data[37] & AsekoThirdPumpSlot.SALT_ALGICIDE_ROUTING):
+                if unit.flowrate_algicide is not None:
+                    pumps.add("algicide")
+            else:
+                if unit.flowrate_floc is not None:
+                    pumps.add("floc")
+        else:
+            # OXY, HOME, PROFI: independent ports. Add both algicide
+            # and flocculant if the masks say so.
+            if masks.algicide and unit.flowrate_algicide is not None:
+                pumps.add("algicide")
+            if masks.flocculant and unit.flowrate_floc is not None:
+                pumps.add("floc")
+        if masks.oxy:
+            if unit.flowrate_oxy is not None:
+                pumps.add("oxy")
+        # ph_plus (byte 29 bit 7 for non-PROFI devices) is unmapped in
+        # ACTUATOR_MASKS — leave it out until the mapping is confirmed.
+        unit.installed_pumps = frozenset(pumps)
+
+    @staticmethod
     def decode(data: bytes) -> AsekoDevice:
         unit_type = AsekoDecoder._unit_type(data)
         probes = AsekoDecoder._configuration(data, unit_type)
@@ -695,6 +790,7 @@ class AsekoDecoder:
         # algicide/flocculant is determined by whether the flowrate byte is set (≠ 0xFF).
         AsekoDecoder._fill_flowrate_data(device, data)
         AsekoDecoder._fill_consumable_data(device, data)
+        AsekoDecoder._fill_installed_pumps(device, data)
         AsekoDecoder._fill_home_water_level_data(device, data)
         AsekoDecoder._fill_alarm_data(device, data)
         AsekoDecoder._fill_filtration_mode(device, data)

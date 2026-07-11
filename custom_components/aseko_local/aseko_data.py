@@ -1,4 +1,17 @@
-"""Data model for Aseko pool devices."""
+"""Data model for Aseko pool devices.
+
+This module defines the **protocol-agnostic target schema** (`AsekoDevice`)
+that the entity layer (sensors, binary sensors, buttons, …) consumes. It
+also defines the device-type enum, the probe-type enum, the electrolyser
+direction enum, and the filtration-mode enum.
+
+Decoder-specific byte-level knowledge (v7 `byte[29]` masks, v8 `fncs:`
+capability codes, byte[37] routing constants, etc.) lives in
+`aseko_v7_helpers.py` and `aseko_v8_helpers.py` next to the corresponding
+decoder. The v7 constants `AsekoActuatorMasks`, `ACTUATOR_MASKS`, and
+`AsekoThirdPumpSlot` are re-exported from `aseko_v7_helpers` at the bottom
+of this file for backwards compatibility with existing import sites.
+"""
 
 from dataclasses import dataclass, field, fields
 from datetime import datetime, time, timedelta
@@ -54,118 +67,32 @@ class AsekoFiltrationMode(Enum):
     OFF_MANUAL = "off_manual"
 
 
-class AsekoThirdPumpSlot:
-    """Semantics of byte[37] differ by device type.
-
-    SALT (shared physical port): routing indicator.
-        Bit 7 (0x80) set → algicide configured in the single port.
-        Bit 7 (0x80) clear → flocculant configured.
-        Confirmed by @hopkins-tk (SALT v7.x frames, 2025) and consistent with
-        @jmnemonicj (SALT v5.0, Issue #84) where 0x03 & 0x80 == 0 → flocculant.
-
-    OXY (two independent ports): suspected pump-presence bitmap.
-        Bit 0 (0x01) = flocculant pump module connected.  # unconfirmed hypothesis
-        Bit 1 (0x02) = algicide pump module connected.    # unconfirmed hypothesis
-        Observed 0x03 on Winnetoux's OXY (both pumps present). Requires a frame
-        with only one pump connected to confirm.
-        TODO: confirm OXY semantics with an asymmetric frame.
-
-    NET / PROFI / HOME: 0xFF (UNSPECIFIED) = no third-pump port, routing not applicable.
-    """
-
-    # SALT: bit 7 → algicide in the shared port; clear → flocculant
-    SALT_ALGICIDE_ROUTING: int = 0x80
-
-    # OXY: presence bits – which pump modules are physically connected.
-    # UNCONFIRMED: based solely on the single observed value 0x03 (both present).
-    OXY_FLOC_PRESENT: int = 0x01
-    OXY_ALGICIDE_PRESENT: int = 0x02
+# Canonical list of dosing-pump types that any Aseko device may carry.
+# Single source of truth: the consumption tracker (consumption_tracker.py)
+# and the sensor-registration code (sensor.py) both import this. The
+# `AsekoDevice.installed_pumps` field is a subset of this set, populated
+# by the decoder based on what the device actually has installed.
+INSTALLED_PUMPS: frozenset[str] = frozenset(
+    {"cl", "ph_minus", "ph_plus", "algicide", "floc", "oxy"}
+)
 
 
-@dataclass(frozen=True)
-class AsekoActuatorMasks:
-    """Byte 29 bit masks for actuator state detection (pumps + electrolyzer), per device type.
-    Used only for V7 devices."""
-
-    filtration: int = 0x00
-    cl: int = 0x00
-    ph_minus: int = 0x00
-    algicide: int = 0x00
-    flocculant: int = 0x00
-    oxy: int = 0x00  # unconfirmed – awaiting frame with OXY Pure pump active
-    electrolyzer_running: int = 0x00
-    electrolyzer_running_right: int = 0x00
-    electrolyzer_running_left: int = 0x00
-    # On devices with a single shared physical pump port (SALT and similar 2–3-pump
-    # units), byte[37] carries a routing indicator: bit 7 set → algicide setpoint;
-    # clear → flocculant setpoint (AsekoThirdPumpSlot.SALT_ALGICIDE_ROUTING).
-    # Devices with 4+ independent pump ports (OXY, HOME, PROFI) do NOT use this
-    # routing — algicide and flocculant have separate physical connections whose
-    # setpoint byte positions are not yet confirmed from frames.
-    # Set False for those devices so decode() skips the routing logic entirely.
-    byte37_routes_pump_type: bool = True
-
-
-ACTUATOR_MASKS: dict[AsekoDeviceType, AsekoActuatorMasks] = {
-    # Masks only for V7
-    AsekoDeviceType.OXY: AsekoActuatorMasks(
-        filtration=0x08,  # confirmed: all captured frames
-        algicide=0x10,  # confirmed: 2026-04-11 Winnetoux log – byte[29] 0x08→0x18 at algicide pump on
-        flocculant=0x20,  # confirmed: toggles exactly at 19:33:52 floc event
-        oxy=0x40,  # confirmed: 2026-04-11 Winnetoux log – byte[29] 0x08→0x48 at OXY pump on
-        ph_minus=0x80,  # confirmed: 2026-04-12 Winnetoux log – byte[29] 0x08→0x88 at pH− pump on
-        byte37_routes_pump_type=False,  # OXY byte[37] = pump-presence bitmap, not routing
-    ),
-    AsekoDeviceType.NET: AsekoActuatorMasks(
-        # Aqua NET has no filtration output — confirmed: Issue #66
-        cl=0x02,  # confirmed: Issue #66 (Aqua NET)
-        ph_minus=0x01,  # confirmed: Issue #66 (Aqua NET)
-    ),
-    AsekoDeviceType.SALT: AsekoActuatorMasks(
-        filtration=0x08,  # confirmed: April 4, 2026 – set in all active phases (PR #87)
-        ph_minus=0x80,  # unconfirmed – no frame captured with pH− pump running
-        # SALT third-pump slot: one physical pump, configured as algicide OR flocculant.
-        # Both chemicals use the same bit: byte[29] bit 5 (0x20) when running.
-        # Routing: byte[37] & 0x80 set = algicide; clear = flocculant.
-        # Confirmed by @hopkins-tk 2026-04-04: 27 algicide frames (no electrolyzer) → 0x28=0x08|0x20 (PR #87).
-        algicide=0x20,  # confirmed: 27 frames, PR #87
-        flocculant=0x20,  # confirmed: Apr 3 frames, same bit as algicide
-        electrolyzer_running=0x10,  # confirmed: 25 frames → 0x18=0x08|0x10 (PR #87)
-        electrolyzer_running_right=0x10,  # confirmed: same dataset
-        electrolyzer_running_left=0x50,  # tentative: Apr 2 single frame 0x58=0x08|0x10|0x40
-    ),
-    AsekoDeviceType.SALT_NET: AsekoActuatorMasks(
-        filtration=0x00,
-        cl=0x00,
-        ph_minus=0x00,
-        algicide=0x00,
-        flocculant=0x00,
-        oxy=0x00,
-        electrolyzer_running=0x00,
-        electrolyzer_running_right=0x00,
-        electrolyzer_running_left=0x00,
-        byte37_routes_pump_type=False,  # SALT NET has dedicated pump ports, no byte[37] routing
-    ),
-    AsekoDeviceType.HOME: AsekoActuatorMasks(
-        filtration=0x08,  # uncertain
-        # HOME "chlorine" pump port can be configured as Chlorine OR OXY Pure
-        # (same physical port, same bit in byte[29] – routing by an unknown byte).
-        # TODO: confirm which byte carries the cl/oxy routing and add oxy mask once known.
-        #       Waiting for a frame with OXY pump running from a HOME device.
-        cl=0x40,  # uncertain – assumed same bit for both cl and oxy variants
-        ph_minus=0x80,  # uncertain
-        algicide=0x20,  # uncertain
-        flocculant=0x20,  # uncertain
-        byte37_routes_pump_type=False,  # HOME has independent pump ports (cl/oxy, ph-, alg, floc)
-    ),
-    AsekoDeviceType.PROFI: AsekoActuatorMasks(
-        filtration=0x08,  # uncertain
-        cl=0x40,  # uncertain
-        ph_minus=0x80,  # uncertain
-        flocculant=0x20,  # uncertain
-        byte37_routes_pump_type=False,  # PROFI has 5 independent pump ports (cl, ph-, ph+, alg, floc)
-    ),
-}
+# ---------------------------------------------------------------------------
+# Re-exports for backwards compatibility
+# ---------------------------------------------------------------------------
+#
+# `AsekoActuatorMasks`, `ACTUATOR_MASKS`, and `AsekoThirdPumpSlot` are
+# **v7-decoder specific** (byte[29] bit masks, byte[37] routing
+# constants). They used to live in this module, but they belong in
+# `aseko_v7_helpers.py` next to the v7 decoder. We re-export them here
+# so existing import sites (`aseko_decoder.py`, `button.py`,
+# `sensor.py`, …) keep working without a global rename. New code
+# should import them from `aseko_v7_helpers` directly.
+from .aseko_v7_helpers import (  # noqa: E402, F401
+    ACTUATOR_MASKS,
+    AsekoActuatorMasks,
+    AsekoThirdPumpSlot,
+)
 
 
 @dataclass
@@ -174,6 +101,28 @@ class AsekoDevice:
 
     device_type: AsekoDeviceType | None = None  # byte 4-7?
     configuration: set[AsekoProbeType] = field(default_factory=set)
+
+    # Subset of INSTALLED_PUMPS that the decoder determined to be physically
+    # present on this device.
+    #
+    # **v7:** populated by the v7 decoder from `ACTUATOR_MASKS[<device_type>]`
+    # (mask-based for CL and pH−, flowrate-based for algicide/floc/oxy, with
+    # byte[37] routing for SALT's shared third-pump slot). Matches the
+    # historic v7 entity-layer logic in `PUMP_MASK_FIELD` / `PUMP_RUNNING_ATTR`
+    # so existing v7 test expectations (e.g. CL consumption entities on
+    # PROFI / NET even when `data[99] = 0xFF`) keep working.
+    #
+    # **v8:** populated by the v8 decoder from
+    # `aseko_v8_helpers.installed_pumps_from_fncs(fncs[2], fncs[6], …)` —
+    # the v8 wire format has no `byte[29]` actuator bitmask, so presence
+    # is derived from the `fncs:` section (SALT NET, NET v8) and a
+    # small per-(fncs[2], fncs[6]) pump-presence table.
+    #
+    # Consumed by the entity layer (sensor.py, button.py) to decide
+    # whether to register consumption / refill-reset entities. The
+    # consumption tracker (consumption_tracker.py) keys its counters
+    # on these same `pump_key` strings.
+    installed_pumps: frozenset[str] = field(default_factory=frozenset)
 
     serial_number: int | None = None  # byte 0 - 4
     timestamp: datetime | None = None  # byte 6 - 11

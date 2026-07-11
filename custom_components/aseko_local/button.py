@@ -9,10 +9,9 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import AsekoLocalConfigEntry
-from .aseko_data import AsekoDevice, ACTUATOR_MASKS
+from .aseko_data import AsekoDevice
 from .coordinator import AsekoLocalDataUpdateCoordinator
 from .entity import AsekoLocalEntity
-from .sensor import PUMP_MASK_FIELD, PUMP_RUNNING_ATTR
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -93,18 +92,12 @@ def _build_button_entities(
     entities: list[ButtonEntity] = []
 
     for device in devices:
-        device_masks = (
-            ACTUATOR_MASKS.get(device.device_type) if device.device_type else None
-        )
         for description in RESET_BUTTONS:
-            mask_field = PUMP_MASK_FIELD[description.pump_key]
-            if mask_field is None:
-                continue  # pump byte position not yet confirmed (e.g. ph_plus)
-            if device_masks is None or getattr(device_masks, mask_field, 0) == 0:
-                continue  # pump not configured for this device type
-            running_attr = PUMP_RUNNING_ATTR.get(description.pump_key)
-            if running_attr and getattr(device, running_attr, None) is None:
-                continue  # decoder determined pump absent on this specific unit
+            # Single source of truth: AsekoDevice.installed_pumps
+            # (populated by the v7 decoder from ACTUATOR_MASKS or by
+            # the v8 decoder from installed_pumps_from_fncs).
+            if description.pump_key not in device.installed_pumps:
+                continue
             entities.append(AsekoResetButtonEntity(device, coordinator, description))
 
     return entities

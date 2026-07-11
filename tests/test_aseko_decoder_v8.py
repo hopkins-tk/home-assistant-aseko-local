@@ -272,11 +272,13 @@ def test_pool_volume(device_sep):
 
 
 def test_delay_after_startup(device_sep):
-    assert device_sep.delay_after_startup == 2
+    """NET v8 areqs[17] = 2 min → 2 * 60 = 120 s (matches v7 byte 74:75 unit)."""
+    assert device_sep.delay_after_startup == 120
 
 
 def test_delay_after_dose(device_sep):
-    assert device_sep.delay_after_dose == 2
+    """NET v8 areqs[18] = 2 min → 2 * 60 = 120 s (matches v7 byte 106:107 unit)."""
+    assert device_sep.delay_after_dose == 120
 
 
 # ---------------------------------------------------------------------------
@@ -377,6 +379,7 @@ def test_cl_pump_running_true_when_outs9_set():
         b"ins: 214 -500 -500 -500 0 0 0 0 1 -500 -500 -500 0 25 1 30 18 23 0 "
         b"ains: 740 688 734 7390 0 0 739 739 0 0 0 0 0 0 0 0 "
         b"outs: 0 0 1 0 0 0 0 0 0 1 0 0 0 0 0 0 0 0 0 "
+        b"fncs: 0 0 3 0 0 0 2 0 "
         b"areqs: 74 74 4 5 0 36 36 0 0 0 6 0 36 0 45 0 255 2 2 10 0 15 0 0 0 0 "
         b"crc16: 0000}\n"
     )
@@ -392,6 +395,7 @@ def test_ph_minus_pump_running_true_when_outs8_set():
         b"ins: 183 -500 -500 -500 0 0 0 0 1 -500 -500 -500 0 25 1 27 2 14 0 "
         b"ains: 741 689 789 7940 0 0 794 794 0 0 0 0 0 0 0 0 "
         b"outs: 0 0 1 0 0 0 0 0 1 0 0 0 0 0 0 0 0 0 0 "
+        b"fncs: 0 0 3 0 0 0 2 0 "
         b"areqs: 74 74 4 5 0 36 36 0 0 0 6 0 36 0 45 0 255 2 2 10 0 15 0 0 0 0 "
         b"crc16: 0000}\n"
     )
@@ -407,12 +411,113 @@ def test_both_pumps_independent():
         b"ins: 200 -500 -500 -500 0 0 0 0 1 -500 -500 -500 0 25 1 27 12 0 0 "
         b"ains: 740 688 789 7940 0 0 794 794 0 0 0 0 0 0 0 0 "
         b"outs: 0 0 1 0 0 0 0 0 1 1 0 0 0 0 0 0 0 0 0 "
+        b"fncs: 0 0 3 0 0 0 2 0 "
         b"areqs: 74 74 4 5 0 36 36 0 0 0 6 0 36 0 45 0 255 2 2 10 0 15 0 0 0 0 "
         b"crc16: 0000}\n"
     )
     device = AsekoV8Decoder.decode(frame)
     assert device.ph_minus_pump_running is True
     assert device.cl_pump_running is True
+
+
+# ---------------------------------------------------------------------------
+# fncs[2] capability gating — see salt_net_v8_device_analysis.md §11.5
+# ---------------------------------------------------------------------------
+
+
+def test_salt_net_cl_pump_absent(device_salt_net_f1):
+    """SALT NET (fncs[2] = 1) must have cl_pump_running = None, not False.
+
+    With the new fncs[2] gate, a SALT NET device no longer exposes a
+    permanently-False "CL pump running" binary sensor. The pump is
+    treated as physically absent (None) so the entity layer can
+    suppress the entity entirely.
+    """
+    assert device_salt_net_f1.cl_pump_running is None
+
+
+def test_salt_net_ph_plus_pump_absent(device_salt_net_f1):
+    """pH+ pump is not present on any v8 device captured so far."""
+    assert device_salt_net_f1.ph_plus_pump_running is None
+
+
+def test_salt_net_floc_pump_absent(device_salt_net_f1):
+    """Flocculant pump is not present on any v8 device captured so far.
+
+    SALT NET has algicide on a dedicated physical port, not flocculant.
+    """
+    assert device_salt_net_f1.floc_pump_running is None
+
+
+def test_salt_net_oxy_pump_absent(device_salt_net_f1):
+    """OXY pump is not present on any v8 device captured so far."""
+    assert device_salt_net_f1.oxy_pump_running is None
+
+
+def test_salt_net_ignores_outs9_when_fncs2_is_1():
+    """SALT NET (fncs[2] = 1) must ignore outs[9] entirely.
+
+    Even if a malformed SALT NET frame happened to carry a non-zero
+    outs[9], the fncs[2] gate means the decoder will still return None
+    for cl_pump_running. The CL pump is structurally absent.
+    """
+    frame = (
+        b"{v1 110215844 100 0 31 "
+        b"ins: 323 -500 -500 -500 0 0 0 0 1 -500 -500 -500 0 24 6 29 10 28 0 "
+        b"ains: 752 752 716 7210 0 0 721 721 49 0 401 0 0 0 0 0 "
+        b"outs: 0 0 2 0 0 0 0 0 0 1 0 0 0 0 0 0 0 0 0 "
+        b"areqs: 74 72 4 0 5 33 33 0 0 0 33 33 33 0 55 255 255 5 5 10 0 15 0 0 0 3 "
+        b"reqs: 0 0 0 0 0 8 0 20 0 2 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 "
+        b"0 10 10 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 "
+        b"fncs: 0 0 1 0 0 0 10 0 "
+        b"mods: 2 0 0 1 0 0 0 0 "
+        b"flags: 2 0 0 0 0 0 0 0 "
+        b"crc16: 0000}\n"
+    )
+    device = AsekoV8Decoder.decode(frame)
+    assert device.device_type == AsekoDeviceType.SALT_NET
+    # outs[9] = 1, but fncs[2] = 1 → CL pump is structurally absent
+    assert device.cl_pump_running is None
+
+
+def test_v8_frame_without_fncs_section_does_not_crash():
+    """Frames without a `fncs:` section must not crash.
+
+    With no `fncs:` section, `fncs2` is None. Per the Aseko SALT NET
+    documentation (Issue #131), pH− is the *universal* first pump on
+    every Aseko device — it is NOT gated on `fncs[2]`. The capability
+    gate in `installed_pumps_from_fncs` therefore returns
+    `frozenset({"ph_minus"})` as a safe lower bound: we know pH− is
+    there, but we cannot determine any other pump from the missing
+    `fncs:` section. The other per-pump `*_pump_running` fields stay
+    None (the conservative "unknown" answer; the entity layer treats
+    None as "pump not present"). `filtration_pump_running` is the one
+    exception because its presence is determined by the schedule
+    bytes (start1, etc.), not by `fncs[2]`.
+    """
+    frame = (
+        b"{v1 999999999 804 0 27 "
+        b"ins: 200 -500 -500 -500 0 0 0 0 1 -500 -500 -500 0 25 1 27 12 0 0 "
+        b"ains: 740 688 789 7940 0 0 794 794 0 0 0 0 0 0 0 0 "
+        b"outs: 0 0 1 0 0 0 0 0 0 1 0 0 0 0 0 0 0 0 0 "
+        b"areqs: 74 74 4 5 0 36 36 0 0 0 6 0 36 0 45 0 255 2 2 10 0 15 0 0 0 0 "
+        b"crc16: 0000}\n"
+    )
+    device = AsekoV8Decoder.decode(frame)
+    # No `fncs:` → installed_pumps is exactly {"ph_minus"} (universal pH−).
+    # All other per-pump *_pump_running fields are None ("unknown", not "off").
+    assert device.installed_pumps == frozenset({"ph_minus"})
+    # pH− pump is universally present, so its outs[8] read goes through.
+    # In this fixture outs[8] = 0 → pH− pump is off (False, not None).
+    assert device.ph_minus_pump_running is False
+    assert device.cl_pump_running is None
+    assert device.ph_plus_pump_running is None
+    assert device.floc_pump_running is None
+    assert device.oxy_pump_running is None
+    assert device.algicide_pump_running is None
+    # Filtration is gated only by the schedule bytes (start1), not by
+    # `fncs[2]` — outs[2] = 1 → filtration pump is on.
+    assert device.filtration_pump_running is True
 
 
 # ---------------------------------------------------------------------------
@@ -526,12 +631,19 @@ def test_salt_net_pool_volume(device_salt_net_f1):
 
 
 def test_salt_net_delay_after_startup_5min(device_salt_net_f1):
-    """SALT NET uses 5 min delay (NET v8 uses 2 min)."""
-    assert device_salt_net_f1.delay_after_startup == 5
+    """SALT NET uses 5 min delay (NET v8 uses 2 min).
+
+    v8 firmware reports areqs[17]/areqs[18] in MINUTES; the decoder
+    multiplies by 60 to keep `AsekoDevice.delay_*` in seconds (matching
+    the v7 byte 74:75 / 106:107 unit and the `UnitOfTime.SECONDS` sensor).
+    5 min × 60 = 300 s.
+    """
+    assert device_salt_net_f1.delay_after_startup == 300
 
 
 def test_salt_net_delay_after_dose_5min(device_salt_net_f1):
-    assert device_salt_net_f1.delay_after_dose == 5
+    """SALT NET delay_after_dose: 5 min × 60 = 300 s."""
+    assert device_salt_net_f1.delay_after_dose == 300
 
 
 def test_salt_net_required_ph(device_salt_net_f1):

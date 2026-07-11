@@ -12,6 +12,11 @@ from .aseko_data import (
     AsekoFiltrationMode,
     AsekoProbeType,
 )
+from .aseko_v8_helpers import (
+    AsekoV8_CAPABILITY_FLAGS,
+    V8_DEFAULT_PUMP_FLOWRATE_ML_MIN,
+    installed_pumps_from_fncs,
+)
 from .const import UNSPECIFIED_V8
 
 _LOGGER = logging.getLogger(__name__)
@@ -113,6 +118,7 @@ class AsekoV8Decoder:
         outs = sections.get("outs", [])
         areqs = sections.get("areqs", [])
         reqs = sections.get("reqs", [])
+        fncs = sections.get("fncs", [])
 
         # --- Measurements ---
         water_temperature_raw = _probe_value(ins, 0)
@@ -139,6 +145,45 @@ class AsekoV8Decoder:
         # See salt_net_v8_device_analysis.md §3.4 and §6.2.
         is_salt_net = device_type == AsekoDeviceType.SALT_NET
 
+        # --- Structural capability flags from `fncs[]` ---
+        # The `fncs:` (functions) section encodes the device's installed
+        # modules. We use `fncs[2]` as a heuristic capability indicator
+        # (no public Aseko documentation exists for the v8 frame layout):
+        #
+        #   fncs[2] = 3  → device has a CL (chlorine) pump module installed
+        #   fncs[2] = 1  → device is a SALT family unit (electrolyzer cell,
+        #                  no CL pump; algicide pump is on a dedicated port
+        #                  routed via fncs[6] = 10 vs. CL's 2)
+        #
+        # This is the only field that distinguishes "has CL pump" from
+        # "no CL pump" in the v8 text frame. Confirmed against:
+        #   - NET v8 (110203680, 110999999): fncs[2] = 3, fncs[6] = 2
+        #   - SALT NET v8 (110215844, mirovra F1/F2/F3): fncs[2] = 1, fncs[6] = 10
+        # See salt_net_v8_device_analysis.md §11.5 (new section).
+        #
+        # The capability map lives in aseko_v8_helpers.AsekoV8_CAPABILITY_FLAGS.
+        # We look it up here once and use it for both the per-pump
+        # outs[X] reads and for the final installed_pumps population
+        # — single source of truth.
+        fncs2 = _get(fncs, 2)
+        fncs6 = _get(fncs, 6)
+        capability_flags = AsekoV8_CAPABILITY_FLAGS.get(device_type)
+
+        # --- installed_pumps (computed early — gates the outs[X] reads) ---
+        # **This is the source of truth for "which dosing pumps does
+        # this device physically have", derived from the wire
+        # `fncs[2]` (and `fncs[6]`) values.** It is computed *before*
+        # the outs[X] reads below so that the per-pump outs reads can
+        # use it as a gate: if a pump is not in `installed_pumps`,
+        # `outs[i]` is irrelevant (could be 0 because the pump is off
+        # OR because the pump does not exist — we cannot tell from
+        # outs alone). See aseko_v8_helpers.installed_pumps_from_fncs
+        # for the full rationale and salt_net_v8_device_analysis.md
+        # §11.5 for context.
+        installed_pumps: frozenset[str] = installed_pumps_from_fncs(
+            fncs2, fncs6, capability_flags
+        )
+
         # ains[8] = salinity (g/L × 10), only populated on SALT-family devices
         salinity: float | None = None
         # ains[10] = electrolyzer power (g/h × 10, or %), always non-zero when
@@ -162,25 +207,93 @@ class AsekoV8Decoder:
         electrolyzer_active = electrolyzer_power is not None and electrolyzer_power > 0
 
         # --- Pump states ---
-        # outs[2] = filtration pump running. SALT NET uses 2=ON, 0=OFF;
-        # NET v8 uses 1=ON, 0=OFF. The "any non-zero ⇒ running" rule
-        # (bool(outs2)) handles both.
+        # **Every `*_pump_running` field is gated on the corresponding
+        # pump being in `installed_pumps`.** This is critical: a
+        # zero `outs[i]` byte is ambiguous (pump off OR pump absent)
+        # and only `fncs[2]`/`fncs[6]` tell us which one it is. Without
+        # the gate, a SALT NET carrying non-zero data at outs[9] (CL
+        # pump slot) would incorrectly report `cl_pump_running = True`
+        # even though the device has no CL pump.
+        #
+        # `filtration_pump_running` is the one exception: every v8
+        # device that has a filtration schedule reports outs[2]. The
+        # pump presence is determined by the schedule bytes (start1,
+        # etc.), not by fncs[2].
         outs2 = _get(outs, 2)
         filtration_pump_running = bool(outs2) if outs2 is not None else None
 
         outs8 = _get(outs, 8)
-        ph_minus_pump_running = bool(outs8) if outs8 is not None else None
+        if "ph_minus" in installed_pumps:
+            ph_minus_pump_running = bool(outs8) if outs8 is not None else None
+        else:
+            ph_minus_pump_running = None
 
-        outs9 = _get(outs, 9)
-        cl_pump_running = bool(outs9) if outs9 is not None else None
+        # CL-pump running bit. Gated on `cl` being in installed_pumps.
+        if "cl" in installed_pumps and capability_flags is not None:
+            outs9 = _get(outs, capability_flags.outs_cl or 0)
+            cl_pump_running: bool | None = bool(outs9) if outs9 is not None else None
+        else:
+            cl_pump_running = None
+
+        # pH+ pump: not present on any v8 device captured so far
+        # (NET v8, SALT NET v8). Gate on installed_pumps for future
+        # proofing.
+        if (
+            "ph_plus" in installed_pumps
+            and capability_flags is not None
+            and capability_flags.outs_ph_plus is not None
+        ):
+            ph_plus_pump_running: bool | None = (
+                bool(_get(outs, capability_flags.outs_ph_plus))
+                if len(outs) > capability_flags.outs_ph_plus
+                else None
+            )
+        else:
+            ph_plus_pump_running = None
+
+        # Flocculant pump: not present on any v8 device captured so far.
+        # SALT NET has algicide instead, on a different physical port.
+        if (
+            "floc" in installed_pumps
+            and capability_flags is not None
+            and capability_flags.outs_floc is not None
+        ):
+            floc_pump_running: bool | None = (
+                bool(_get(outs, capability_flags.outs_floc))
+                if len(outs) > capability_flags.outs_floc
+                else None
+            )
+        else:
+            floc_pump_running = None
+
+        # OXY pump: not present on any v8 device captured so far.
+        if (
+            "oxy" in installed_pumps
+            and capability_flags is not None
+            and capability_flags.outs_oxy is not None
+        ):
+            oxy_pump_running: bool | None = (
+                bool(_get(outs, capability_flags.outs_oxy))
+                if len(outs) > capability_flags.outs_oxy
+                else None
+            )
+        else:
+            oxy_pump_running = None
 
         # outs[15] = algicide pump running (SALT NET only, best guess).
-        # Gated on device_type to avoid phantom "False" on NET frames
-        # where outs[15] is zero-padded.
-        algicide_pump_running: bool | None = None
-        if is_salt_net:
-            outs15 = _get(outs, 15)
-            algicide_pump_running = bool(outs15) if outs15 is not None else None
+        # Gated on `algicide` being in installed_pumps.
+        if (
+            "algicide" in installed_pumps
+            and capability_flags is not None
+            and capability_flags.outs_algicide is not None
+        ):
+            algicide_pump_running: bool | None = (
+                bool(_get(outs, capability_flags.outs_algicide))
+                if len(outs) > capability_flags.outs_algicide
+                else None
+            )
+        else:
+            algicide_pump_running = None
 
         # --- No-flow alarm (SALT NET v8 dual encoding) ---
         # Reported in two places: ins[12] bit 0x100 AND flags[3] == 1.
@@ -200,8 +313,23 @@ class AsekoV8Decoder:
         required_redox = areqs1 * 10 if areqs1 is not None else None
 
         pool_volume = _get(areqs, 14)
-        delay_after_startup = _get(areqs, 17)
-        delay_after_dose = _get(areqs, 18)
+        # v8 firmware reports `delay_after_startup` and `delay_after_dose` in
+        # MINUTES (confirmed vs. Aseko app on serial 110215844: 5 min, 5 min;
+        # on serial 110203680: 2 min, 2 min). The v7 firmware reports the same
+        # fields in SECONDS (e.g. 120 = 2 min). To keep the `AsekoDevice.delay_*`
+        # field semantically consistent with v7 and the sensor unit
+        # (`UnitOfTime.SECONDS` in sensor.py), we multiply v8 minutes by 60.
+        # This preserves the numeric value of existing v7 user history
+        # (a 2-min delay stays "120 s", not "2 min") at the cost of v8
+        # users seeing the raw app-minute value scaled to seconds.
+        delay_after_startup_v8 = _get(areqs, 17)
+        delay_after_startup = (
+            delay_after_startup_v8 * 60 if delay_after_startup_v8 is not None else None
+        )
+        delay_after_dose_v8 = _get(areqs, 18)
+        delay_after_dose = (
+            delay_after_dose_v8 * 60 if delay_after_dose_v8 is not None else None
+        )
 
         # SALT NET-specific setpoint: required algicide dose (ml/m³/day)
         # at areqs[25]. Gated on device_type to avoid phantom "0" on NET
@@ -256,6 +384,7 @@ class AsekoV8Decoder:
             serial_number=serial_number,
             device_type=device_type,
             configuration=configuration,
+            installed_pumps=installed_pumps,
             timestamp=timestamp,
             water_temperature=water_temperature,
             water_flow_to_probes=water_flow_to_probes,
@@ -266,11 +395,20 @@ class AsekoV8Decoder:
             electrolyzer_active=electrolyzer_active,
             filtration_pump_running=filtration_pump_running,
             ph_minus_pump_running=ph_minus_pump_running,
+            ph_plus_pump_running=ph_plus_pump_running,
             cl_pump_running=cl_pump_running,
             algicide_pump_running=algicide_pump_running,
+            floc_pump_running=floc_pump_running,
+            oxy_pump_running=oxy_pump_running,
             flowrate_algicide=flowrate_algicide,
-            flowrate_ph_minus=60,
-            flowrate_chlor=60,
+            # v8 firmware does NOT transmit per-pump flow-rate bytes
+            # (v7 byte[95] / byte[99] / byte[101] have no v8
+            # equivalent). The dosing rate in ml/min is constant on v8
+            # because Aseko uses the same physical pump model across the
+            # v8 product line and omits the value from the wire record.
+            # See aseko_v8_helpers.V8_DEFAULT_PUMP_FLOWRATE_ML_MIN.
+            flowrate_ph_minus=V8_DEFAULT_PUMP_FLOWRATE_ML_MIN,
+            flowrate_chlor=V8_DEFAULT_PUMP_FLOWRATE_ML_MIN,
             required_ph=required_ph,
             required_redox=required_redox,
             required_algicide=required_algicide,

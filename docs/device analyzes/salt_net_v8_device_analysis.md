@@ -189,8 +189,8 @@ ambiguity in the analysis. See §11 for the F3 algicide mystery.
 | `areqs[14]` | 55 | 55 | 55 | m³ | `pool_volume` | ✅ 55 m³ matches app |
 | `areqs[15]` | 255 | 255 | 255 | = UNSPECIFIED | — | unused (SALT NET) |
 | `areqs[16]` | 255 | 255 | 255 | = UNSPECIFIED | — | unused (SALT NET) |
-| `areqs[17]` | 5 | 5 | 5 | minutes | `delay_after_startup` | ✅ 5 min (NET v8 had 2 min) |
-| `areqs[18]` | 5 | 5 | 5 | minutes | `delay_after_dose` | ✅ 5 min (NET v8 had 2 min) |
+| `areqs[17]` | 5 | 5 | 5 | minutes (× 60 → s) | `delay_after_startup` | ✅ 5 min (NET v8 had 2 min) |
+| `areqs[18]` | 5 | 5 | 5 | minutes (× 60 → s) | `delay_after_dose` | ✅ 5 min (NET v8 had 2 min) |
 | `areqs[19]` | 10 | 10 | 10 | unknown | unknown | ❓ |
 | `areqs[21]` | 15 | 15 | 15 | unknown | unknown | ❓ |
 | **`areqs[25]`** | **3** | **3** | **3** | **ml/m³/day** | **`required_algicide`** | ✅ **3 ml/m³/day** (only setpoint in the 0–10 range that fits an algicide dose) — SALT-NET-specific |
@@ -204,6 +204,19 @@ ambiguity in the analysis. See §11 for the F3 algicide mystery.
 > **Note on `areqs[25]`:** the v8 frame is 0-indexed. The valid algicide
 > setpoint is at **`areqs[25]`** (= 3 ml/m³/day). Earlier analyses that
 > quoted `areqs[24]` were off-by-one (1-based vs 0-based indexing).
+
+> **Note on `areqs[17]` / `areqs[18]` (delay_after_startup, delay_after_dose):**
+> the v8 firmware reports these fields in **MINUTES** (raw `5` = 5 min on
+> mirovra's SALT NET, raw `2` = 2 min on the NET v8 reference frames).
+> The v7 firmware reports the same fields in **seconds** (e.g. `120` =
+> 2 min). To keep the `AsekoDevice.delay_*` field unit-consistent with v7
+> and the `UnitOfTime.SECONDS` sensor in
+> [`sensor.py`](../../custom_components/aseko_local/sensor.py), the v8
+> decoder multiplies by 60. A 5-min v8 delay therefore decodes to
+> `delay_after_startup = 300` (s), matching what a v7 user with the same
+> delay would see (raw v7 byte 74:75 = `300` = 5 min). See
+> [net_v8_device_analysis.md §Frame Structure](net_v8_device_analysis.md#frame-structure)
+> for the full v7↔v8 unit-convention note.
 
 ---
 
@@ -230,7 +243,7 @@ that is non-zero on SALT NET but zero on NET).
 |---|---|---|---|---|
 | `flags[0]` | 2 | 2 | 2 | constant 2 (same on NET) |
 | `flags[3]` | 0 | **1** | 0 | **no-flow alarm flag** (matches `ins[12] = 256`) — see §10 |
-| `fncs[]` | `0 0 1 0 0 0 10 0` | (identical) | (identical) | `fncs[2] = 1` and `fncs[6] = 10` (NET v8 had `3` and `2` — different values, meaning TBD) |
+| `fncs[]` | `0 0 1 0 0 0 10 0` | (identical) | (identical) | `fncs[2] = 1`, `fncs[6] = 10` (NET v8 had `3` and `2`) — see §11.5 below for the capability-gate interpretation |
 | `mods[]` | `2 0 0 1 0 0 0 0` | (identical) | (identical) | `mods[0] = 2` (operating mode?), `mods[3] = 1` (constant) |
 | `crc16` | `6142` | `02F6` | `E55D` | CRC validation **not yet implemented** |
 
@@ -297,6 +310,63 @@ On the SALT NET, the algicide pump is a **dedicated physical port** that
 the user configures in the app. `byte[37]` is not used for pump routing on
 the v8 firmware, so `byte37_routes_pump_type` must be `False` for
 `AsekoDeviceType.SALT_NET` in `ACTUATOR_MASKS`.
+
+---
+
+## 11.5 Structural capability gate: `fncs[2]` distinguishes "has CL pump" from "no CL pump"
+
+A SALT-family device can never have a chlorine (CL) dosing pump — it has
+an electrolyzer cell that produces chlorine from salt. Before the fix, the
+v8 decoder would still expose a `cl_pump_running` binary sensor on SALT
+NET devices, permanently showing `False` ("off"). That is semantically
+wrong: the pump is not just off, it does **not exist**.
+
+The v8 frame carries a one-byte **capability indicator** in the `fncs:`
+("functions") section. The two values observed in the wild are:
+
+| Device | `fncs[2]` | `fncs[6]` | Meaning |
+|---|---|---|---|
+| NET v8 (110203680, 110999999) | **3** | 2 | has CL pump module installed |
+| SALT NET v8 (110215844) | **1** | 10 | SALT family: electrolyzer + dedicated algicide port, no CL pump |
+
+**The decoder now uses `fncs[2] == 3` as the gate for `has_cl_pump`**:
+
+```python
+fncs2 = _get(fncs, 2)             # 3 on NET, 1 on SALT NET, None on frames without fncs:
+has_cl_pump = fncs2 == 3          # True only for NET-style devices
+
+if has_cl_pump:
+    cl_pump_running = bool(_get(outs, 9))  # read outs[9] only when CL pump exists
+else:
+    cl_pump_running = None        # pump is structurally absent
+```
+
+The same gate is applied to `ph_plus_pump_running`, `floc_pump_running`
+and `oxy_pump_running` — none of these pump types are installed on any v8
+device captured so far (NET v8 and SALT NET v8). The fields are wired
+through so the entity layer (`binary_sensor.py` and `consumption_tracker.py`)
+can decide whether to surface them.
+
+**Why `None` and not `False`?** The entity layer (`AsekoConsumptionTracker`
+in [`consumption_tracker.py`](../../custom_components/aseko_local/consumption_tracker.py))
+already treats `is_on is None` as "pump not present" and silently skips
+the entity. Returning `False` ("pump is off") would have surfaced a
+permanently-off binary sensor and a permanently-zero consumption counter
+on the user's SALT NET — confusing UX.
+
+**Robustness for frames without a `fncs:` section:** if a v8 frame does
+not include a `fncs:` section (older firmware, or a hypothetical future
+revision), `fncs2` is `None` and `has_cl_pump` defaults to `False`. The
+worst case is that a NET device without `fncs:` would not get a CL
+sensor — preferable to a SALT device that incorrectly shows a
+permanently-False CL sensor. A NET device with a missing `fncs:` section
+should be reported as a new bug.
+
+**Caveat — single-bit hypothesis only:** `fncs[2]` could equally well be
+a 2-bit or 4-bit field. We have only seen `1` and `3` in the wild. If a
+future device returns `0`, `2`, `4`, etc., the gate may need refinement.
+A diagnostic log line that records the raw `fncs:` section on the first
+encountered header type will help debug this if it ever happens.
 
 ---
 
