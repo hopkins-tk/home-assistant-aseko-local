@@ -17,6 +17,7 @@ from .aseko_v8_helpers import (
     V8_DEFAULT_PUMP_FLOWRATE_ML_MIN,
     installed_pumps_from_fncs,
 )
+from .aseko_v8_dump import V8FrameDumper
 from .const import UNSPECIFIED_V8
 
 _LOGGER = logging.getLogger(__name__)
@@ -75,6 +76,18 @@ class AsekoV8Decoder:
 
         Raises ValueError if the frame cannot be parsed.
         """
+        # Issue #131 triage: dump the raw v8 frame to disk BEFORE
+        # any parsing, so a developer (or mirovra) can post-hoc
+        # decode a captured frame with `scripts/v8_tools.py` and see
+        # every section — including fields we have not yet mapped
+        # (e.g. unknown `fncs[6]` codes after a pump-type change).
+        # The dumper is a no-op when `DUMP_ENABLED` is False; it
+        # dedupes identical frames per serial, so a 1 Hz stream
+        # produces at most a handful of lines per hour. Any I/O
+        # error inside the dumper is swallowed there and never
+        # reaches this function — see aseko_v8_dump.V8FrameDumper.
+        V8FrameDumper.get().record(raw)
+
         try:
             text = raw.decode("ascii", errors="replace").strip()
         except Exception as exc:
