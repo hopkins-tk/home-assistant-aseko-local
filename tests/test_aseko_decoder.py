@@ -1317,10 +1317,28 @@ def test_filtration_mode_new_encoding_p1_and_p2() -> None:
     assert device.filtration_nonstop24 is False
 
 
-def test_filtration_mode_new_encoding_off_manual() -> None:
-    """Firmware B byte[37] = 0x35 → OFF_MANUAL (user toggled OFF on the unit)."""
+def test_filtration_mode_new_encoding_off_manual_p1_and_p2() -> None:
+    """Firmware B byte[37] = 0x35 → OFF_MANUAL (P1 & P2 + manual override).
+
+    The original frame from @dtpugh (serial 110169464) had 0x35: both
+    periods enabled and the user manually toggled filtration OFF.
+    """
     data = _make_home_bytes()
-    data[37] = 0x35  # new encoding: OFF (manual override)
+    data[37] = 0x35  # new encoding: P1 & P2 + manual override (bit 2 set)
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.filtration_mode == AsekoFiltrationMode.OFF_MANUAL
+    assert device.filtration_nonstop24 is False
+
+
+def test_filtration_mode_new_encoding_off_manual_p1_only() -> None:
+    """Firmware B byte[37] = 0x15 → OFF_MANUAL (P1 only + manual override).
+
+    Diagnostic 42 from @dtpugh (serial 110175608): user switched pump OFF
+    while only Period 1 was active. byte[37] = 0x15 (bits 0,2,4 set).
+    Bit 2 (0x04) = manual override → must decode as OFF_MANUAL.
+    """
+    data = _make_home_bytes()
+    data[37] = 0x15  # P1 + manual override
     device = AsekoDecoder.decode(bytes(data))
     assert device.filtration_mode == AsekoFiltrationMode.OFF_MANUAL
     assert device.filtration_nonstop24 is False
@@ -1435,15 +1453,24 @@ def test_filtration_pump_running_off_when_manual_override() -> None:
     The @dtpugh issue: with the user manually switched the pump off, byte[29]
     bit 3 (filtration relay) is still 0x08 in the frame. The decoder trusts
     the explicit OFF_MANUAL flag in byte[37] and forces False.
-    """
-    data = _make_home_bytes()
-    data[4] = 0x03  # HOME REDOX (firmware B device)
-    data[29] = 0x08  # schedule-driven output bit SET (would normally mean "running")
-    data[37] = 0x35  # OFF (manual override)
 
-    device = AsekoDecoder.decode(bytes(data))
-    assert device.filtration_mode == AsekoFiltrationMode.OFF_MANUAL
-    assert device.filtration_pump_running is False
+    Tests both known OFF_MANUAL byte[37] values:
+      - 0x35 = P1 & P2 + manual override (original firmware B frame)
+      - 0x15 = P1 only + manual override (new diagnostic 42, serial 110175608)
+    """
+    for override_value in (0x35, 0x15):
+        data = _make_home_bytes()
+        data[4] = 0x03  # HOME REDOX (firmware B device)
+        data[29] = 0x08  # schedule-driven output bit SET (would normally mean "running")
+        data[37] = override_value  # OFF (manual override)
+
+        device = AsekoDecoder.decode(bytes(data))
+        assert device.filtration_mode == AsekoFiltrationMode.OFF_MANUAL, (
+            f"byte[37]={override_value:#x}"
+        )
+        assert device.filtration_pump_running is False, (
+            f"byte[37]={override_value:#x}"
+        )
 
 
 def test_filtration_pump_running_on_when_not_override() -> None:

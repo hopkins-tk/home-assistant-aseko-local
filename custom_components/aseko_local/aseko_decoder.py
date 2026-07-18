@@ -603,7 +603,8 @@ class AsekoDecoder:
             0x01 = nonstop 24h
             0x11 = P1 only
             0x31 = P1 & P2
-            0x35 = OFF (manual override) — bit 0x04 set
+            0x15 = P1 + manual override     → OFF_MANUAL (bit 0x04 set)
+            0x35 = P1 & P2 + manual override → OFF_MANUAL (bit 0x04 set)
 
         SALT / OXY / PROFI do not put a filtration mode flag in byte[37]
         (SALT uses it for algicide/flocculant routing + dosage encoding,
@@ -627,19 +628,33 @@ class AsekoDecoder:
 
         if unit.device_type == AsekoDeviceType.HOME:
             # HOME: byte[37] carries the mode flag (two firmware variants).
+            # Firmware A (high nibble 0x4/0x5, serial 110128063, byte 4 = 0x02)
+            # uses exact byte values. Firmware B (high nibble 0x0/0x1/0x3,
+            # serial 110169464, byte 4 = 0x03) uses bit flags:
+            #   bit 2 (0x04) = manual override active
+            #   bit 4 (0x10) = period 1 enabled
+            #   bit 5 (0x20) = period 2 enabled
             if b != UNSPECIFIED_VALUE:
-                if b == 0x43 or b == 0x01:
-                    mode = AsekoFiltrationMode.NONSTOP_24H
-                elif b == 0x53:
-                    mode = AsekoFiltrationMode.TIMER_PERIOD_1_AND_2
-                elif b == 0x11:
-                    mode = AsekoFiltrationMode.TIMER_PERIOD_1
-                elif b == 0x31:
-                    mode = AsekoFiltrationMode.TIMER_PERIOD_1_AND_2
-                elif b == 0x35:
-                    mode = AsekoFiltrationMode.OFF_MANUAL
-                # 0x47 / 0x57 are documented as "transitional edit state"
-                # in home_device_analysis.md Issue 4 — leave as None.
+                if b & 0x40:
+                    # Firmware A: high nibble 0x4/0x5.
+                    if b == 0x43:
+                        mode = AsekoFiltrationMode.NONSTOP_24H
+                    elif b == 0x53:
+                        mode = AsekoFiltrationMode.TIMER_PERIOD_1_AND_2
+                    # 0x47 / 0x57 → transitional edit state, leave as None.
+                else:
+                    # Firmware B: high nibble 0x0/0x1/0x3.
+                    if b & 0x04:
+                        # Manual override active — bit 2 set.
+                        # Observed values: 0x15 (P1 + override),
+                        # 0x35 (P1&P2 + override).
+                        mode = AsekoFiltrationMode.OFF_MANUAL
+                    elif (b & 0x30) == 0x00:
+                        mode = AsekoFiltrationMode.NONSTOP_24H
+                    elif (b & 0x30) == 0x10:
+                        mode = AsekoFiltrationMode.TIMER_PERIOD_1
+                    elif (b & 0x30) == 0x30:
+                        mode = AsekoFiltrationMode.TIMER_PERIOD_1_AND_2
         else:
             # SALT / OXY / PROFI: byte[37] does not encode filtration mode.
             # Derive from the raw schedule bytes 56-63 (read here directly
