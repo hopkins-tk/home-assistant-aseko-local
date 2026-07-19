@@ -110,6 +110,7 @@ class AsekoDevice:
     heating_control_enabled: bool | None = None  # byte 37 bit 3 (0x08) on HOME
     antifreeze_enabled: bool | None = None  # byte 37 bit 7 (0x80) on HOME
     vsp_pump_running: bool | None = None  # byte 22 bit 3 (0x08) on HOME
+    ph_minus_concentration: int | None = None  # byte 112 (%) on HOME (Issue #139)
     cl_pump_running: bool | None = None  # byte 29 (6-th bit)
     ph_minus_pump_running: bool | None = None  # byte 29 (7-th bit)
     ph_plus_pump_running: bool | None = (

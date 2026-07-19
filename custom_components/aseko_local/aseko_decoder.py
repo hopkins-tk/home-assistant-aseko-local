@@ -516,6 +516,22 @@ class AsekoDecoder:
         unit.vsp_pump_running = bool(data[22] & 0x08)
 
     @staticmethod
+    def _fill_ph_minus_concentration(unit: AsekoDevice, data: bytes) -> None:
+        """Decode the pH- acid concentration percentage.
+
+        byte[112] = concentration in percent (e.g. 5 → 5%, 10 → 10%).
+        Confirmed on serial 110175608 (ASIN AQUA Home REDOX, Issue #139).
+
+        Only decoded for HOME. Other device types may use byte[112] for
+        a different purpose, so the field stays None.
+        """
+        if unit.device_type != AsekoDeviceType.HOME:
+            return
+        if data[112] == UNSPECIFIED_VALUE:
+            return
+        unit.ph_minus_concentration = data[112]
+
+    @staticmethod
     def _fill_backwash_active(unit: AsekoDevice, data: bytes) -> None:
         """Decode the backwash relay state from byte[29] bit 0x01.
 
@@ -868,6 +884,7 @@ class AsekoDecoder:
         AsekoDecoder._fill_alarm_data(device, data)
         AsekoDecoder._fill_heating_demand(device, data)
         AsekoDecoder._fill_vsp_pump(device, data)
+        AsekoDecoder._fill_ph_minus_concentration(device, data)
         AsekoDecoder._fill_backwash_active(device, data)
         AsekoDecoder._fill_backwash_schedule(device)
 

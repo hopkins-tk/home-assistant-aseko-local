@@ -153,7 +153,9 @@ Seg3 (bytes 80–119): 06 90 6b bf  02 02  1a 04 1c 08 1b 07
 | 106–107 | `00f0`   | 240     | delay_after_dose (s)         | **240 s = 4 min** | 4 min          | ✓      |
 | 108     | `14`     | 20      | Unknown                      | —              | —                 | ?      |
 | 109–110 | `0258`   | 600     | Unknown                      | —              | —                 | ?      |
-| 111–113 | `0f 0f 0f` | 15, 15, 15 | Unknown                | —              | —                 | ?      |
+| 111     | `0f`     | 15      | Unknown                      | —              | —                 | ?      |
+| 112     | `0f`     | 15      | **ph_minus_concentration**   | **5%**         | **5%**           | ✓ (Issue #139) |
+| 113     | `0f`     | 15      | Unknown                      | —              | —                 | ?      |
 | 114     | `1e`     | 30      | Unknown                      | —              | —                 | ?      |
 | 115     | `14`     | 20      | Unknown                      | —              | —                 | ?      |
 | 116     | `ff`     | —       | UNSPECIFIED / padding        | —              | —                 | —      |
@@ -199,6 +201,7 @@ Note on **bytes 94–95**: `max_filling_time` reads bytes[94:96] as a big-endian
 | heating_control_enabled   | True / False     | — (app setting)   | ✓ (Issue #135, serial 110175608 REDOX HOME) |
 | antifreeze_enabled        | True / False     | — (app setting)   | ✓ (Issue #136, serial 110175608 REDOX HOME) |
 | vsp_pump_running          | True / False     | — (app setting)   | ✓ (Issue #137, serial 110175608 REDOX HOME) |
+| ph_minus_concentration    | 5%               | 5%                | ✓ (Issue #139, serial 110175608 REDOX HOME) |
 
 ---
 
@@ -231,6 +234,7 @@ routing via `byte[37]` bit 7.
 | `required_floc`         | `byte[54]`| ml/h              | Same byte position as SALT algicide; gated by `byte[37] != 0xFF` |
 | `required_algicide`     | `byte[72]`| ml/m³/day         | HOME-only, same byte position as OXY Pure |
 | `required_water_temperature` | `byte[55]` | °C            | Disabled on this device — see Open Item 3 |
+| `ph_minus_concentration`     | `byte[112]`| %             | pH⁻ acid concentration (Issue #139). HOME-only — gated on device type. |
 
 ### Schedule (bytes 56-63)
 
@@ -444,4 +448,6 @@ Tests for the HOME decoder live in `tests/test_aseko_decoder.py`:
 - Issue #137: `byte[22]` bit 3 (`0x08`) = variable-speed pump running state on HOME.
   `byte[78]` changes with pump brand selection (Speck/Pentair/Hayward/Dab/Uwe) but
   is not a unique brand ID — see Open Item 11.
+- Issue #139: `byte[112]` = pH⁻ acid concentration (%) on HOME (serial 110175608).
+  Confirmed 5% → 10% → 5% across three diagnostics.
 - Working notes: `docs/temp/Issue-133.md`

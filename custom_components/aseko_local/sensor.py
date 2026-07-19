@@ -261,6 +261,14 @@ SENSORS: list[AsekoSensorEntityDescription] = [
         value_fn=lambda device: device.required_ph,
     ),
     AsekoSensorEntityDescription(
+        key="ph_minus_concentration",
+        translation_key="ph_minus_concentration",
+        native_unit_of_measurement="%",
+        state_class=SensorStateClass.MEASUREMENT,
+        icon="mdi:pool",
+        value_fn=lambda device: device.ph_minus_concentration,
+    ),
+    AsekoSensorEntityDescription(
         key="rx",
         translation_key="redox",
         native_unit_of_measurement=UnitOfElectricPotential.MILLIVOLT,

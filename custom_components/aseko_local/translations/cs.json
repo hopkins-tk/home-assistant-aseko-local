@@ -114,6 +114,9 @@
       "pool_volume": { "name": "Objem bazénu" },
       "delay_after_startup": { "name": "Prodleva po startu" },
       "delay_after_dose": { "name": "Prodleva po dávce" },
+      "ph_minus_concentration": {
+        "name": "Koncentrace pH-"
+      },
       "air_temperature": {
         "name": "Teplota vzduchu"
       },
