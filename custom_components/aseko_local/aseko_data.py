@@ -235,10 +235,12 @@ class AsekoDevice:
     # True = nonstop 24 h (0x43), False = timer (0x53), None = transitional/unknown
     filtration_nonstop24: bool | None = None
 
-    # Alarm/error bitmask — byte [13]
-    # byte [12] is NOT an error byte (confirmed: NET frame shows 0x00 with active no-flow error)
-    alarm_ph_too_many_doses: bool | None = None  # byte [13] bit 0x01
-    alarm_orp_too_many_doses: bool | None = None  # byte [13] bit 0x02
+    # Alarm/error bitmasks — bytes [12] (HOME dosing warnings) and [13]
+    # byte [12] 0x20 = chlorine/disinfection dosing warning (HOME ✅, issue #134)
+    # byte [12] 0x40 = pH dosing warning (HOME ✅, issue #134)
+    # byte [13] 0x01 / 0x02 / 0x04 / 0x08 = legacy bitmask (NET no-flow ✅)
+    alarm_ph_too_many_doses: bool | None = None  # byte [13] 0x01 | byte [12] 0x40
+    alarm_orp_too_many_doses: bool | None = None  # byte [13] 0x02 | byte [12] 0x20
     alarm_no_flow_to_probes: bool | None = None  # byte [13] bit 0x04 (confirmed)
     alarm_rapid_ph_change: bool | None = (
         None  # byte [13] bit 0x08 (error_codes.md, unconfirmed by capture)

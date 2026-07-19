@@ -558,19 +558,26 @@ class AsekoDecoder:
 
     @staticmethod
     def _fill_alarm_data(unit: AsekoDevice, data: bytes) -> None:
-        """Decode alarm bitmask (byte [13]) for all device types.
+        """Decode alarm bitmasks (bytes [12] and [13]) for all device types.
 
         byte [13] bitmask (multiple bits can be set simultaneously):
           0x01 = pH alarm: too many doses, no value change   (error_codes.md)
-          0x02 = ORP alarm: 30 doses, no value change        (error_codes.md)
+          0x02 = ORP/clf alarm: 30 doses, no value change    (error_codes.md)
           0x04 = no flow to probes                           (DomSchCoding ✅, NET frame ✅)
           0x08 = rapid pH change, stops regulation ~2 h      (error_codes.md, unconfirmed)
 
-        byte [12] is NOT an error byte — confirmed 0x00 on NET device while
-        byte [13] = 0x04 (active no-flow error) and byte [28] = 0x00.
+        byte [12] dosing-warning bitmask (HOME ✅, issue #134 before/after captures):
+          0x20 = disinfection / chlorine dosing warning
+                 (Pool Live: MAXIMUM_DISINFECTION_DOSE_EXCEEDED)
+          0x40 = pH dosing warning
+                 (Pool Live: TOO_MANY_PH_DOSING_ATTEMPTS_WITHOUT_CHANGE)
+
+        On NET, byte [12] is typically 0x00 while no-flow lives in byte [13]
+        (byte [13] = 0x04). HOME dosing lockouts set byte [12] and leave
+        byte [13] at 0x00, so both bytes must be consulted.
         """
-        unit.alarm_ph_too_many_doses = bool(data[13] & 0x01)
-        unit.alarm_orp_too_many_doses = bool(data[13] & 0x02)
+        unit.alarm_ph_too_many_doses = bool(data[13] & 0x01) or bool(data[12] & 0x40)
+        unit.alarm_orp_too_many_doses = bool(data[13] & 0x02) or bool(data[12] & 0x20)
         unit.alarm_no_flow_to_probes = bool(data[13] & 0x04)
         unit.alarm_rapid_ph_change = bool(data[13] & 0x08)
 
