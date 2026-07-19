@@ -51,6 +51,9 @@
       "antifreeze_enabled": {
         "name": "Antifreeze"
       },
+      "vsp_pump_running": {
+        "name": "Variable speed pump"
+      },
       "cl_pump_running": {
         "name": "Chlorine pump running"
       },

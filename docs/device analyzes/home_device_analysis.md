@@ -73,7 +73,7 @@ Seg3 (bytes 80–119): 06 90 6b bf  02 02  1a 04 1c 08 1b 07
 | 16–17   | `0000`   | 0       | Cl free (÷100)           | **0.00 mg/l**        | 0.00 mg/l     | ✓      |
 | 18–19   | `0000`   | 0       | Unused (no REDOX probe)  | —                    | —             | —      |
 | 20–21   | `0002`   | 2       | Cl free mV (big-endian)  | **2 mV**             | —             | ✓      |
-| 22–23   | `90fe`   | 37118   | Unknown (internal probe?) | —                   | —             | ?      |
+| 22–23   | `90fe`   | 37118   | Unknown / VSP pump (see ¶) | —                 | —             | ¶      |
 | 24      | `70`     | 112     | Unknown                  | —                    | —             | ?      |
 | 25–26   | `017b`   | 379     | Water temp (÷10)         | **37.9°C**           | 38.2°C†       | ✓†     |
 | 27      | `08`     | 8       | **Water level (cm)**     | **8 cm**             | (level meter disabled on this device) | ✓     |
@@ -88,6 +88,8 @@ Seg3 (bytes 80–119): 06 90 6b bf  02 02  1a 04 1c 08 1b 07
 † pH 6.29 vs 6.56 and water temp 37.9 vs 38.2 are explained by different timestamps (frame: 08:27:07, screenshot: later that day). Not a decoding bug.
 
 § **byte[37] = `0x43`**: HOME filtration mode flag, firmware A. The value `0x43` means *FILTRATION NONSTOP 24H* here. HOME devices have **independent pump ports** for flocculant and algicide (same layout as OXY Pure), so the SALT-style "shared third-pump port" routing rule (bit 7 = algicide) does **not** apply. The full encoding table (firmware A vs B) is in the *Device Specifications → byte[37]* section below.
+
+¶ **byte[22] bit 3 (0x08)**: On devices with a variable-speed filtration pump (serial 110175608 REDOX HOME, Issue #137), `0x83` → pump OFF, `0x8b` → pump ON (any brand). Decoded as `vsp_pump_running` — see *Variable-speed pump* section below. On this CLF frame (no VSP fitted) the byte carries an unknown value (`0x90fe`).
 
 ---
 
@@ -196,6 +198,7 @@ Note on **bytes 94–95**: `max_filling_time` reads bytes[94:96] as a big-endian
 | flowrate_algicide         | 33               | Algicide listed   | ✓ (fixed) |
 | heating_control_enabled   | True / False     | — (app setting)   | ✓ (Issue #135, serial 110175608 REDOX HOME) |
 | antifreeze_enabled        | True / False     | — (app setting)   | ✓ (Issue #136, serial 110175608 REDOX HOME) |
+| vsp_pump_running          | True / False     | — (app setting)   | ✓ (Issue #137, serial 110175608 REDOX HOME) |
 
 ---
 
@@ -354,6 +357,32 @@ frames — including the OFF frame. The override state lives in `byte[37]` bit 2
 this HOME-only behaviour in `_fill_consumable_data` (see `_fill_filtration_mode`
 in `aseko_decoder.py`).
 
+### `byte[22]` — Variable-speed filtration pump (Issue #137)
+
+Some HOME REDOX devices (serial 110175608) support a variable-speed filtration
+pump. The brand can be configured in the Aseko app (Speck, Pentair, Hayward,
+Dab E.SWIM, Uwe EO PM).
+
+**byte[22] bit 3 (0x08)** reflects the pump ON/OFF state:
+- `0x83` (`1000_0011`) → pump OFF
+- `0x8b` (`1000_1011`) → pump ON (any brand)
+
+The field is decoded as `vsp_pump_running` and gated on `AsekoDeviceType.HOME` in
+`_fill_vsp_pump()` — other device types (SALT, OXY, PROFI, NET) leave it `None`.
+
+**byte[78]** changes with the brand selection but is not a unique brand ID:
+
+| Brand | byte[78] hex | byte[78] dec |
+|-------|--------------|--------------|
+| OFF / Speck / Uwe EO PM | `0x22` | 34 |
+| Pentair / Dab E.SWIM | `0x26` | 38 |
+| Hayward | `0x2a` | 42 |
+
+Speck and Uwe share the same value as OFF, suggesting byte[78] is a
+**pump parameter** (speed/power class) rather than a brand identifier. The
+brand selection itself may be stored only in the Aseko cloud/app, not in the
+120-byte frame — see Open Item 11.
+
 ---
 
 ## Open Items
@@ -365,6 +394,7 @@ in `aseko_decoder.py`).
 | 8 | `max_filling_time` overlap with `flowrate_ph_minus` (both use `byte[95]`). If `byte[94]` ever becomes non-zero, `max_filling_time` is inflated. Only a frame with a non-zero `byte[94]` would prove or disprove the assumption. |
 | 9 | `heating_active` binary sensor (`byte[29]` bit `0x04`) — needs a frame captured while the heat pump / electric heater is actually running. The `heating_control_enabled` field (byte[37] bit 3) is the **master enable**, separate from the actual heating output state in byte[29] bit 2. A frame with `byte[29]` bit 2 set would confirm this as the running-state indicator. |
 | 10 | Bytes 31, 38, 65 in the firmware B OFF frame all rise by ~1 (0x00→0x02, 0x02→0x03, 0xa3→0xa4) — possible additional "manual override active" sub-flags, not used by the decoder today. Single observation, no meaning assigned. |
+| 11 | `byte[78]` pump brand correlation (Issue #137): Speck and Uwe EO PM share `0x22` (same as OFF), Pentair and Dab E.SWIM share `0x26`. Needs a diagnostic captured while switching between two same-value brands (e.g. Speck → Uwe) without turning the pump off to confirm whether byte[78] is a brand ID or a pump parameter. |
 
 ---
 
@@ -411,4 +441,7 @@ Tests for the HOME decoder live in `tests/test_aseko_decoder.py`:
   Working notes: [docs/temp/Issue-135.md](../temp/Issue-135.md).
 - Issue #136: `byte[37]` bit 7 (`0x80`) = antifreeze master enable on HOME firmware A
   (same device). `byte[55]` shows the antifreeze threshold (4°C) when enabled.
+- Issue #137: `byte[22]` bit 3 (`0x08`) = variable-speed pump running state on HOME.
+  `byte[78]` changes with pump brand selection (Speck/Pentair/Hayward/Dab/Uwe) but
+  is not a unique brand ID — see Open Item 11.
 - Working notes: `docs/temp/Issue-133.md`

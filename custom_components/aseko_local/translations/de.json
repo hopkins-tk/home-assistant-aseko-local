@@ -51,6 +51,9 @@
       "antifreeze_enabled": {
         "name": "Frostschutz"
       },
+      "vsp_pump_running": {
+        "name": "Drehzahlregelpumpe"
+      },
       "cl_pump_running": {
         "name": "Chlorpumpe läuft"
       },

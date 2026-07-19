@@ -51,6 +51,9 @@
       "antifreeze_enabled": {
         "name": "Ochrana proti zamrznutí"
       },
+      "vsp_pump_running": {
+        "name": "Čerpadlo s proměnnými otáčkami"
+      },
       "cl_pump_running": {
         "name": "Čerpadlo chloru běží"
       },

@@ -499,6 +499,23 @@ class AsekoDecoder:
             )
 
     @staticmethod
+    def _fill_vsp_pump(unit: AsekoDevice, data: bytes) -> None:
+        """Decode the variable-speed filtration pump running state.
+
+        byte[22] bit 3 (0x08) = variable-speed pump ON/OFF.
+        Confirmed on serial 110175608 (ASIN AQUA Home REDOX, byte 4 = 0x03):
+        0x83 → pump OFF, 0x8b → pump ON (any brand).
+
+        Only decoded for HOME. Other device types (SALT, OXY, PROFI, NET)
+        may use byte[22] for a different purpose, so the field stays None.
+        """
+        if unit.device_type != AsekoDeviceType.HOME:
+            return
+        if data[22] == UNSPECIFIED_VALUE:
+            return
+        unit.vsp_pump_running = bool(data[22] & 0x08)
+
+    @staticmethod
     def _fill_backwash_active(unit: AsekoDevice, data: bytes) -> None:
         """Decode the backwash relay state from byte[29] bit 0x01.
 
@@ -850,6 +867,7 @@ class AsekoDecoder:
         AsekoDecoder._fill_home_water_level_data(device, data)
         AsekoDecoder._fill_alarm_data(device, data)
         AsekoDecoder._fill_heating_demand(device, data)
+        AsekoDecoder._fill_vsp_pump(device, data)
         AsekoDecoder._fill_backwash_active(device, data)
         AsekoDecoder._fill_backwash_schedule(device)
 

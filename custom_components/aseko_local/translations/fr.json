@@ -51,6 +51,9 @@
             "antifreeze_enabled": {
                 "name": "Antigel"
             },
+            "vsp_pump_running": {
+                "name": "Pompe à vitesse variable"
+            },
             "cl_pump_running": {
                 "name": "Pompe à chlore en marche"
             },
