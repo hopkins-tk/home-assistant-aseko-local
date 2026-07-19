@@ -4,6 +4,7 @@ import pytest
 
 from custom_components.aseko_local.aseko_data import (
     AsekoDeviceType,
+    AsekoElectrolyzerDirection,
     AsekoFiltrationMode,
     AsekoProbeType,
 )
@@ -558,20 +559,52 @@ SALT_NET_FRAME_F2 = (
     b"crc16: 02F6}\n"
 )
 
-# F3: filtration ON, algicide pump running (best guess from §3.3 / §11)
-# docs/temp/Issue-131-scenario2-filtration.json
+# F3: algicide pump ON, electrolyzer RIGHT at 19 g/h
+# Source: mirovra Jul 16 07:58:59 — algicide dosing confirmed via app
 SALT_NET_FRAME_F3 = (
     b"{v1 110215844 100 0 31 "
-    b"ins: 319 -500 -500 -500 0 0 0 0 1 -500 -500 -500 0 24 6 30 16 48 0 "
-    b"ains: 739 739 715 7200 0 0 720 720 50 19 372 0 0 0 0 0 "
-    b"outs: 0 0 2 0 0 0 0 0 0 0 0 0 0 0 0 2 0 0 0 0 "
+    b"ins: 310 -500 -500 -500 0 0 0 0 1 -500 -500 -500 0 24 7 10 8 1 0 "
+    b"ains: 734 734 575 5800 0 0 580 580 53 19 346 0 0 0 0 0 "
+    b"outs: 0 0 2 0 0 0 0 0 0 0 0 1 0 0 2 0 0 0 0 "
     b"areqs: 74 72 4 0 5 33 33 0 0 0 33 33 33 0 55 255 255 5 5 10 0 15 0 0 0 3 "
     b"reqs: 0 0 0 0 0 8 0 20 0 2 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 "
     b"0 10 10 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 "
     b"fncs: 0 0 1 0 0 0 10 0 "
     b"mods: 2 0 0 1 0 0 0 0 "
     b"flags: 2 0 0 0 0 0 0 0 "
-    b"crc16: E55D}\n"
+    b"crc16: 86AC}\n"
+)
+
+# F4: electrolyzer LEFT at 20 g/h, no dosing
+# Source: mirovra Jul 16 08:13:09 — LEFT direction confirmed via app
+SALT_NET_FRAME_F4 = (
+    b"{v1 110215844 100 0 31 "
+    b"ins: 326 -500 -500 -500 0 0 0 0 1 -500 -500 -500 0 24 7 10 8 15 0 "
+    b"ains: 738 738 579 5840 0 0 584 584 51 20 407 0 0 0 0 0 "
+    b"outs: 0 0 2 0 0 0 0 0 0 0 0 0 0 0 3 0 0 0 0 "
+    b"areqs: 74 72 4 0 5 33 33 0 0 0 33 33 33 0 55 255 255 5 5 10 0 15 0 0 0 3 "
+    b"reqs: 0 0 0 0 0 8 0 20 0 2 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 "
+    b"0 10 10 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 "
+    b"fncs: 0 0 1 0 0 0 10 0 "
+    b"mods: 2 0 0 1 0 0 0 0 "
+    b"flags: 2 0 0 0 0 0 0 0 "
+    b"crc16: 3663}\n"
+)
+
+# F5: electrolyzer OFF (outs[14]=0), filtration ON, no dosing
+# Source: mirovra Jul 16 09:27:09 — OFF status confirmed via app
+SALT_NET_FRAME_F5 = (
+    b"{v1 110215844 100 0 31 "
+    b"ins: 326 -500 -500 -500 0 0 0 0 1 -500 -500 -500 0 24 7 10 9 29 0 "
+    b"ains: 741 741 716 7210 0 0 721 721 49 0 488 0 0 0 0 0 "
+    b"outs: 0 0 2 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 "
+    b"areqs: 74 72 4 0 5 33 33 0 0 0 33 33 33 0 55 255 255 5 5 10 0 15 0 0 0 3 "
+    b"reqs: 0 0 0 0 0 8 0 20 0 2 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 "
+    b"0 10 10 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 "
+    b"fncs: 0 0 1 0 0 0 10 0 "
+    b"mods: 2 0 0 1 0 0 0 0 "
+    b"flags: 2 0 0 0 0 0 0 0 "
+    b"crc16: 56A4}\n"
 )
 
 
@@ -588,6 +621,16 @@ def device_salt_net_f2():
 @pytest.fixture
 def device_salt_net_f3():
     return AsekoV8Decoder.decode(SALT_NET_FRAME_F3)
+
+
+@pytest.fixture
+def device_salt_net_f4():
+    return AsekoV8Decoder.decode(SALT_NET_FRAME_F4)
+
+
+@pytest.fixture
+def device_salt_net_f5():
+    return AsekoV8Decoder.decode(SALT_NET_FRAME_F5)
 
 
 # --- Identity & header ---
@@ -669,23 +712,54 @@ def test_salt_net_salinity_f2(device_salt_net_f2):
 
 
 def test_salt_net_salinity_f3(device_salt_net_f3):
-    """ains[8] = 50 → 5.0 g/L."""
-    assert device_salt_net_f3.salinity == pytest.approx(5.0)
+    """F3: ains[8] = 53 → 5.3 g/L."""
+    assert device_salt_net_f3.salinity == pytest.approx(5.3)
 
 
-def test_salt_net_electrolyzer_power_f1(device_salt_net_f1):
-    """ains[10] = 401 → 40.1 g/h (or %)."""
-    assert device_salt_net_f1.electrolyzer_power == pytest.approx(40.1)
+def test_salt_net_electrolyzer_power_off_f1(device_salt_net_f1):
+    """F1: ains[9] = 0 → electrolyzer off → power = 0.0 g/h."""
+    assert device_salt_net_f1.electrolyzer_power == pytest.approx(0.0)
 
 
-def test_salt_net_electrolyzer_power_f2(device_salt_net_f2):
-    """ains[10] = 336 → 33.6 g/h (or %)."""
-    assert device_salt_net_f2.electrolyzer_power == pytest.approx(33.6)
+def test_salt_net_electrolyzer_power_f3(device_salt_net_f3):
+    """F3 (algicide ON, RIGHT): ains[9] = 19 → 19 g/h (matches app)."""
+    assert device_salt_net_f3.electrolyzer_power == pytest.approx(19.0)
 
 
-def test_salt_net_electrolyzer_active_when_power_nonzero(device_salt_net_f1):
-    """electrolyzer_active derived from electrolyzer_power > 0."""
-    assert device_salt_net_f1.electrolyzer_active is True
+def test_salt_net_electrolyzer_power_f4(device_salt_net_f4):
+    """F4 (LEFT): ains[9] = 20 → 20 g/h (matches app)."""
+    assert device_salt_net_f4.electrolyzer_power == pytest.approx(20.0)
+
+
+def test_salt_net_electrolyzer_power_off_f5(device_salt_net_f5):
+    """F5: ains[9] = 0 → electrolyzer off → power = 0.0 g/h."""
+    assert device_salt_net_f5.electrolyzer_power == pytest.approx(0.0)
+
+
+def test_salt_net_electrolyzer_active_right_f3(device_salt_net_f3):
+    """F3: outs[14] = 2 (RIGHT) → electrolyzer_active is True."""
+    assert device_salt_net_f3.electrolyzer_active is True
+
+
+def test_salt_net_electrolyzer_active_left_f4(device_salt_net_f4):
+    """F4: outs[14] = 3 (LEFT) → electrolyzer_active is True."""
+    assert device_salt_net_f4.electrolyzer_active is True
+
+
+def test_salt_net_electrolyzer_active_off_f5(device_salt_net_f5):
+    """F5: outs[14] = 0 → electrolyzer_active is False, direction None."""
+    assert device_salt_net_f5.electrolyzer_active is False
+    assert device_salt_net_f5.electrolyzer_direction is None
+
+
+def test_salt_net_electrolyzer_direction_right_f3(device_salt_net_f3):
+    """F3: outs[14] = 2 → RIGHT."""
+    assert device_salt_net_f3.electrolyzer_direction == AsekoElectrolyzerDirection.RIGHT
+
+
+def test_salt_net_electrolyzer_direction_left_f4(device_salt_net_f4):
+    """F4: outs[14] = 3 → LEFT."""
+    assert device_salt_net_f4.electrolyzer_direction == AsekoElectrolyzerDirection.LEFT
 
 
 def test_salt_net_required_algicide(device_salt_net_f1):
@@ -712,23 +786,23 @@ def test_salt_net_filtration_off_f2(device_salt_net_f2):
 
 
 def test_salt_net_algicide_off_f1(device_salt_net_f1):
-    """F1 has outs[15] = 0 → algicide pump off."""
+    """F1 has outs[11] = 0 → algicide pump off (gate: installed_pumps has algicide)."""
     assert device_salt_net_f1.algicide_pump_running is False
 
 
 def test_salt_net_algicide_on_f3(device_salt_net_f3):
-    """F3 has outs[15] = 2 → algicide pump on (best guess from §3.3)."""
+    """F3 has outs[11] = 1 → algicide pump on (confirmed mirovra Jul 16)."""
     assert device_salt_net_f3.algicide_pump_running is True
 
 
-def test_salt_net_algicide_flow_f3(device_salt_net_f3):
-    """F3 has ains[9] = 19 → 1.9 ml/min algicide flow (best guess)."""
-    assert device_salt_net_f3.flowrate_algicide == pytest.approx(1.9)
+def test_salt_net_algicide_on_f3_ph_minus_off(device_salt_net_f3):
+    """F3: algicide ON, pH− OFF → ph_minus_pump_running must be False."""
+    assert device_salt_net_f3.ph_minus_pump_running is False
 
 
-def test_salt_net_algicide_flow_off_f1(device_salt_net_f1):
-    """F1 has ains[9] = 0 → algicide flow is 0.0 (not None, since 0 is not the -500 sentinel)."""
-    assert device_salt_net_f1.flowrate_algicide == 0.0
+def test_salt_net_flowrate_algicide_is_none(device_salt_net_f1):
+    """v8 has no per-pump flow-rate bytes — flowrate_algicide stays None."""
+    assert device_salt_net_f1.flowrate_algicide is None
 
 
 # --- No-flow alarm dual encoding (Issue #131 §10) ---
@@ -817,8 +891,9 @@ def test_net_v8_does_not_get_salt_net_specific_fields():
     # fields stay None on NET.
     assert device.salinity is None
     assert device.electrolyzer_power is None
-    # electrolyzer_active is derived: power > 0 ⇒ False on NET (power is None)
-    assert device.electrolyzer_active is False
+    # electrolyzer_active is only set on SALT_NET (gated) → None on NET
+    assert device.electrolyzer_active is None
+    assert device.electrolyzer_direction is None
     assert device.flowrate_algicide is None
     assert device.algicide_pump_running is None
     assert device.required_algicide is None

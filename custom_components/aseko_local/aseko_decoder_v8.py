@@ -9,6 +9,7 @@ import homeassistant.util
 from .aseko_data import (
     AsekoDevice,
     AsekoDeviceType,
+    AsekoElectrolyzerDirection,
     AsekoFiltrationMode,
     AsekoProbeType,
 )
@@ -199,25 +200,33 @@ class AsekoV8Decoder:
 
         # ains[8] = salinity (g/L × 10), only populated on SALT-family devices
         salinity: float | None = None
-        # ains[10] = electrolyzer power (g/h × 10, or %), always non-zero when
-        # the cell is producing chlorine (no separate "running" boolean)
+        # ains[9] = electrolyzer power (g/h), matches app display
+        # (mirovra Jul 16 confirmed: ains[9]=19 ↔ app shows 19 g/h)
         electrolyzer_power: float | None = None
-        # ains[9] = algicide pump flow rate (ml/min × 10, best guess from F3)
-        flowrate_algicide: float | None = None
+        # ains[10] = unknown (not electrolyzer power as previously assumed —
+        # value does not match app display; reserved for future analysis)
         if is_salt_net:
             salinity_raw = _probe_value(ains, 8)
             if salinity_raw is not None:
                 salinity = salinity_raw / 10
 
-            electrolyzer_power_raw = _probe_value(ains, 10)
+            electrolyzer_power_raw = _probe_value(ains, 9)
             if electrolyzer_power_raw is not None:
-                electrolyzer_power = electrolyzer_power_raw / 10
+                electrolyzer_power = electrolyzer_power_raw  # already in g/h
 
-            flowrate_algicide_raw = _probe_value(ains, 9)
-            if flowrate_algicide_raw is not None:
-                flowrate_algicide = flowrate_algicide_raw / 10
-
-        electrolyzer_active = electrolyzer_power is not None and electrolyzer_power > 0
+        # Electrolyzer direction from outs[14]:
+        #   0 = off, 2 = right, 3 = left
+        # (confirmed by mirovra Jul 16 — see salt_net_v8_device_analysis.md §6)
+        outs14_raw = _get(outs, 14)
+        electrolyzer_active: bool | None = None
+        electrolyzer_direction: AsekoElectrolyzerDirection | None = None
+        if is_salt_net and outs14_raw is not None:
+            electrolyzer_active = outs14_raw != 0
+            if outs14_raw == 2:
+                electrolyzer_direction = AsekoElectrolyzerDirection.RIGHT
+            elif outs14_raw == 3:
+                electrolyzer_direction = AsekoElectrolyzerDirection.LEFT
+            # outs14_raw = 0 → off → both stay None/False
 
         # --- Pump states ---
         # **Every `*_pump_running` field is gated on the corresponding
@@ -406,6 +415,7 @@ class AsekoV8Decoder:
             salinity=salinity,
             electrolyzer_power=electrolyzer_power,
             electrolyzer_active=electrolyzer_active,
+            electrolyzer_direction=electrolyzer_direction,
             filtration_pump_running=filtration_pump_running,
             ph_minus_pump_running=ph_minus_pump_running,
             ph_plus_pump_running=ph_plus_pump_running,
@@ -413,7 +423,6 @@ class AsekoV8Decoder:
             algicide_pump_running=algicide_pump_running,
             floc_pump_running=floc_pump_running,
             oxy_pump_running=oxy_pump_running,
-            flowrate_algicide=flowrate_algicide,
             # v8 firmware does NOT transmit per-pump flow-rate bytes
             # (v7 byte[95] / byte[99] / byte[101] have no v8
             # equivalent). The dosing rate in ml/min is constant on v8

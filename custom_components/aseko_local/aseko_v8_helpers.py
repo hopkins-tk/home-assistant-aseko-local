@@ -109,13 +109,13 @@ class AsekoV8CapabilityFlags:
 # claimed present, the entity layer stays quiet.
 AsekoV8_CAPABILITY_FLAGS: dict[AsekoDeviceType, AsekoV8CapabilityFlags] = {
     # ASIN AQUA Salt NET v8: dedicated pump ports, no CL pump.
-    #   outs[8]  = pH− pump running        (confirmed: 3 mirovra frames)
-    #   outs[15] = algicide pump running   (best guess from F3 algicide run)
+    #   outs[8]  = pH− pump running        (confirmed: mirovra hex dumps)
+    #   outs[11] = algicide pump running   (confirmed: mirovra Jul 16 frames)
     # See salt_net_v8_device_analysis.md §6 and §11.
     AsekoDeviceType.SALT_NET: AsekoV8CapabilityFlags(
         fncs_code=1,
         outs_ph_minus=8,  # confirmed against mirovra's hex dumps
-        outs_algicide=15,  # best guess from F3 algicide run
+        outs_algicide=11,  # confirmed: outs[11]=1 when algicide ON (mirovra Jul 16)
         # outs_cl / outs_ph_plus / outs_floc / outs_oxy all default to
         # None — SALT NET does not have these pumps.
     ),

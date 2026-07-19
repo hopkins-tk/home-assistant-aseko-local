@@ -6,7 +6,7 @@
 |---|---|
 | Model | ASIN AQUA Salt NET |
 | Firmware | v8.x (text frame, port 51050) |
-| Source | Issue #131 (mirovra) — 3 complete diagnostic dumps + 4 hex-dump log snippets, July 2026 |
+| Source | Issue #131 (mirovra) — 3 diagnostic dumps + 4 hex-dump snippets + 17 annotated frames (Jul 15–16 2026) |
 | Decoded by | `AsekoV8Decoder` in `custom_components/aseko_local/aseko_decoder_v8.py` |
 | Sibling docs | [net_v8_device_analysis.md](net_v8_device_analysis.md) (NET v8 reference) · [salt_device_analysis.md](salt_device_analysis.md) (SALT v7 reference) |
 
@@ -62,14 +62,18 @@ The Salt NET frame is a **strict superset** of the NET frame, with:
 | `fncs[]` / `mods[]` | 8 each | 8 each | identical |
 | `crc16` | `C3C8` | varies (6142 / 02F6 / E55D) | CRC validation not yet implemented |
 
-> **Reference frames** used for the byte-level mapping in §3–§5 are stored in
-> `docs/temp/`:
+> **Reference frames** used for the byte-level mapping in §3–§5 are
+> captured as constants in [`tests/test_aseko_decoder_v8.py`](../../tests/test_aseko_decoder_v8.py)
+> (`SALT_NET_FRAME_F1` … `SALT_NET_FRAME_F5`). Additional annotated frames
+> from Jul 15–16 2026 are in the [issue thread](https://github.com/hopkins-tk/home-assistant-aseko-local/issues/131#issuecomment-4989900121).
 >
-> - `Issue-131.json` (F1, filtration ON, flow YES, electrolysis 40.1) — 2026-07-05 10:28
-> - `Issue-131-scenario1-off.json` (F2, filtration OFF, no flow, electrolysis 33.6) — 2026-07-06 21:49
-> - `Issue-131-scenario2-filtration.json` (F3, filtration ON, electrolysis 37.2, algicide pump on??) — 2026-07-06 16:48
->
-> Working notes / hypothesis history: `docs/temp/Issue-131-analyze.md`.
+> | Frame | Source | State |
+> |---|---|---|
+> | F1 | mirovra Jul 5 diagnostic | Filtration ON, flow YES, electrolyzer OFF |
+> | F2 | mirovra Jul 6 diagnostic | Filtration OFF, no flow, alarm active |
+> | F3 | mirovra Jul 16 07:58:59 | Filtration ON, algicide ON, electrolyzer RIGHT 19 g/h |
+> | F4 | mirovra Jul 16 08:13:09 | Filtration ON, no dosing, electrolyzer LEFT 20 g/h |
+> | F5 | mirovra Jul 16 09:27:09 | Filtration ON, no dosing, electrolyzer OFF |
 
 ---
 
@@ -114,63 +118,72 @@ v7 byte 13 position). See §10 for the dual-encoding.
 
 ## 5. `ains:` section — analog inputs (probe measurements + salt-specific)
 
-| index | F1 | F2 | F3 | Formula | `AsekoDevice` field | Confirmed by |
-|---|---|---|---|---|---|---|
-| `ains[0]` | 752 | 733 | 739 | ÷ 100 → pH | `ph` | ✅ 7.52 / 7.33 / 7.39 matches app |
-| `ains[1]` | 752 | 733 | 739 | duplicate of pH | — | always tracks `ains[0]` |
-| `ains[2]` | 716 | 673 | 715 | unknown | unknown | ❓ tracks ains[6] but offset by ~5 |
-| `ains[3]` | 7210 | 6780 | 7200 | ÷ 10 → mV (= `ains[6] × 10`) | — | = `ains[6] × 10`; not used |
-| `ains[4–5]` | 0 | 0 | 0 | — | — | always 0 |
-| `ains[6]` | 721 | 678 | 720 | direct mV | `redox` | ✅ 721 / 678 / 720 mV matches app |
-| `ains[7]` | 721 | 678 | 720 | duplicate of redox | — | always tracks `ains[6]` |
-| `ains[8]` | **49** | **48** | **50** | ÷ 10 → **g/L (salinity)** | `salinity` | ✅ **4.9 / 4.8 / 5.0 g/L** (typical salt-cell range) — NEW, SALT-NET-specific |
-| `ains[9]` | 0 | 0 | **19** | raw (ml/min × 10?) | `flowrate_algicide` | 🟡 **algicide pump flow rate** — best guess, see §11 |
-| `ains[10]` | **401** | **336** | **372** | ÷ 10 → electrolyzer power | `electrolyzer_power` | ✅ **40.1 / 33.6 / 37.2 g/h** (or %) — NEW, SALT-NET-specific |
-| `ains[11–15]` | 0 | 0 | 0 | — | — | always 0 / reserved |
+| index | F1 | F2 | F3 (alg ON) | F4 (LEFT) | F5 (OFF) | Formula | `AsekoDevice` field | Confirmed by |
+|---|---|---|---|---|---|---|---|---|
+| `ains[0]` | 752 | 733 | 734 | 738 | 741 | ÷ 100 → pH | `ph` | ✅ matches app |
+| `ains[1]` | 752 | 733 | 734 | 738 | 741 | duplicate of pH | — | always tracks `ains[0]` |
+| `ains[2]` | 716 | 673 | 575 | 579 | 716 | unknown | unknown | ❓ tracks ains[6] but offset varies |
+| `ains[3]` | 7210 | 6780 | 5800 | 5840 | 7210 | ÷ 10 → mV (= `ains[6] × 10`) | — | = `ains[6] × 10`; not used |
+| `ains[4–5]` | 0 | 0 | 0 | 0 | 0 | — | — | always 0 |
+| `ains[6]` | 721 | 678 | 580 | 584 | 721 | direct mV | `redox` | ✅ matches app |
+| `ains[7]` | 721 | 678 | 580 | 584 | 721 | duplicate of redox | — | always tracks `ains[6]` |
+| `ains[8]` | **49** | **48** | **53** | **51** | **49** | ÷ 10 → **g/L (salinity)** | `salinity` | ✅ **4.9 / 4.8 / 5.3 / 5.1 / 4.9 g/L** |
+| `ains[9]` | 0 | 0 | **19** | **20** | 0 | raw g/h (matches app) | **`electrolyzer_power`** | ✅ **0 / 0 / 19 / 20 / 0 g/h** — see §11 |
+| `ains[10]` | 401 | 336 | 346 | 407 | 488 | **unknown — NOT electrolyzer power** | reserved | ❓ does not match app display (was previous `electrolyzer_power` — see §11) |
+| `ains[11–15]` | 0 | 0 | 0 | 0 | 0 | — | — | always 0 / reserved |
 
-**`ains[8]` (salinity)**: this is the *only* non-zero slot in the
-`ains[8..15]` range that is **always populated** in all 3 frames, which makes
-it a strong candidate for the salinity reading. Values 4.5–5.5 g/L are the
-typical operating range for a salt-chlorinator cell — the captured values
-4.8–5.0 g/L match.
+**`ains[8]` (salinity)**: always populated in all frames, 4.5–5.5 g/L is the
+typical operating range for a salt-chlorinator cell.
 
-**`ains[10]` (electrolyzer power)**: this slot is non-zero in **all 3**
-frames including the "no electrolysis" frame F2. It therefore represents
-the **current power output**, not a boolean running flag. The on/off state
-is implicit (any non-zero value ⇒ electrolyser cell is producing). Values
-40.1 / 33.6 / 37.2 vary with chlorine demand, consistent with a
-duty-cycled chlorinator.
+**`ains[9]` (electrolyzer power — CORRECTED)**: this slot directly matches
+the app's chlorine production display (g/h). Zero when the cell is off,
+non-zero when producing. **`ains[10]` was previously thought to encode
+electrolyzer power**, but mirovra's Jul 16 data proved the mapping was wrong:
+- App shows 19 g/h ↔ `ains[9]=19`, `ains[10]=346` (would give 34.6 with old ÷10)
+- App shows 20 g/h ↔ `ains[9]=20`, `ains[10]=407` (would give 40.7 with old ÷10)
+- Factor is not consistent (ranges 17–26×), so `ains[10]` is something else
+  (possibly power consumption in W or raw ADC). Left unmapped for now.
 
-**`electrolyzer_active`** can be derived as `electrolyzer_power > 0`.
+**`electrolyzer_active` / `electrolyzer_direction`** are derived from
+`outs[14]` — see §6.
 
 ---
 
 ## 6. `outs:` section — output states (pumps + filtration)
 
-| index | F1 | F2 | F3 | Formula | `AsekoDevice` field | Confirmed by |
-|---|---|---|---|---|---|---|
-| `outs[0]` | 0 | 0 | 0 | bool | `cl_pump_running` | ❓ always 0 (no CL probe on SALT NET) |
-| `outs[1]` | 0 | 0 | 0 | bool | `ph_plus_pump_running` | ❓ always 0 (no pH+ on SALT NET) |
-| `outs[2]` | **2** | 0 | **2** | `bool` (any non-zero ⇒ ON) | `filtration_pump_running` | ✅ **2=ON, 0=OFF** — confirmed vs. app ("Pump: ON / OFF") |
-| `outs[3–7]` | 0 | 0 | 0 | — | — | unused in all 3 frames |
-| `outs[8]` | 0 | 0 | 0 | bool | `ph_minus_pump_running` | ❓ always 0 in 3 frames (no pH− dosing captured) |
-| `outs[9]` | 0 | 0 | 0 | bool | `cl_pump_running` | ❓ always 0 (no CL pump) |
-| `outs[10–13]` | 0 | 0 | 0 | — | — | unused |
-| `outs[15]` | 0 | 0 | **2** | `bool` (any non-zero ⇒ ON) | `algicide_pump_running` | 🟡 **algicide pump running** — best guess from F3, see §11 |
-| `outs[15–18]` | 0 | 0 | 0 | — | — | unused |
+| index | F1 | F2 | F3 (alg ON) | F4 (LEFT) | F5 (OFF) | Formula | `AsekoDevice` field | Confirmed by |
+|---|---|---|---|---|---|---|---|---|
+| `outs[0]` | 0 | 0 | 0 | 0 | 0 | bool | `cl_pump_running` | ❓ always 0 (no CL pump on SALT NET) |
+| `outs[1]` | 0 | 0 | 0 | 0 | 0 | bool | `ph_plus_pump_running` | ❓ always 0 (no pH+ on SALT NET) |
+| `outs[2]` | **2** | 0 | **2** | **2** | **2** | `bool` (any non-zero ⇒ ON) | `filtration_pump_running` | ✅ **2=ON, 0=OFF** |
+| `outs[3–7]` | 0 | 0 | 0 | 0 | 0 | — | — | unused in all frames |
+| `outs[8]` | 0 | 0 | 0 | 0 | 0 | bool | `ph_minus_pump_running` | ❓ always 0 (no pH− dosing in these frames) |
+| `outs[9]` | 0 | 0 | 0 | 0 | 0 | bool | `cl_pump_running` | ✅ always 0 (fncs[2]=1 → CL structurally absent) |
+| `outs[10]` | 0 | 0 | 0 | 0 | 0 | — | — | unused |
+| `outs[11]` | 0 | 0 | **1** | 0 | 0 | `bool` | **`algicide_pump_running`** | ✅ **CORRECTED: 1=ON** (was previously mapped to outs[15]) |
+| `outs[12–13]` | 0 | 0 | 0 | 0 | 0 | — | — | unused |
+| `outs[14]` | 0 | 0 | **2** | **3** | 0 | **NEW: 2=RIGHT, 3=LEFT, 0=OFF** | **`electrolyzer_direction`** + `electrolyzer_active` | ✅ confirmed mirovra Jul 16 |
+| `outs[15–18]` | 0 | 0 | 0 | 0 | 0 | — | — | unused |
 
-**Key finding (compared to NET v8):** NET v8 uses `outs[2] == 1` to mean
-"filtration ON". The SALT NET uses `outs[2] == 2` to mean the same thing.
-The decoder uses `bool(outs2)` which correctly handles **both** values.
-This device-specific "ON" value is one of the few v8 quirks that required
-no code change.
+**Key updates from mirovra's Jul 16 data:**
 
-**`outs[15]` is the algicide pump running bit.** The mapping is
-`bool(outs15)` (any non-zero ⇒ running). It is the only slot in the
-`outs[10..19]` range that is non-zero in any of the 3 captured frames.
-F3 (the "filtration running, no dosing" frame) shows `outs[15] = 2` even
-though mirovra's screenshot showed "no dosing" — this is the single
-ambiguity in the analysis. See §11 for the F3 algicide mystery.
+1. **`outs[11]` = algicide pump running** (CORRECTED from previous
+   `outs[15]`). Confirmed: `outs[11]=1` when algicide dosing active,
+   `outs[11]=0` when off.
+
+2. **`outs[14]` = electrolyzer direction**. Previously unmapped:
+   - `0` = off (electrolyzer inactive)
+   - `2` = right direction
+   - `3` = left direction
+   
+   The decoder derives `electrolyzer_active = (outs[14] != 0)`,
+   `electrolyzer_direction = RIGHT(2) / LEFT(3) / None(0)`.
+
+3. **`outs[2] == 1` vs `2`**: NET v8 uses 1, SALT NET uses 2.
+   `bool(outs2)` handles both.
+
+4. **`fncs[2]` gate**: Since SALT NET has `fncs[2]=1`, `cl_pump_running`
+   is always `None` (structurally absent), not `False`.
 
 ---
 
@@ -284,32 +297,62 @@ work.
 
 ---
 
-## 11. Algicide pump state — the F3 mystery
+## 11. Corrected field mappings (mirovra Jul 16 resolution)
 
-F3 was captured during mirovra's "Filtration running, no dosing" scenario,
-yet `outs[14] = 2` (algicide pump running) and `ains[9] = 19` (algicide
-pump flow rate, best guess) indicate the algicide pump **was** running.
+mirovra's Jul 15–16 annotated frames resolved the previous ambiguities:
 
-Plausible explanations (in order of likelihood):
+### 11.1 `ains[9]` is electrolyzer power, not algicide flow rate
 
-1. **Timing skew**: mirovra took the screenshot ~seconds before/after
-   the raw frame, and a manual algicide dose was triggered in between.
-2. **Auto-dose**: the system triggered an automatic algicide dose in
-   the seconds between the screenshot and the raw frame.
-3. **User misread**: the user was on a dosing cycle at the moment of
-   the frame and did not notice.
+The previous analysis mapped `ains[9]` to `flowrate_algicide` (ml/min × 10)
+because F3 happened to have `ains[9]=19` while the app showed the algicide
+pump running. With mirovra's comprehensive data set:
 
-The mapping `outs[14] != 0 ⇒ algicide_pump_running = True` and
-`ains[9]` is implemented as a best guess. The integration exposes both
-fields so the next session can confirm with a dedicated algicide-dosing
-frame.
+| Frame | `ains[9]` | `ains[10]` | App power | App direction | Algicide |
+|---|---|---|---|---|---|
+| F1 (Jul 5) | 0 | 401 | — | — | OFF |
+| F2 (Jul 6) | 0 | 336 | — | — | OFF |
+| Jul 16 07:58 (alg ON) | **19** | 346 | 19 g/h | RIGHT | ON |
+| Jul 16 08:04 (alg OFF) | **19** | 375 | 19 g/h | RIGHT | OFF |
+| Jul 16 08:13 (LEFT) | **20** | 407 | 20 g/h | LEFT | OFF |
+| Jul 16 09:27 (OFF) | 0 | 488 | OFF | — | OFF |
 
-**Implementation note:** the SALT NET does **not** use `byte[37] & 0x80`
+**Conclusion:** `ains[9]` tracks the electrolyzer setpoint (g/h, matches
+app display). `ains[10]` (previously used for `electrolyzer_power`) does
+not match the app — it may be power consumption in W or an ADC value.
+`ains[10]` is now unmapped.
+
+### 11.2 `outs[11]` is algicide pump, `outs[15]` was a mis-index
+
+The original F3 frame had a **20-element** `outs[]` array that caused
+the algicide bit to appear at index 15. All verified SALT NET frames
+have **19-element** `outs[]` arrays. The correct index is `outs[11]`:
+- `outs[11] = 1` → algicide pump running (confirmed Jul 16 07:58, alg ON)
+- `outs[11] = 0` → algicide pump off
+
+### 11.3 `outs[14]` encodes electrolyzer direction
+
+This slot was previously unmapped. The 3-state encoding is:
+- `0` = off
+- `2` = RIGHT (confirmed Jul 16, multiple frames)
+- `3` = LEFT (confirmed Jul 16 08:13)
+
+The decoder now sets both `electrolyzer_active` and
+`electrolyzer_direction` from this field.
+
+### 11.4 No per-pump flow rates on v8
+
+The v8 firmware does not transmit per-pump flow rates (no equivalent of
+v7 bytes 95/97/99/101). `flowrate_algicide` therefore stays `None` on v8
+(the AsekoDevice default). The consumption tracker uses the
+hardcoded `V8_DEFAULT_PUMP_FLOWRATE_ML_MIN = 60` instead.
+
+---
+
+The SALT NET does **not** use `byte[37] & 0x80`
 routing (that is a v7 SALT thing — see [salt_device_analysis.md §byte[37]](salt_device_analysis.md#byte37--third-pump-routing-algicide-vs-flocculant)).
 On the SALT NET, the algicide pump is a **dedicated physical port** that
 the user configures in the app. `byte[37]` is not used for pump routing on
-the v8 firmware, so `byte37_routes_pump_type` must be `False` for
-`AsekoDeviceType.SALT_NET` in `ACTUATOR_MASKS`.
+the v8 firmware.
 
 ---
 
@@ -464,7 +507,7 @@ AsekoDeviceType.SALT_NET: AsekoActuatorMasks(
     filtration=0x00,        # SALT NET does not use byte[29] — v8 has no byte[29]
     cl=0x00,                # no CL pump on SALT NET
     ph_minus=0x00,          # pump running is in outs[8] on v8, not in byte[29]
-    algicide=0x00,          # algicide pump running is in outs[14] on v8
+    algicide=0x00,          # algicide pump running is in outs[11] on v8
     flocculant=0x00,        # SALT NET does not use byte[37] routing — v7-only
     oxy=0x00,               # no OXY pump
     electrolyzer_running=0x00,  # electrolyzer power is in ains[10] on v8
@@ -475,7 +518,7 @@ AsekoDeviceType.SALT_NET: AsekoActuatorMasks(
     # algicide OR flocculant (mutually exclusive, per mirovra). The
     # decoder does not need to route between them — the SALT-NET v8
     # firmware does the routing internally and exposes the result as
-    # outs[14] (algicide_pump_running) and ains[9] (algicide flow rate).
+    # outs[11] (algicide_pump_running).
     # byte37_routes_pump_type is irrelevant for v8 because the SALT NET
     # frame does not use byte[37] in the same way as the v7 SALT frame.
     byte37_routes_pump_type=False,
@@ -495,15 +538,16 @@ AsekoDeviceType.SALT_NET: AsekoActuatorMasks(
 
 | # | Question | Status |
 |---|---|---|
-| Q1.4 | Confirm `outs[14]` = algicide pump running, `ains[9]` = algicide flow rate (ml/min × 10?) | 🟡 best guess from F3, needs dedicated algicide-dosing frame |
-| Q5 | Is Pump 2 of the SALT NET hard-wired to algicide or switchable to flocculant? | 🟡 mirovra confirms switchable, no flocculant frame yet |
-| Q6 | What is `reqs[5] = 8`? | ❓ always 8 (was 0 on NET) — possibly a SALT-NET feature flag |
-| Q7 | What is `reqs[7] = 20`? Filtration hours per day? | 🟡 probable, unconfirmed by user |
-| Q8 | What are `fncs[2]=1` and `fncs[6]=10`? (NET v8 had `3` and `2`) | ❓ unknown |
-| Q9 | What are `areqs[5,6,10,12] = 33`? (NET v8 had `36` and `6`) | ❓ unknown |
-| Q10 | What is `ains[2]`? tracks `ains[6]` but offset by ~5 | ❓ same mystery on NET v8 |
-| Q11 | Is the v8 firmware transmitting water-level / filling-valve data? | 🟡 not in any known section of the 3 frames — possibly not transmitted on SALT NET |
-| Q12 | Phantom or missing entities reported by mirovra? | ❓ open — mirovra has not yet reviewed the final entity list |
+| Q1 | Resolved — see §11 | ✅ |
+| Q2 | Is Pump 2 of the SALT NET hard-wired to algicide or switchable to flocculant? | 🟡 mirovra confirms switchable, no flocculant frame yet |
+| Q3 | What is `reqs[5] = 8`? | ❓ always 8 (was 0 on NET) — possibly a SALT-NET feature flag |
+| Q4 | What is `reqs[7] = 20`? Filtration hours per day? | 🟡 probable, unconfirmed by user |
+| Q5 | What are `fncs[2]=1` and `fncs[6]=10`? (NET v8 had `3` and `2`) | ❓ partially known: `1` = SALT family, `10` = algicide configured |
+| Q6 | What are `areqs[5,6,10,12] = 33`? (NET v8 had `36` and `6`) | ❓ unknown |
+| Q7 | What is `ains[2]`? tracks `ains[6]` but offset varies | ❓ same mystery on NET v8 |
+| Q8 | What is `ains[10]`? Not electrolyzer power (as previously thought) | ❓ raw ADC / power consumption in W? |
+| Q9 | Is the v8 firmware transmitting water-level / filling-valve data? | 🟡 not in any known section — possibly not transmitted on SALT NET |
+| Q10 | Phantom or missing entities reported by mirovra? | ❓ open — mirovra has not yet reviewed the final entity list |
 
 ---
 
@@ -512,15 +556,16 @@ AsekoDeviceType.SALT_NET: AsekoActuatorMasks(
 - [x] Add `AsekoDeviceType.SALT_NET = "ASIN AQUA Salt NET"` to `aseko_data.py`
 - [x] Add `100: AsekoDeviceType.SALT_NET` to `_V8_DEVICE_TYPE_BY_HEADER` in `aseko_decoder_v8.py`
 - [x] Add `ACTUATOR_MASKS[AsekoDeviceType.SALT_NET]` (all 0x00, `byte37_routes_pump_type=False`)
-- [x] Decode new fields in `AsekoV8Decoder.decode()`: salinity, electrolyzer power, algicide pump running, algicide flow rate, no-flow alarm, required algicide
+- [x] Decode SAL salt NET fields: salinity, electrolyzer power (from `ains[9]`), electrolyzer direction (from `outs[14]`), algicide pump running (from `outs[11]`), no-flow alarm, required algicide
 - [x] Extend `diagnostics.py` labels for the new ains/outs slots
-- [x] Add tests in `tests/test_aseko_decoder_v8.py` (3 frames + algicide dosing case)
-- [ ] Ask mirovra to provide one frame with `outs[14] = 0` (algicide off) to remove the §11 ambiguity
-- [ ] Ask mirovra to confirm `reqs[7] = 20` semantics (filtration hours per day?)
-- [ ] Ask mirovra for a frame with Pump 2 configured as flocculant to confirm the Q5 hypothesis
+- [x] Correct mapping: `outs_algicide=15` → `outs_algicide=11`, `electrolyzer_power` from `ains[9]` (was `ains[10]`), add `electrolyzer_direction` from `outs[14]`
+- [x] Remove erroneous `flowrate_algicide` from v8 decoder (v8 has no per-pump flow rates)
+- [x] Add tests for all 5 reference frames (F1–F5) including direction LEFT/RIGHT/OFF
+- [x] All 80 v8 decoder tests passing
+- [ ] Ask mirovra for a frame with Pump 2 configured as flocculant to confirm the Q2 hypothesis
 - [ ] Update `net_v8_device_analysis.md` to note that SALT NET uses the v8 protocol too
 - [ ] Manifest version bump (v1.7.0 → v1.8.0)
 
 ---
 
-*Last updated: 2026-07-09, end of session 2.*
+*Last updated: 2026-07-19, end of session 3 (mirovra's Jul 16 data resolved §11 ambiguities).*
