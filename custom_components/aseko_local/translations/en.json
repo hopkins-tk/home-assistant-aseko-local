@@ -48,6 +48,9 @@
       "heating_control_enabled": {
         "name": "Heating control"
       },
+      "antifreeze_enabled": {
+        "name": "Antifreeze"
+      },
       "cl_pump_running": {
         "name": "Chlorine pump running"
       },

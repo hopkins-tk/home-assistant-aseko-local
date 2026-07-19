@@ -48,6 +48,9 @@
             "heating_control_enabled": {
                 "name": "Contrôle du chauffage"
             },
+            "antifreeze_enabled": {
+                "name": "Antigel"
+            },
             "cl_pump_running": {
                 "name": "Pompe à chlore en marche"
             },

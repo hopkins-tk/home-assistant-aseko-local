@@ -48,6 +48,9 @@
       "heating_control_enabled": {
         "name": "Heizungssteuerung"
       },
+      "antifreeze_enabled": {
+        "name": "Frostschutz"
+      },
       "cl_pump_running": {
         "name": "Chlorpumpe läuft"
       },

@@ -25,7 +25,8 @@ position. The two revisions are referred to throughout this document as
 | Source | This file (Issue #110, #135) | [Issue #133](../temp/Issue-133.md) |
 | Period 2 enable flag | bit 5 (`0x20`) — same as firmware B | bit 5 (`0x20`) |
 | Manual OFF signal | not present in captured frames | bit 2 (`0x04`) — see `byte[37]` table |
-| Heating control flag | bit 3 (`0x08`) — mastered enabled | (n/o) |
+| Heating control flag | bit 3 (`0x08`) — master enable | (n/o) |
+| Antifreeze flag | bit 7 (`0x80`) — master enable (Issue #136) | (n/o) |
 
 \* Serial 110175608 (`byte[4]` = `0x03`, REDOX HOME) is the source of the heating-control findings ([Issue #135](https://github.com/hopkins-tk/home-assistant-aseko-local/issues/135)).
 
@@ -194,6 +195,7 @@ Note on **bytes 94–95**: `max_filling_time` reads bytes[94:96] as a big-endian
 | flowrate_floc             | 10               | Floc+c listed     | ✓     |
 | flowrate_algicide         | 33               | Algicide listed   | ✓ (fixed) |
 | heating_control_enabled   | True / False     | — (app setting)   | ✓ (Issue #135, serial 110175608 REDOX HOME) |
+| antifreeze_enabled        | True / False     | — (app setting)   | ✓ (Issue #136, serial 110175608 REDOX HOME) |
 
 ---
 
@@ -257,12 +259,18 @@ firmware B: serial 110169464, byte 4 = 0x03 — see [Issue #133](../temp/Issue-1
 | Heating ON (nonstop)†         | `0x49`     | (n/o)      | `0100_1001` / —              |
 | Heating OFF (nonstop)†        | `0x41`     | (n/o)      | `0100_0001` / —              |
 | Heating OFF (initial/unconf.)† | `0x45`    | (n/o)      | `0100_0101` / —              |
+| Antifreeze ON (nonstop)†‡     | `0x81`     | (n/o)      | `1000_0001` / —              |
 
 † Bit 1 is clear (`0x02`) in all three heating-health values. When `byte[37]` & `0x40` is set
   but bit-1 is clear, the decoder falls back to schedule-derived filtration mode (see
   `_fill_filtration_mode` in `aseko_decoder.py`). The actual filtration mode is
   determined from the schedule bytes and the `PERIOD2_ENABLED_MASK` (`0x20`).
   `heating_control_enabled` is decoded separately from bit 3 (`0x08`).
+
+‡ When antifreeze is ON, `byte[55]` drops from the normal heating setpoint
+  (25°C in dtpugh's case) to the antifreeze minimum temperature (4°C).
+  `antifreeze_enabled` is decoded from bit 7 (`0x80`), independent of
+  `heating_control_enabled` (bit 3).
 
 \* Firmware A cannot distinguish P1-only from P1&P2 from `byte[37]` alone — both
 share the value `0x53`. The decoder uses the existing `FILTRATION_PERIOD2_ENABLED_MASK = 0x20`
@@ -285,10 +293,11 @@ Mode decoding on firmware B:
 - **Timer mode** ⇔ `(byte[37] & 0x30) != 0`
 - **Manual override** ⇔ `(byte[37] & 0x04) != 0`
 
-**Firmware A bit semantics** (Issue #135, serial 110175608 REDOX HOME):
+**Firmware A bit semantics** (Issue #135, #136, serial 110175608 REDOX HOME):
 
 | Bit | Mask  | Meaning                                                    |
 |-----|-------|------------------------------------------------------------|
+| 7   | `0x80`| Antifreeze master enable (Issue #136)                      |
 | 6   | `0x40`| Firmware A high-nibble indicator (always set)              |
 | 3   | `0x08`| Heating control master enable                              |
 | 2   | `0x04`| Unknown / initial-unconfigured indicator (set on unconfigured `0x45`) |
@@ -301,6 +310,9 @@ Filtration mode decoding on firmware A:
   falls back to schedule-derived filtration mode for these.
 - **Heating control**: bit 3 (`0x08`) is gated on `AsekoDeviceType.HOME` in
   `_fill_heating_demand()` and decoded into `heating_control_enabled`.
+- **Antifreeze**: bit 7 (`0x80`) is decoded as `antifreeze_enabled` (Issue #136).
+  When active, `byte[55]` holds the antifreeze threshold (4°C) instead of the
+  normal heating setpoint.
 
 **Note on `0x43` (firmware A)**: treat this as "consistent with NONSTOP 24H" rather
 than "confirmed NONSTOP 24H active". A frame captured in May 2026 from
@@ -397,4 +409,6 @@ Tests for the HOME decoder live in `tests/test_aseko_decoder.py`:
 - Issue #135: `byte[37]` bit 3 (`0x08`) = heating control master enable on HOME firmware A
   (serial 110175608, REDOX HOME). Confirms `byte[55]` as target water temp setpoint.
   Working notes: [docs/temp/Issue-135.md](../temp/Issue-135.md).
+- Issue #136: `byte[37]` bit 7 (`0x80`) = antifreeze master enable on HOME firmware A
+  (same device). `byte[55]` shows the antifreeze threshold (4°C) when enabled.
 - Working notes: `docs/temp/Issue-133.md`

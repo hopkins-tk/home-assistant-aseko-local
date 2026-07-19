@@ -48,6 +48,9 @@
       "heating_control_enabled": {
         "name": "Ovládání topení"
       },
+      "antifreeze_enabled": {
+        "name": "Ochrana proti zamrznutí"
+      },
       "cl_pump_running": {
         "name": "Čerpadlo chloru běží"
       },

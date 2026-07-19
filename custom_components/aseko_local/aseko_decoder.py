@@ -460,25 +460,24 @@ class AsekoDecoder:
 
     @staticmethod
     def _fill_heating_demand(unit: AsekoDevice, data: bytes) -> None:
-        """Decode the heating demand relay state from byte[29] bit 0x04.
+        """Decode heating-related fields from byte[29] and byte[37].
 
         byte[29] bit 0x04 = heating demand relay (JS-DE-Tech "relay_byte"
         bit 2).  Set whenever the pool controller is requesting heat from
         the configured heater source (heat pump, electric heater, etc.).
-
         Available on HOME, SALT, OXY.  NET does not have a heating output,
         so the field stays None for NET (and no binary sensor is
         registered).
 
-        The bit-0x04 mapping is the same one JS-DE-Tech uses and was
-        independently listed by the prior Node-RED decoder.
+        byte[37] bit 3 (0x08) = heating control master enable (HOME only,
+        Issue #135).  Diagnostics from serial 110175608 (ASIN AQUA Home,
+        byte 4 = 0x03, firmware A high nibble 0x4) show bit 3 set when
+        heating control is ON (0x49) and clear when OFF (0x41).
 
-        Additionally decodes the heating control master enable from
-        byte[37] (HOME v7 devices, Issue #135).  Diagnostics from serial
-        110175608 (ASIN AQUA Home, byte 4 = 0x03, firmware A high nibble
-        0x4) show bit 3 (0x08) set when heating control is ON (0x49) and
-        clear when OFF (0x41).  The initial unconfigured state (0x45) also
-        has bit 3 clear.
+        byte[37] bit 7 (0x80) = antifreeze master enable (HOME only,
+        Issue #136).  On the same device, 0x81 → antifreeze ON, 0x41 →
+        antifreeze OFF.  When enabled, byte[55] shows the antifreeze
+        temperature threshold (4°C) instead of the normal heating setpoint.
         """
         if unit.device_type == AsekoDeviceType.NET:
             return
@@ -489,6 +488,14 @@ class AsekoDecoder:
         if unit.device_type == AsekoDeviceType.HOME and data[37] != UNSPECIFIED_VALUE:
             unit.heating_control_enabled = bool(
                 data[37] & AsekoByte37Masks.HOME_FWA_HEATING_ENABLED
+            )
+
+        # byte[37] bit 7 = antifreeze master enable (HOME only, Issue #136).
+        # Confirmed on serial 110175608 (ASIN AQUA Home REDOX, byte 4 = 0x03):
+        #   0x81 → antifreeze ON, 0x41 → antifreeze OFF.
+        if unit.device_type == AsekoDeviceType.HOME and data[37] != UNSPECIFIED_VALUE:
+            unit.antifreeze_enabled = bool(
+                data[37] & AsekoByte37Masks.HOME_FWA_ANTIFREEZE_ENABLED
             )
 
     @staticmethod

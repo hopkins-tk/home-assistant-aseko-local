@@ -78,6 +78,7 @@ class AsekoByte37Masks:
                   (set: firmware-A encoding; clear: firmware-B encoding).
     Bit 7 (0x80): SALT shared-port routing indicator
                   (see ``AsekoThirdPumpSlot.SALT_ALGICIDE_ROUTING``).
+                  HOME firmware A → antifreeze master enable (Issue #136).
 
     Constants are grouped by device family below.
     """
@@ -97,6 +98,11 @@ class AsekoByte37Masks:
     # Confirmed on serial 110175608 (ASIN AQUA Home REDOX, byte 4 = 0x03):
     #   0x49 → heating ON, 0x41 → heating OFF.
     HOME_FWA_HEATING_ENABLED: int = 0x08
+
+    # Antifreeze master enable (Issue #136).
+    # Confirmed on serial 110175608 (ASIN AQUA Home REDOX, byte 4 = 0x03):
+    #   0x81 → antifreeze ON, 0x41 → antifreeze OFF.
+    HOME_FWA_ANTIFREEZE_ENABLED: int = 0x80
 
     # ── HOME firmware B (high nibble 0x0/0x1/0x3, serial 110169464) ─────
 
