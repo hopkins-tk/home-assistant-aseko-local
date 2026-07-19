@@ -241,8 +241,6 @@ SENSORS: list[AsekoSensorEntityDescription] = [
         state_class=SensorStateClass.MEASUREMENT,
         icon="mdi:pool",
         value_fn=lambda device: device.cl_free_mv,
-        entity_registry_enabled_default=False,
-        entity_registry_visible_default=False,
     ),
     AsekoSensorEntityDescription(
         key="ph",
@@ -324,7 +322,6 @@ SENSORS: list[AsekoSensorEntityDescription] = [
         native_unit_of_measurement=UnitOfLength.CENTIMETERS,
         state_class=SensorStateClass.MEASUREMENT,
         icon="mdi:waves-arrow-down",
-        entity_registry_enabled_default=False,
         value_fn=lambda device: device.water_level_low_alarm,
     ),
     AsekoSensorEntityDescription(
@@ -333,7 +330,6 @@ SENSORS: list[AsekoSensorEntityDescription] = [
         native_unit_of_measurement=UnitOfLength.CENTIMETERS,
         state_class=SensorStateClass.MEASUREMENT,
         icon="mdi:waves-arrow-up",
-        entity_registry_enabled_default=False,
         value_fn=lambda device: device.water_level_filling_on,
     ),
     AsekoSensorEntityDescription(
@@ -342,7 +338,6 @@ SENSORS: list[AsekoSensorEntityDescription] = [
         native_unit_of_measurement=UnitOfLength.CENTIMETERS,
         state_class=SensorStateClass.MEASUREMENT,
         icon="mdi:waves-arrow-up",
-        entity_registry_enabled_default=False,
         value_fn=lambda device: device.water_level_filling_off,
     ),
     AsekoSensorEntityDescription(
@@ -351,7 +346,6 @@ SENSORS: list[AsekoSensorEntityDescription] = [
         native_unit_of_measurement=UnitOfLength.CENTIMETERS,
         state_class=SensorStateClass.MEASUREMENT,
         icon="mdi:waves-arrow-up",
-        entity_registry_enabled_default=False,
         value_fn=lambda device: device.water_level_high_alarm,
     ),
     AsekoSensorEntityDescription(
@@ -360,7 +354,6 @@ SENSORS: list[AsekoSensorEntityDescription] = [
         native_unit_of_measurement=UnitOfTime.MINUTES,
         state_class=SensorStateClass.MEASUREMENT,
         icon="mdi:timer",
-        entity_registry_enabled_default=False,
         value_fn=lambda device: device.max_filling_time,
     ),
     AsekoSensorEntityDescription(
@@ -569,14 +562,12 @@ SENSORS: list[AsekoSensorEntityDescription] = [
         translation_key="backwash_every_n_days",
         state_class=SensorStateClass.MEASUREMENT,
         icon="mdi:calendar-refresh",
-        entity_registry_enabled_default=False,
         value_fn=lambda device: device.backwash_every_n_days,
     ),
     AsekoSensorEntityDescription(
         key="backwash_time",
         translation_key="backwash_time",
         icon="mdi:clock-start",
-        entity_registry_enabled_default=False,
         value_fn=lambda device: (
             device.backwash_time.strftime("%H:%M")
             if device.backwash_time is not None
@@ -589,7 +580,6 @@ SENSORS: list[AsekoSensorEntityDescription] = [
         native_unit_of_measurement=UnitOfTime.SECONDS,
         state_class=SensorStateClass.MEASUREMENT,
         icon="mdi:timer-sand",
-        entity_registry_enabled_default=False,
         value_fn=lambda device: device.backwash_duration,
     ),
     AsekoSensorEntityDescription(
@@ -597,7 +587,6 @@ SENSORS: list[AsekoSensorEntityDescription] = [
         translation_key="last_backwash",
         device_class=SensorDeviceClass.TIMESTAMP,
         icon="mdi:clock-check-outline",
-        entity_registry_enabled_default=False,
         value_fn=lambda device: device.last_backwash,
     ),
     AsekoSensorEntityDescription(
@@ -605,7 +594,6 @@ SENSORS: list[AsekoSensorEntityDescription] = [
         translation_key="next_backwash",
         device_class=SensorDeviceClass.TIMESTAMP,
         icon="mdi:clock-alert-outline",
-        entity_registry_enabled_default=False,
         value_fn=lambda device: device.next_backwash,
     ),
 ]
