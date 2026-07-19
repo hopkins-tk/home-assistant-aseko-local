@@ -5,14 +5,17 @@ from typing import Type, TypeVar
 
 
 from .aseko_data import (
-    AsekoActuatorMasks,
     AsekoDevice,
     AsekoDeviceType,
     AsekoElectrolyzerDirection,
     AsekoFiltrationMode,
     AsekoProbeType,
-    AsekoThirdPumpSlot,
+)
+from .aseko_v7_helpers import (
     ACTUATOR_MASKS,
+    AsekoActuatorMasks,
+    AsekoByte37Masks,
+    AsekoThirdPumpSlot,
 )
 from .const import (
     FILTRATION_PERIOD2_ENABLED_MASK,
@@ -469,11 +472,24 @@ class AsekoDecoder:
 
         The bit-0x04 mapping is the same one JS-DE-Tech uses and was
         independently listed by the prior Node-RED decoder.
+
+        Additionally decodes the heating control master enable from
+        byte[37] (HOME v7 devices, Issue #135).  Diagnostics from serial
+        110175608 (ASIN AQUA Home, byte 4 = 0x03, firmware A high nibble
+        0x4) show bit 3 (0x08) set when heating control is ON (0x49) and
+        clear when OFF (0x41).  The initial unconfigured state (0x45) also
+        has bit 3 clear.
         """
         if unit.device_type == AsekoDeviceType.NET:
-            # NET has no heating output.
             return
         unit.heating_active = bool(data[29] & 0x04)
+
+        # byte[37] bit 3 = heating control master enable (HOME only).
+        # Gated on HOME so SALT / OXY / NET / PROFI behaviour is unchanged.
+        if unit.device_type == AsekoDeviceType.HOME and data[37] != UNSPECIFIED_VALUE:
+            unit.heating_control_enabled = bool(
+                data[37] & AsekoByte37Masks.HOME_FWA_HEATING_ENABLED
+            )
 
     @staticmethod
     def _fill_backwash_active(unit: AsekoDevice, data: bytes) -> None:
@@ -655,6 +671,25 @@ class AsekoDecoder:
                         mode = AsekoFiltrationMode.TIMER_PERIOD_1
                     elif (b & 0x30) == 0x30:
                         mode = AsekoFiltrationMode.TIMER_PERIOD_1_AND_2
+            # Fallback for unrecognised HOME firmware A values (Issue #135):
+            # serial 110175608 (byte 4=0x03 REDOX HOME) has values 0x45/0x49/0x41
+            # that don't match the known CLF HOME patterns (0x43/0x53/0x47/0x57).
+            # Transitional edit states (0x47, 0x57) have bit 1 set — keep them
+            # as None.  All other unrecognised firmware A values fall back to
+            # schedule-derived mode.
+            if (
+                mode is None
+                and b & 0x40
+                and not (b & AsekoByte37Masks.HOME_FWA_TRANSITIONAL_MASK)
+            ):
+                p1_set = data[56] != UNSPECIFIED_VALUE and data[57] != UNSPECIFIED_VALUE
+                p2_set = data[60] != UNSPECIFIED_VALUE and data[61] != UNSPECIFIED_VALUE
+                if not p1_set:
+                    mode = AsekoFiltrationMode.NONSTOP_24H
+                elif p2_set or bool(b & FILTRATION_PERIOD2_ENABLED_MASK):
+                    mode = AsekoFiltrationMode.TIMER_PERIOD_1_AND_2
+                else:
+                    mode = AsekoFiltrationMode.TIMER_PERIOD_1
         else:
             # SALT / OXY / PROFI: byte[37] does not encode filtration mode.
             # Derive from the raw schedule bytes 56-63 (read here directly

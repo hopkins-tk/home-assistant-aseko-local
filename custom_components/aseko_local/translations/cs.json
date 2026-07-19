@@ -45,6 +45,9 @@
       "heating_active": {
         "name": "Topení aktivní"
       },
+      "heating_control_enabled": {
+        "name": "Ovládání topení"
+      },
       "cl_pump_running": {
         "name": "Čerpadlo chloru běží"
       },

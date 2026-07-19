@@ -45,6 +45,9 @@
       "heating_active": {
         "name": "Heating active"
       },
+      "heating_control_enabled": {
+        "name": "Heating control"
+      },
       "cl_pump_running": {
         "name": "Chlorine pump running"
       },

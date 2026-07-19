@@ -18,11 +18,16 @@ position. The two revisions are referred to throughout this document as
 | | Firmware A | Firmware B |
 |---|---|---|
 | Serial (known) | 110128063 (`0x06906bbf`) | 110169464 (`0x06912578`) |
+| | 110175608* (`0x06912578`, REDOX) | |
 | `byte[37]` mode values | high nibble `0x4` / `0x5` | high nibble `0x0` / `0x1` / `0x3` |
-| Known states | nonstop 24h, timer, transitional | nonstop 24h, P1, P1&P2, OFF manual, transitional |
-| Source | This file (Issue #110) | [Issue #133](../temp/Issue-133.md) |
+| Known states | nonstop 24h, timer, transitional, | nonstop 24h, P1, P1&P2, OFF manual, transitional |
+| | heating ON, heating OFF, unconfigured | |
+| Source | This file (Issue #110, #135) | [Issue #133](../temp/Issue-133.md) |
 | Period 2 enable flag | bit 5 (`0x20`) — same as firmware B | bit 5 (`0x20`) |
 | Manual OFF signal | not present in captured frames | bit 2 (`0x04`) — see `byte[37]` table |
+| Heating control flag | bit 3 (`0x08`) — mastered enabled | (n/o) |
+
+\* Serial 110175608 (`byte[4]` = `0x03`, REDOX HOME) is the source of the heating-control findings ([Issue #135](https://github.com/hopkins-tk/home-assistant-aseko-local/issues/135)).
 
 The two revisions are **disjoint by high nibble of byte 37**, so a single
 byte check distinguishes them without resorting to the serial number.
@@ -188,6 +193,7 @@ Note on **bytes 94–95**: `max_filling_time` reads bytes[94:96] as a big-endian
 | flowrate_chlor            | 60               | Chlor Pure listed | ✓     |
 | flowrate_floc             | 10               | Floc+c listed     | ✓     |
 | flowrate_algicide         | 33               | Algicide listed   | ✓ (fixed) |
+| heating_control_enabled   | True / False     | — (app setting)   | ✓ (Issue #135, serial 110175608 REDOX HOME) |
 
 ---
 
@@ -230,7 +236,7 @@ routing via `byte[37]` bit 7.
 | `start2` | `byte[60:62]` | HH:MM     | Gated on `FILTRATION_TYPES` AND `filtration2_enabled` |
 | `stop2`  | `byte[62:64]` | HH:MM     | Gated on `FILTRATION_TYPES` AND `filtration2_enabled` |
 
-### `byte[37]` — Filtration mode flag (two encodings observed)
+### `byte[37]` — Filtration mode flag + heating control (two encodings observed)
 
 > See the **Firmware Revisions** section at the top of this document for
 > background on why two encodings exist. The two are **disjoint by high
@@ -241,13 +247,22 @@ HOME v7 firmware comes in two revisions that use **disjoint** byte 37 layouts.
 Both revisions are confirmed live (firmware A: serial 110128063, byte 4 = 0x02;
 firmware B: serial 110169464, byte 4 = 0x03 — see [Issue #133](../temp/Issue-133.md)).
 
-| Mode              | Firmware A | Firmware B | Binary (A / B)               |
-|-------------------|------------|------------|------------------------------|
-| 24h nonstop       | `0x43`     | `0x01`     | `0100_0011` / `0000_0001`    |
-| Timer (P1)        | `0x53`*    | `0x11`     | `0101_0011` / `0001_0001`    |
-| Timer (P1 & P2)   | `0x53`*    | `0x31`     | `0101_0011` / `0011_0001`    |
-| OFF (manual)      | (n/o)      | `0x35`     | — / `0011_0101`              |
-| Transitional      | `0x47` / `0x57` | (n/o) | `0100_0111` / `0101_0111` / — |
+| Mode                          | Firmware A | Firmware B | Binary (A / B)               |
+|-------------------------------|------------|------------|------------------------------|
+| 24h nonstop                   | `0x43`     | `0x01`     | `0100_0011` / `0000_0001`    |
+| Timer (P1)                    | `0x53`*    | `0x11`     | `0101_0011` / `0001_0001`    |
+| Timer (P1 & P2)               | `0x53`*    | `0x31`     | `0101_0011` / `0011_0001`    |
+| OFF (manual)                  | (n/o)      | `0x35`     | — / `0011_0101`              |
+| Transitional                  | `0x47` / `0x57` | (n/o) | `0100_0111` / `0101_0111` / — |
+| Heating ON (nonstop)†         | `0x49`     | (n/o)      | `0100_1001` / —              |
+| Heating OFF (nonstop)†        | `0x41`     | (n/o)      | `0100_0001` / —              |
+| Heating OFF (initial/unconf.)† | `0x45`    | (n/o)      | `0100_0101` / —              |
+
+† Bit 1 is clear (`0x02`) in all three heating-health values. When `byte[37]` & `0x40` is set
+  but bit-1 is clear, the decoder falls back to schedule-derived filtration mode (see
+  `_fill_filtration_mode` in `aseko_decoder.py`). The actual filtration mode is
+  determined from the schedule bytes and the `PERIOD2_ENABLED_MASK` (`0x20`).
+  `heating_control_enabled` is decoded separately from bit 3 (`0x08`).
 
 \* Firmware A cannot distinguish P1-only from P1&P2 from `byte[37]` alone — both
 share the value `0x53`. The decoder uses the existing `FILTRATION_PERIOD2_ENABLED_MASK = 0x20`
@@ -269,6 +284,23 @@ Mode decoding on firmware B:
 - **24h nonstop** ⇔ `(byte[37] & 0x30) == 0`
 - **Timer mode** ⇔ `(byte[37] & 0x30) != 0`
 - **Manual override** ⇔ `(byte[37] & 0x04) != 0`
+
+**Firmware A bit semantics** (Issue #135, serial 110175608 REDOX HOME):
+
+| Bit | Mask  | Meaning                                                    |
+|-----|-------|------------------------------------------------------------|
+| 6   | `0x40`| Firmware A high-nibble indicator (always set)              |
+| 3   | `0x08`| Heating control master enable                              |
+| 2   | `0x04`| Unknown / initial-unconfigured indicator (set on unconfigured `0x45`) |
+| 1   | `0x02`| Transitional edit in progress (set on `0x47` / `0x57`)     |
+| 0   | `0x01`| Filtration present (always set in known nonstop/timer)     |
+
+Filtration mode decoding on firmware A:
+- **Known modes**: `0x43` (nonstop), `0x53` (timer), `0x47`/`0x57` (transitional → `None`)
+- **Heating overlay values** (`0x41`, `0x45`, `0x49`) have bit 1 clear — the decoder
+  falls back to schedule-derived filtration mode for these.
+- **Heating control**: bit 3 (`0x08`) is gated on `AsekoDeviceType.HOME` in
+  `_fill_heating_demand()` and decoded into `heating_control_enabled`.
 
 **Note on `0x43` (firmware A)**: treat this as "consistent with NONSTOP 24H" rather
 than "confirmed NONSTOP 24H active". A frame captured in May 2026 from
@@ -316,10 +348,10 @@ in `aseko_decoder.py`).
 
 | # | Description |
 |---|-------------|
-| 3 | `required_water_temperature` vs app "---" — need a normal-operation frame from a pool with heating enabled to confirm `byte[55]` mapping. |
+| 3 | `required_water_temperature` vs app "---" — partially resolved by Issue #135: `byte[55]` is confirmed as the heating setpoint on serial 110175608 (REDOX HOME, heating ON frame). A frame from a device where the app actively shows a target temperature (not "---") would further validate this. |
 | 7 | `byte[29]` per-pump bits for HOME (algicide, flocculant, cl, pH−) are unconfirmed. The masks in `ACTUATOR_MASKS[HOME]` are placeholders matching OXY/NET. Capturing frames with a single HOME pump running (e.g. algicide only) would pin down the per-pump bit. Until then, `algicide_pump_running` and `floc_pump_running` may report incorrectly on HOME. |
 | 8 | `max_filling_time` overlap with `flowrate_ph_minus` (both use `byte[95]`). If `byte[94]` ever becomes non-zero, `max_filling_time` is inflated. Only a frame with a non-zero `byte[94]` would prove or disprove the assumption. |
-| 9 | `heating_active` binary sensor (`byte[29]` bit `0x04`) — needs a frame captured while the heat pump / electric heater is actually running. Currently it cannot be distinguished from the unconfirmed HOME pump-bit masks (Open Item 7). |
+| 9 | `heating_active` binary sensor (`byte[29]` bit `0x04`) — needs a frame captured while the heat pump / electric heater is actually running. The `heating_control_enabled` field (byte[37] bit 3) is the **master enable**, separate from the actual heating output state in byte[29] bit 2. A frame with `byte[29]` bit 2 set would confirm this as the running-state indicator. |
 | 10 | Bytes 31, 38, 65 in the firmware B OFF frame all rise by ~1 (0x00→0x02, 0x02→0x03, 0xa3→0xa4) — possible additional "manual override active" sub-flags, not used by the decoder today. Single observation, no meaning assigned. |
 
 ---
@@ -345,16 +377,24 @@ Tests for the HOME decoder live in `tests/test_aseko_decoder.py`:
 | `test_filtration_pump_running_off_when_manual_override` | Issue #133: `byte[37]=0x35` forces `filtration_pump_running=False` |
 | `test_filtration_pump_running_on_when_not_override` | Regression guard: `byte[29]&0x08` still drives the entity outside OFF_MANUAL |
 | `test_filtration_pump_running_not_overridden_on_salt` | Override short-circuit is HOME-only |
+| `test_decode_home_heating_control_enabled` | Issue #135: `byte[37]=0x49` → `heating_control_enabled=True` with schedule-derived filtration mode |
+| `test_decode_home_heating_control_disabled` | Issue #135: `byte[37]=0x41` → `heating_control_enabled=False` |
+| `test_decode_home_heating_control_unconfigured` | Issue #135: `byte[37]=0x45` → `heating_control_enabled=False` (initial state) |
+| `test_decode_home_heating_control_not_present_on_salt` | Heating gating: SALT frames with `byte[37]` set never report `heating_control_enabled` |
 
 ---
 
 ## Cross-References
 
 - Related decoder file: `custom_components/aseko_local/aseko_decoder.py`
-- Actuator masks: `custom_components/aseko_local/aseko_data.py` → `ACTUATOR_MASKS[AsekoDeviceType.HOME]`
+- Actuator masks: `custom_components/aseko_local/aseko_v7_helpers.py` → `ACTUATOR_MASKS[AsekoDeviceType.HOME]`
+- `AsekoByte37Masks`: `custom_components/aseko_local/aseko_v7_helpers.py`
 - OXY analysis (reference for shared byte layout): `docs/device analyzes/oxy_device_analysis.md`
 - NET v8 analysis: `docs/device analyzes/net_v8_device_analysis.md`
 - Issue #110: byte[37] firmware A (`0x43` = nonstop 24h) — original finding, frames in this file
 - Issue #115: HOME `algicide_pump_running` missing — fixed by independent-pump-port branch
 - Issue #133: byte[37] firmware B (4-state mode + manual OFF) — fixed by `_fill_filtration_mode` rewrite
+- Issue #135: `byte[37]` bit 3 (`0x08`) = heating control master enable on HOME firmware A
+  (serial 110175608, REDOX HOME). Confirms `byte[55]` as target water temp setpoint.
+  Working notes: [docs/temp/Issue-135.md](../temp/Issue-135.md).
 - Working notes: `docs/temp/Issue-133.md`

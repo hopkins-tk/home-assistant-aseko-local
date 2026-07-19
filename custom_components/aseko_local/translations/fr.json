@@ -45,6 +45,9 @@
             "heating_active": {
                 "name": "Chauffage actif"
             },
+            "heating_control_enabled": {
+                "name": "Contrôle du chauffage"
+            },
             "cl_pump_running": {
                 "name": "Pompe à chlore en marche"
             },

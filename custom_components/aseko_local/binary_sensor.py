@@ -53,6 +53,12 @@ BINARY_SENSORS: tuple[AsekoLocalBinarySensorEntityDescription, ...] = (
         value_fn=lambda device: device.heating_active,
     ),
     AsekoLocalBinarySensorEntityDescription(
+        key="heating_control_enabled",
+        translation_key="heating_control_enabled",
+        icon="mdi:radiator-off",
+        value_fn=lambda device: device.heating_control_enabled,
+    ),
+    AsekoLocalBinarySensorEntityDescription(
         key="cl_pump_running",
         translation_key="cl_pump_running",
         icon="mdi:water-pump",
