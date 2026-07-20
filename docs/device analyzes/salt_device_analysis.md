@@ -115,6 +115,24 @@ type differently in byte[37].
 firmware versions. See [byte37_algicide_floc_analysis.md](../temp/byte37_algicide_floc_analysis.md) for
 full XOR analysis.
 
+**Note on Period 2 schedule bytes (Issue #133)**: On SALT, the controller keeps
+sending the last-configured `start2`/`stop2` times in bytes 60-63 even after
+the user disables Period 2 in the controller UI.  Pre-fix, the decoder
+gated these fields on `byte[37] & 0x80` and returned `None` for any frame
+where the algicide-routing bit was clear — which caused already-registered
+entities to flip to "unknown" when the user toggled Period 2 on/off
+(Home Assistant protects the entity registry, so the entity stays but
+the value is read as `None`).  Post-fix, bytes 60-63 are read
+unconditionally for any device in `FILTRATION_TYPES` (SALT included) and
+`filtration_mode` is derived from `byte[37]` bit 5 (`0x20`) / the schedule
+bytes.  Behaviour was originally verified on SALT by diffing two frames
+captured in PR #122 (algicide mode toggle, `0xb3` ↔ `0x33`); the
+corresponding behaviour for HOME was confirmed in Issue #133 with
+@dtpugh's four diagnostic files (see
+[`home_device_analysis.md`](home_device_analysis.md) §"Note on Period 2
+schedule bytes (Issue #133)").  NET is excluded because it has no
+filtration output.
+
 ### byte[37] also contains other fields
 
 `byte[37]` is a packed multi-field byte — it is **not** a pure single-bit flag:
@@ -140,8 +158,8 @@ confirmed.
 | `[55]` | Required water temperature (°C) | |
 | `[56:58]` | Filtration start1 | HH:MM |
 | `[58:60]` | Filtration stop1 | HH:MM |
-| `[60:62]` | Filtration start2 | HH:MM |
-| `[62:64]` | Filtration stop2 | HH:MM |
+| `[60:62]` | Filtration start2 | HH:MM | Always populated — see Issue #133 |
+| `[62:64]` | Filtration stop2 | HH:MM | Always populated — see Issue #133 |
 | `[68]` | Backwash every N days | `0` = disabled |
 | `[69:71]` | Backwash time | HH:MM |
 | `[71]` | Backwash duration | ×10 seconds |

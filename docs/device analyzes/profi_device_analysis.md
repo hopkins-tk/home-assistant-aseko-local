@@ -90,6 +90,66 @@ All PROFI frames are 120 bytes, split into three 40-byte sub-frames:
 
 ---
 
+## Byte Map – Sub-frame 2 (config / setpoints, assumed)
+
+> **All byte positions below are assumed to match HOME/SALT/OXY until a real PROFI
+> frame is captured.** The assumption is based on the Aseko Profi manual
+> describing identical filtration + backwash + dosing functions and on the
+> fact that all other ASIN AQUA v7 units share this byte layout. No live
+> PROFI frame has been decoded against this table.
+
+| Byte(s) | Decoded | Confidence | Notes |
+|---|---|---|---|
+| `[52]` | Required pH = value / 10 | assumed | Same as SALT |
+| `[53]` | Required CLF (mg/L ÷10) or REDOX (raw mV) | assumed | Depends on active probe (see PROFI `required_*` table below) |
+| `[54]` | Required algicide / floc setpoint | assumed | PROFI has 5 independent pump ports — the OXY/HOME byte[72] layout may or may not apply; see Open Question #3 |
+| `[55]` | Required water temperature (°C) | assumed | Same as HOME |
+| `[56:58]` | Filtration start1 | assumed | HH:MM; gated on `FILTRATION_TYPES` |
+| `[58:60]` | Filtration stop1 | assumed | HH:MM; gated on `FILTRATION_TYPES` |
+| `[60:62]` | Filtration start2 | assumed | HH:MM; always populated — see Issue #133 below |
+| `[62:64]` | Filtration stop2 | assumed | HH:MM; always populated — see Issue #133 below |
+| `[68]` | Backwash every N days | assumed | `0` = disabled (matches HOME/SALT/OXY) |
+| `[69:71]` | Backwash time | assumed | HH:MM |
+| `[71]` | Backwash duration | assumed | ×10 seconds |
+| `[72]` | Required algicide (ml/m³/day) | ⚠️ hypothesis | May match OXY/HOME layout — see Open Question #3 |
+
+---
+
+## Period 2 schedule bytes (Issue #133)
+
+Like SALT, HOME, and OXY, the PROFI controller is expected to keep sending
+the last-configured `start2`/`stop2` times in bytes 60-63 even after the
+user disables Period 2 in the controller UI.  This was first verified on
+SALT (PR #122 frame diff) and on HOME (Issue #133 diagnostic files from
+@dtpugh, serial 110169464, firmware B).  The same protocol behaviour is
+**assumed** for PROFI because:
+
+1.  PROFI shares the SALT/HOME byte layout for the filtration schedule
+    (bytes 56-63) per the Aseko Profi manual.
+2.  There is no protocol-level reason to believe the PROFI firmware
+    clears the bytes when Period 2 is disabled.
+3.  No live PROFI frame has been captured that toggles Period 2 on/off;
+    the assumption can be re-verified once a real frame is available.
+
+**Decoder behaviour** (post Issue #133 fix): the decoder reads bytes 60-63
+unconditionally for any device in `FILTRATION_TYPES` (which includes PROFI
+since it exposes a filtration output).  The lazy-creation guard in
+`sensor.py` skips the `filtration_2_start` / `filtration_2_stop` entities
+only if the bytes are `0xFF` (the bytes have never been configured on the
+controller).  Once the entity is registered, it stays populated with the
+last-configured time even when the user disables Period 2 — the
+`filtration_mode` sensor separately reports `TIMER_PERIOD_1` so the user
+knows the schedule is inactive.
+
+NET is excluded because it has no filtration output at all and is not in
+`FILTRATION_TYPES`.
+
+See [`home_device_analysis.md`](home_device_analysis.md) §"Note on Period 2
+schedule bytes (Issue #133)" for the full discussion and the diagnostic
+files that proved the behaviour on HOME.
+
+---
+
 ## byte[29] – Actuator Bitmask (assumed)
 
 > **All masks below are placeholders — copied from HOME/OXY because no PROFI frame
@@ -318,3 +378,4 @@ early-return (like OXY and HOME) once the correct byte positions are confirmed.
   after PR #120; was 34 before, then 35 after the water-level blacklist fix)
 - Related water-level analysis: [`water_level_backwash_analysis.md`](../temp/water_level_backwash_analysis.md)
 - Sibling device analyses: [`home_device_analysis.md`](home_device_analysis.md), [`salt_device_analysis.md`](salt_device_analysis.md), [`net_device_analysis.md`](net_device_analysis.md), [`oxy_device_analysis.md`](oxy_device_analysis.md)
+- Issue #133: Period 2 schedule bytes (60-63) are now read unconditionally for any device in `FILTRATION_TYPES` (SALT, HOME, OXY, PROFI) to avoid "unknown" entities when the user toggles the controller.  Same fix applies to PROFI per the assumption above.  See [`home_device_analysis.md`](home_device_analysis.md) §"Note on Period 2 schedule bytes (Issue #133)" for the full discussion.

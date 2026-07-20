@@ -50,18 +50,6 @@ FILTRATION_TYPES = frozenset(
     }
 )
 
-# Device types verified to encode the second-filtration-period enable flag in
-# byte 37 bit 0x20: SALT (on/off frame diff), HOME and OXY (maintainer feedback,
-# PR #122). For any other type the second period is reported as before, because
-# its enable mechanism is unverified — never assume this bit for a new type.
-FILTRATION_PERIOD2_FLAG_TYPES = frozenset(
-    {
-        AsekoDeviceType.SALT,
-        AsekoDeviceType.HOME,
-        AsekoDeviceType.OXY,
-    }
-)
-
 # Device types that have a backwash valve/output and therefore expose a
 # backwash schedule (bytes 68-71) plus a backwash-active bit (byte 29 bit 0x01).
 # NET (Aqua NET) is a measurement + dosing unit only — it has neither a filter
@@ -735,15 +723,28 @@ class AsekoDecoder:
             # Derive from the raw schedule bytes 56-63 (read here directly
             # because this function runs before the schedule is decoded into
             # `unit.start1` / `unit.start2`).
+            #
+            # Issue #133: bytes 60-63 stay populated by the controller even
+            # after the user disables Period 2 (verified on dtpugh's serial
+            # 110169464: same 12:00-16:00 in all four modes).  Therefore the
+            # presence of period-2 bytes alone is NOT enough to claim
+            # TIMER_PERIOD_1_AND_2 — the byte[37] enable flag (bit 0x20) is
+            # authoritative when present.  When byte[37] is 0xFF (UNSPECIFIED,
+            # e.g. NET) the schedule bytes are the only signal we have.
             p1_set = data[56] != UNSPECIFIED_VALUE and data[57] != UNSPECIFIED_VALUE
             p2_set = data[60] != UNSPECIFIED_VALUE and data[61] != UNSPECIFIED_VALUE
             if not p1_set:
                 # No period 1 schedule → device is in NONSTOP_24H mode
                 # (or filtration is not actually configured on PROFI).
                 mode = AsekoFiltrationMode.NONSTOP_24H
+            elif b != UNSPECIFIED_VALUE and not bool(b & FILTRATION_PERIOD2_ENABLED_MASK):
+                # byte[37] is well-defined and bit 0x20 is clear → the
+                # controller has disabled Period 2 in the UI, regardless of
+                # what bytes 60-63 still report.
+                mode = AsekoFiltrationMode.TIMER_PERIOD_1
             elif p2_set or bool(b & FILTRATION_PERIOD2_ENABLED_MASK):
                 # Period 2 enabled (per byte 37 bit 0x20) or period 2 times
-                # are present in bytes 60-63.
+                # are present in bytes 60-63 and byte[37] is unspecified.
                 mode = AsekoFiltrationMode.TIMER_PERIOD_1_AND_2
             else:
                 mode = AsekoFiltrationMode.TIMER_PERIOD_1
@@ -810,15 +811,16 @@ class AsekoDecoder:
 
         # Filtration schedule, by device type (PR #122):
         #  - NET / unknown types have no filtration → no schedule reported.
-        #  - The second period can be switched off on the unit while it keeps
-        #    reporting the last-configured start2/stop2 times (bytes 60-63);
-        #    byte 37 bit 0x20 is the enable flag on the verified types.
+        #  - Period 1 + Period 2 share the same byte range 56-63 on every
+        #    FILTRATION_TYPES device.  The device keeps sending the last
+        #    configured start2/stop2 times even when Period 2 is disabled
+        #    (Issue #133 — verified on serial 110169464, firmware B: bytes
+        #    60-63 are stable across P1 only / P1&P2 / 24h / OFF_MANUAL
+        #    modes).  Reading them unconditionally is therefore safe; the
+        #    *_time helpers normalise 0xFF bytes to None and the lazy-
+        #    creation guard in sensor.py skips the entity when no value is
+        #    available.
         has_filtration = unit_type in FILTRATION_TYPES
-        filtration2_enabled = has_filtration and (
-            bool(data[37] & FILTRATION_PERIOD2_ENABLED_MASK)
-            if unit_type in FILTRATION_PERIOD2_FLAG_TYPES
-            else True
-        )
         # Issue #129: gate backwash schedule + active bit on device type so
         # measurement-only units (NET) do not surface phantom backwash entities
         # from non-0xFF frame data.
@@ -835,8 +837,15 @@ class AsekoDecoder:
             required_water_temperature=AsekoDecoder._normalize_value(data[55], int),
             start1=AsekoDecoder._time(data[56:58]) if has_filtration else None,
             stop1=AsekoDecoder._time(data[58:60]) if has_filtration else None,
-            start2=AsekoDecoder._time(data[60:62]) if filtration2_enabled else None,
-            stop2=AsekoDecoder._time(data[62:64]) if filtration2_enabled else None,
+            # Issue #133: always read bytes 60-63 for start2/stop2 when the
+            # device has a filtration output.  The device keeps reporting the
+            # last-configured Period 2 times even after the user disables
+            # Period 2 on the controller — verified on dtpugh's serial
+            # 110169464 (firmware B).  For device types without a filtration
+            # output (NET / unknown) we still return None so the entity is
+            # not registered at all (lazy-creation in sensor.py).
+            start2=AsekoDecoder._time(data[60:62]) if has_filtration else None,
+            stop2=AsekoDecoder._time(data[62:64]) if has_filtration else None,
             backwash_every_n_days=(
                 AsekoDecoder._normalize_value(data[68], int) if has_backwash else None
             ),

@@ -242,8 +242,8 @@ routing via `byte[37]` bit 7.
 |---------|-----------|--------------|-------|
 | `start1` | `byte[56:58]` | HH:MM     | Gated on `FILTRATION_TYPES` (HOME in) |
 | `stop1`  | `byte[58:60]` | HH:MM     | Gated on `FILTRATION_TYPES` |
-| `start2` | `byte[60:62]` | HH:MM     | Gated on `FILTRATION_TYPES` AND `filtration2_enabled` |
-| `stop2`  | `byte[62:64]` | HH:MM     | Gated on `FILTRATION_TYPES` AND `filtration2_enabled` |
+| `start2` | `byte[60:62]` | HH:MM     | Gated on `FILTRATION_TYPES` only — see Issue #133 |
+| `stop2`  | `byte[62:64]` | HH:MM     | Gated on `FILTRATION_TYPES` only — see Issue #133 |
 
 ### `byte[37]` — Filtration mode flag + heating control (two encodings observed)
 
@@ -334,6 +334,40 @@ by short-circuiting `filtration_pump_running` to `False` whenever
 `filtration_mode == OFF_MANUAL`. This is a HOME-only behaviour; no SALT/OXY/PROFI
 OFF frame has been captured yet.
 
+**Note on Period 2 schedule bytes (Issue #133)**: All Aseko devices in
+`FILTRATION_TYPES` (SALT, HOME, OXY, PROFI) keep sending the last-configured
+`start2`/`stop2` times in bytes 60-63 even after the user disables Period 2
+in the controller UI. The controller never clears these bytes — they are
+treated as the device's "last-known schedule" and the active/inactive
+state is carried separately in `byte[37]` bit 5 (`0x20`) for HOME firmware
+A/B and SALT/OXY, or in the schedule-byte presence for byte[37] = 0xFF.
+Pre-fix, the decoder used `byte[37]` bit 0x20 to gate `start2`/`stop2` on
+None for any device where the enable flag was clear, which caused
+already-registered entities to flip to "unknown" when the user toggled
+the controller back from "P1 & P2" to "P1 only" (the entity registry
+protects the entity, but the value is read as `None`).  Post-fix, bytes
+60-63 are read unconditionally for any device in `FILTRATION_TYPES` (so
+`start2`/`stop2` stay populated and the entity shows the last-configured
+time); the `filtration_mode` sensor separately reports `TIMER_PERIOD_1`
+to tell the user that Period 2 is inactive.  This behaviour was
+verified against the four diagnostic files from
+[Issue #133](../temp/Issue-133.md) (serial 110169464, ASIN AQUA Home
+firmware B): bytes 60-63 stay populated in all four modes (24h nonstop,
+P1 only, P1 & P2, OFF manual).  The decoder applies the same logic to
+SALT/OXY/PROFI for two reasons:
+
+1.  SALT and OXY share the same protocol layout for bytes 60-63, and
+    `byte[37]` bit 0x20 is the documented enable flag on those devices.
+    There is no protocol-level reason to believe they clear the bytes
+    when Period 2 is disabled.
+2.  PROFI has the same byte layout but no live frame has been captured
+    that toggles Period 2 on/off; the same fix prevents a potential
+    regression if a user reports the same "unknown entity" symptom on
+    PROFI later.
+
+NET is excluded because it has no filtration output at all and is
+not in `FILTRATION_TYPES`.
+
 ### `byte[29]` — Actuator bitmask (HOME)
 
 Bit positions in `byte[29]` for HOME pump states. The masks in
@@ -423,6 +457,10 @@ Tests for the HOME decoder live in `tests/test_aseko_decoder.py`:
 | `test_filtration_pump_running_off_when_manual_override` | Issue #133: `byte[37]=0x35` forces `filtration_pump_running=False` |
 | `test_filtration_pump_running_on_when_not_override` | Regression guard: `byte[29]&0x08` still drives the entity outside OFF_MANUAL |
 | `test_filtration_pump_running_not_overridden_on_salt` | Override short-circuit is HOME-only |
+| `test_decode_filtration_period2_disabled` | Issue #133: bytes 60-63 stay populated; mode flips to `TIMER_PERIOD_1` |
+| `test_decode_filtration_period2_bytes_unspecified` | Issue #133: bytes 60-63 = 0xFF → `start2`/`stop2` = `None` (entity skipped) |
+| `test_decode_filtration_period2_none_for_net` | Issue #133: NET never gets filtration entities (lazy-creation guard) |
+| `test_decode_filtration_period2_real_dtpugh_frames` | Issue #133: end-to-end against @dtpugh's four diagnostic files (P1 only / P1&P2 / 24h / OFF) |
 | `test_decode_home_heating_control_enabled` | Issue #135: `byte[37]=0x49` → `heating_control_enabled=True` with schedule-derived filtration mode |
 | `test_decode_home_heating_control_disabled` | Issue #135: `byte[37]=0x41` → `heating_control_enabled=False` |
 | `test_decode_home_heating_control_unconfigured` | Issue #135: `byte[37]=0x45` → `heating_control_enabled=False` (initial state) |
@@ -439,7 +477,7 @@ Tests for the HOME decoder live in `tests/test_aseko_decoder.py`:
 - NET v8 analysis: `docs/device analyzes/net_v8_device_analysis.md`
 - Issue #110: byte[37] firmware A (`0x43` = nonstop 24h) — original finding, frames in this file
 - Issue #115: HOME `algicide_pump_running` missing — fixed by independent-pump-port branch
-- Issue #133: byte[37] firmware B (4-state mode + manual OFF) — fixed by `_fill_filtration_mode` rewrite
+- Issue #133: byte[37] firmware B (4-state mode + manual OFF) — fixed by `_fill_filtration_mode` rewrite.  Period 2 schedule bytes (60-63) are now read unconditionally for any device in `FILTRATION_TYPES` to avoid "unknown" entities when the user toggles the controller.  See the *Note on Period 2 schedule bytes (Issue #133)* under `byte[29]` vs `filtration_mode` below.
 - Issue #135: `byte[37]` bit 3 (`0x08`) = heating control master enable on HOME firmware A
   (serial 110175608, REDOX HOME). Confirms `byte[55]` as target water temp setpoint.
   Working notes: [docs/temp/Issue-135.md](../temp/Issue-135.md).

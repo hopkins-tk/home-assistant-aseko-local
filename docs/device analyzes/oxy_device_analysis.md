@@ -79,8 +79,8 @@ Checksum bytes (39, 79, 119) and timestamp second (byte[11]) change as expected.
 | `[55]` | `0x19` = 25 | Required water temp = 25 °C | |
 | `[56:58]` | `08 00` | Filtration start1 = 08:00 | |
 | `[58:60]` | `10 00` | Filtration stop1 = 16:00 | |
-| `[60:62]` | `12 00` | Filtration start2 = 18:00 | |
-| `[62:64]` | `16 00` | Filtration stop2 = 22:00 | |
+| `[60:62]` | `12 00` | Filtration start2 = 18:00 | Always populated — see Issue #133 |
+| `[62:64]` | `16 00` | Filtration stop2 = 22:00 | Always populated — see Issue #133 |
 | `[68]` | `0x00` | Backwash every N days = 0 (disabled) | |
 | `[69:71]` | `0c 1e` | Backwash time = 12:30 | |
 | `[71]` | `0x0a` | Backwash duration = 100 s | ×10 |
@@ -239,6 +239,30 @@ All flowrate bytes on OXY use the same unit: **ml/min**.
 | `[103]` | 60 | Algicide | 60 ml/min ✓ confirmed 2026-04-11 |
 
 ---
+
+## Period 2 schedule bytes (Issue #133)
+
+Like SALT and HOME, the OXY controller keeps sending the last-configured
+`start2`/`stop2` times in bytes 60-63 even after the user disables Period 2 in
+the controller UI.  This was first verified on SALT (PR #122 frame diff) and
+on HOME (Issue #133 diagnostic files from @dtpugh, serial 110169464, firmware
+B).  The same protocol behaviour is assumed for OXY because OXY shares the
+SALT/HOME byte layout for the filtration schedule — no protocol-level
+reason exists to believe the OXY firmware clears the bytes when Period 2 is
+disabled.
+
+**Decoder behaviour** (post Issue #133 fix): the decoder reads bytes 60-63
+unconditionally for any device in `FILTRATION_TYPES` (which includes OXY
+since it exposes a filtration output).  The lazy-creation guard in
+`sensor.py` skips the `filtration_2_start` / `filtration_2_stop` entities
+only if the bytes are `0xFF` (the bytes have never been configured on the
+controller).  Once the entity is registered, it stays populated with the
+last-configured time even when the user disables Period 2 — the
+`filtration_mode` sensor separately reports `TIMER_PERIOD_1` so the user
+knows the schedule is inactive.
+
+NET is excluded because it has no filtration output at all and is not in
+`FILTRATION_TYPES`.
 
 ## Issue: `raise ValueError` Closes the TCP Connection
 

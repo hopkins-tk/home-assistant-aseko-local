@@ -148,24 +148,33 @@ def test_decode_home() -> None:
 
 
 def test_decode_filtration_period2_disabled() -> None:
-    """Second filtration period is hidden when disabled (byte 37 bit 0x20 clear).
+    """Period 2 times are still populated when disabled, but the mode is P1 only.
 
-    The unit keeps reporting the last-configured start2/stop2 times in bytes
-    60-63 even when the period is switched off, so the enable flag must be
-    honoured. Confirmed on an ASIN AQUA Salt by toggling the period-2 checkbox
-    and diffing two frames (PR #122 review).
+    Issue #133: pre-fix, the decoder returned ``None`` for start2/stop2 when
+    byte[37] bit 0x20 was clear, which made already-registered entities go
+    ``unknown`` once the user switched the controller back to "P1 only"
+    (Home Assistant protects the entity registry, so the entity stays).
+    Post-fix, the bytes 60-63 are read for any device in FILTRATION_TYPES
+    because the controller keeps sending the last-configured Period 2 times
+    (verified on dtpugh's serial 110169464: bytes 60-63 stay populated in
+    P1 only / P1&P2 / 24h / OFF_MANUAL modes).  The *mode* still flips
+    between TIMER_PERIOD_1 and TIMER_PERIOD_1_AND_2 per byte[37] bit 0x20,
+    so the user can tell which schedule is active.
     """
     data = _make_base_bytes()
-    data[37] = 0x93  # bit 0x20 clear -> period 2 disabled
+    data[37] = 0x93  # bit 0x20 clear -> period 2 disabled in the controller
 
     device = AsekoDecoder.decode(bytes(data))
 
     # Period 1 is still parsed.
     assert device.start1 == time(8, 0)
     assert device.stop1 == time(10, 0)
-    # Period 2 is hidden despite configured bytes 60-63 (14:00 / 16:00).
-    assert device.start2 is None
-    assert device.stop2 is None
+    # Period 2 times ARE populated (bytes 60-63 are stable) — but the mode
+    # entity correctly reports TIMER_PERIOD_1 so the user knows the schedule
+    # is not active.
+    assert device.start2 == time(14, 0)
+    assert device.stop2 == time(16, 0)
+    assert device.filtration_mode == AsekoFiltrationMode.TIMER_PERIOD_1
 
 
 def test_decode_filtration_period2_enabled() -> None:
@@ -177,6 +186,107 @@ def test_decode_filtration_period2_enabled() -> None:
 
     assert device.start2 == time(14, 0)
     assert device.stop2 == time(16, 0)
+    assert device.filtration_mode == AsekoFiltrationMode.TIMER_PERIOD_1_AND_2
+
+
+def test_decode_filtration_period2_bytes_unspecified() -> None:
+    """When bytes 60-63 themselves are 0xFF (no schedule ever configured),
+    start2 / stop2 stay None — the lazy-creation guard in sensor.py then
+    skips registering the entity.  This is the key branch that keeps
+    devices without a filtration output (NET) from ever surfacing
+    Period 2 entities (Issue #133 contract).
+    """
+    data = _make_base_bytes()
+    data[4] = 0x0E  # SALT (in FILTRATION_TYPES)
+    data[60:64] = bytes([0xFF, 0xFF, 0xFF, 0xFF])  # no period 2 schedule at all
+    data[37] = 0xB7  # SALT algicide routing — bit 0x20 set, but no schedule
+
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.start2 is None
+    assert device.stop2 is None
+
+
+def test_decode_filtration_period2_none_for_net() -> None:
+    """NET has no filtration output — start1/2 / stop1/2 are all None
+    even if the frame happens to carry non-0xFF values in bytes 56-63.
+    Issue #133 contract: lazy creation in sensor.py never registers the
+    entities for NET.
+    """
+    data = _make_base_bytes()
+    data[4] = 0x09  # NET
+    # Garbage values in the schedule bytes (mimic real-world case where a
+    # measurement-only device reports random data in slots it doesn't implement).
+    data[56:64] = bytes([8, 0, 10, 0, 14, 0, 16, 0])
+
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.device_type == AsekoDeviceType.NET
+    assert device.start1 is None
+    assert device.stop1 is None
+    assert device.start2 is None
+    assert device.stop2 is None
+
+
+def test_decode_filtration_period2_real_dtpugh_frames() -> None:
+    """Issue #133 end-to-end: decode all four real diagnostic frames from
+    @dtpugh (serial 110169464, ASIN AQUA Home firmware B) and verify
+    Period 2 times are stable across all four modes (P1 only / P1&P2 /
+    24h / OFF_MANUAL).  This is the user-visible regression: pre-fix the
+    entity would go "unknown" when the user toggled the controller back
+    from P1&P2 to P1 only.
+    """
+    import json
+    from pathlib import Path
+
+    # Diagnostic files live in /tmp/issue133 (downloaded from the issue);
+    # when the test runs in CI without that directory, skip instead of fail.
+    diag_dir = Path("/tmp/issue133")
+    if not diag_dir.exists():
+        pytest.skip("diagnostic files from issue #133 are not available")
+
+    def _first_frame(payload):
+        if isinstance(payload, dict):
+            for v in payload.values():
+                r = _first_frame(v)
+                if r is not None:
+                    return r
+        elif isinstance(payload, list):
+            for v in payload:
+                r = _first_frame(v)
+                if r is not None:
+                    return r
+        elif isinstance(payload, str) and len(payload) >= 100 and all(
+            c in "0123456789abcdefABCDEF" for c in payload.strip()
+        ):
+            return payload
+        return None
+
+    scenarios = {
+        "01_p1only.json": (0x11, AsekoFiltrationMode.TIMER_PERIOD_1),
+        "02_p1andp2.json": (0x31, AsekoFiltrationMode.TIMER_PERIOD_1_AND_2),
+        "03_24h.json": (0x01, AsekoFiltrationMode.NONSTOP_24H),
+        "04_off.json": (0x35, AsekoFiltrationMode.OFF_MANUAL),
+    }
+
+    for filename, (expected_b37, expected_mode) in scenarios.items():
+        with open(diag_dir / filename) as f:
+            frame = bytes.fromhex(_first_frame(json.load(f)))
+        assert frame[37] == expected_b37, f"{filename}: byte 37 mismatch"
+
+        device = AsekoDecoder.decode(frame)
+        # Period 1 is always there.
+        assert device.start1 is not None, f"{filename}: start1 unexpectedly None"
+        assert device.stop1 is not None, f"{filename}: stop1 unexpectedly None"
+        # Period 2 is ALSO always there after the fix (entity stays populated).
+        assert device.start2 is not None, (
+            f"{filename}: start2 is None — entity would go 'unknown' (Issue #133)"
+        )
+        assert device.stop2 is not None, (
+            f"{filename}: stop2 is None — entity would go 'unknown' (Issue #133)"
+        )
+        # Mode entity correctly reports which schedule is active.
+        assert device.filtration_mode == expected_mode, (
+            f"{filename}: expected {expected_mode}, got {device.filtration_mode}"
+        )
 
 
 def test_decode_electrolyzer_data() -> None:
@@ -945,11 +1055,14 @@ def test_decode_home_clf_real_frame() -> None:
     # Schedule
     assert device.start1 == time(8, 0)
     assert device.stop1 == time(16, 0)
-    # Period 2 is disabled on this unit (byte 37 bit 0x20 clear). The 18:00-22:00
-    # bytes are the unit's last-configured/default values and must be hidden.
-    # HOME shares the Salt period-2 enable mechanism (confirmed in PR #122).
-    assert device.start2 is None
-    assert device.stop2 is None
+    # Issue #133: Period 2 times are now always populated for any device in
+    # FILTRATION_TYPES (HOME here).  The mode entity tells the user which
+    # schedule is active — on this frame byte[37] = 0x43 (firmware A) so the
+    # mode is NONSTOP_24H, but bytes 60-63 still report the last-configured
+    # Period 2 times.  Pre-fix, the assertions below were ``is None``.
+    assert device.start2 == time(18, 0)
+    assert device.stop2 == time(22, 0)
+    assert device.filtration_mode == AsekoFiltrationMode.NONSTOP_24H
     # Backwash
     assert device.backwash_every_n_days == 3
     assert device.backwash_time == time(21, 0)
