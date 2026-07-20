@@ -206,17 +206,18 @@ electrolyzer power**, but mirovra's Jul 16 data proved the mapping was wrong:
 | `areqs[18]` | 5 | 5 | 5 | minutes (× 60 → s) | `delay_after_dose` | ✅ 5 min (NET v8 had 2 min) |
 | `areqs[19]` | 10 | 10 | 10 | unknown | unknown | ❓ |
 | `areqs[21]` | 15 | 15 | 15 | unknown | unknown | ❓ |
-| **`areqs[25]`** | **3** | **3** | **3** | **ml/m³/day** | **`required_algicide`** | ✅ **3 ml/m³/day** (only setpoint in the 0–10 range that fits an algicide dose) — SALT-NET-specific |
+| `areqs[3]` | 0 | 0 | 0 | **NEW: flocculant dose (ml/h)** | `required_floc` | ✅ mirovra Jul 19: areqs[3]=10 when floc, 0 when alg |
+| `areqs[4]` | **5** | **5** | **5** | **CORRECTED: algicide dose (ml/m³/day)** | `required_algicide` | ✅ misattributed to areqs[25]; areqs[4]=5 matches app "5 ml/m³/day" |
+| `areqs[25]` | 3 | 3 | 3 | **NOT algicide dose (constant 3)** | `<not used>` | ❓ constant across all frames — unknown |
 
-> **Note on `areqs[3]` / `areqs[4]` swap:** NET v8 has `(3: 5, 4: 0)`;
-> SALT NET has `(3: 0, 4: 5)`. Both could be related to floc/alg routing —
-> the SALT v7 unit uses `byte[37] & 0x80` to route between algicide and
-> flocculant. The SALT NET does **not** use this routing (it has dedicated
-> pump ports), so these are likely other configuration fields.
-
-> **Note on `areqs[25]`:** the v8 frame is 0-indexed. The valid algicide
-> setpoint is at **`areqs[25]`** (= 3 ml/m³/day). Earlier analyses that
-> quoted `areqs[24]` were off-by-one (1-based vs 0-based indexing).
+> **Corrected mapping (2026-07-19):** The algicide setpoint is at `areqs[4]`,
+> not `areqs[25]`. When pump 2 is changed to flocculant, the flocculant
+> setpoint appears at `areqs[3]` and `areqs[4]` resets to 0. The decoder
+> reads the appropriate field based on `fncs[6]` (10=algicide→areqs[4],
+> 18=flocculant→areqs[3]).
+>
+> `areqs[25]=3` is constant across all frames (algicide, flocculant, no-flow)
+> and is therefore NOT the algicide dose. Its meaning is unknown.
 
 > **Note on `areqs[17]` / `areqs[18]` (delay_after_startup, delay_after_dose):**
 > the v8 firmware reports these fields in **MINUTES** (raw `5` = 5 min on
@@ -368,9 +369,10 @@ The v8 frame carries a one-byte **capability indicator** in the `fncs:`
 ("functions") section. The two values observed in the wild are:
 
 | Device | `fncs[2]` | `fncs[6]` | Meaning |
-|---|---|---|---|
+|---|---|---|---|---|
 | NET v8 (110203680, 110999999) | **3** | 2 | has CL pump module installed |
-| SALT NET v8 (110215844) | **1** | 10 | SALT family: electrolyzer + dedicated algicide port, no CL pump |
+| SALT NET v8 (110215844) — algicide | **1** | **10** | SALT family: electrolyzer + dedicated algicide port, no CL pump |
+| SALT NET v8 (110215844) — flocculant | **1** | **18** | same SALT family, pump 2 configured as flocculant instead |
 
 **The decoder now uses `fncs[2] == 3` as the gate for `has_cl_pump`**:
 
@@ -537,17 +539,19 @@ AsekoDeviceType.SALT_NET: AsekoActuatorMasks(
 ## 16. Open Questions
 
 | # | Question | Status |
-|---|---|---|
+|---|---|---|---|
 | Q1 | Resolved — see §11 | ✅ |
-| Q2 | Is Pump 2 of the SALT NET hard-wired to algicide or switchable to flocculant? | 🟡 mirovra confirms switchable, no flocculant frame yet |
+| Q2 | Is Pump 2 of the SALT NET hard-wired to algicide or switchable to flocculant? | **✅ RESOLVED**: `fncs[6]=10`=algicide, `fncs[6]=18`=flocculant (mirovra Jul 19) |
 | Q3 | What is `reqs[5] = 8`? | ❓ always 8 (was 0 on NET) — possibly a SALT-NET feature flag |
 | Q4 | What is `reqs[7] = 20`? Filtration hours per day? | 🟡 probable, unconfirmed by user |
-| Q5 | What are `fncs[2]=1` and `fncs[6]=10`? (NET v8 had `3` and `2`) | ❓ partially known: `1` = SALT family, `10` = algicide configured |
+| Q5 | What are `fncs[2]=1` and `fncs[6]=10`? (NET v8 had `3` and `2`) | **✅ RESOLVED**: `fncs[2]=1`=SALT family; `fncs[6]=10`=algicide, `18`=flocculant |
 | Q6 | What are `areqs[5,6,10,12] = 33`? (NET v8 had `36` and `6`) | ❓ unknown |
 | Q7 | What is `ains[2]`? tracks `ains[6]` but offset varies | ❓ same mystery on NET v8 |
 | Q8 | What is `ains[10]`? Not electrolyzer power (as previously thought) | ❓ raw ADC / power consumption in W? |
 | Q9 | Is the v8 firmware transmitting water-level / filling-valve data? | 🟡 not in any known section — possibly not transmitted on SALT NET |
 | Q10 | Phantom or missing entities reported by mirovra? | ❓ open — mirovra has not yet reviewed the final entity list |
+| Q11 | What is `areqs[25] = 3` (constant)? | ❓ constant across all states, not algicide dose — unknown |
+| Q12 | Does `flags[3]=1` also appear for flocculant (not just no-flow alarm)? | ❓ ambiguous — F2 no-flow had it, F6 flocculant also had it with ins[12]=0 |
 
 ---
 
@@ -562,7 +566,10 @@ AsekoDeviceType.SALT_NET: AsekoActuatorMasks(
 - [x] Remove erroneous `flowrate_algicide` from v8 decoder (v8 has no per-pump flow rates)
 - [x] Add tests for all 5 reference frames (F1–F5) including direction LEFT/RIGHT/OFF
 - [x] All 80 v8 decoder tests passing
-- [ ] Ask mirovra for a frame with Pump 2 configured as flocculant to confirm the Q2 hypothesis
+- [x] Ask mirovra for a frame with Pump 2 configured as flocculant to confirm the Q2 hypothesis
+- [x] Implement flocculant detection: `(fncs[2]=1, fncs[6]=18)` → `{ph_minus, floc}`
+- [x] Correct `required_algicide` source from `areqs[25]` to `areqs[4]`
+- [x] Add `required_floc` sensor from `areqs[3]` when flocculant
 - [ ] Update `net_v8_device_analysis.md` to note that SALT NET uses the v8 protocol too
 - [ ] Manifest version bump (v1.7.0 → v1.8.0)
 

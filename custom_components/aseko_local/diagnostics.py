@@ -122,23 +122,24 @@ _V8_AINS_LABELS: dict[int, str] = {
     6: "redox (mV; -500=absent)",
     7: "unknown (tracks redox)",
     8: "salinity × 10 (SALT/SALT NET; ÷10 = g/L)",
-    9: "algicide flow rate × 10 (SALT NET; best guess)",
-    10: "electrolyzer power × 10 (SALT/SALT NET; ÷10 = g/h or %)",
+    9: "electrolyzer_power (g/h; matches app display)",
+    10: "unknown (NOT electrolyzer power — ains[9] is the correct field)",
 }
 
 _V8_OUTS_LABELS: dict[int, str] = {
     2: "filtration_pump_running (any non-zero = on; NET=1, SALT NET=2)",
     8: "ph_minus_pump_running (1=dosing)",
     9: "cl_pump_running (1=dosing)",
-    15: "algicide_pump_running (SALT NET; any non-zero = on)",
+    11: "pump2_running (algicide or flocculant; 1=dosing)",
+    14: "electrolyzer_direction (2=RIGHT, 3=LEFT, 0=OFF)",
 }
 
 _V8_AREQS_LABELS: dict[int, str] = {
     0: "required_pH × 10 (÷10 = pH)",
     1: "required_redox / 10 (×10 = mV)",
     2: "unknown",
-    3: "unknown",
-    4: "unknown",
+    3: "pump2_dose_flocculant (SALT NET fncs[6]=18; ml/h)",
+    4: "pump2_dose_algicide (SALT NET fncs[6]=10; ml/m³/day)",
     5: "unknown",
     6: "unknown",
     10: "unknown",
@@ -150,7 +151,7 @@ _V8_AREQS_LABELS: dict[int, str] = {
     18: "delay_after_dose (min)",
     19: "unknown",
     21: "unknown",
-    25: "required_algicide (SALT NET; ml/m³/day) / unknown (NET)",
+    25: "unknown (constant 3 on mirovra's SALT NET; NOT algicide dose)",
 }
 
 _V8_REQS_LABELS: dict[int, str] = {
@@ -160,7 +161,7 @@ _V8_REQS_LABELS: dict[int, str] = {
 
 _V8_FLAGS_LABELS: dict[int, str] = {
     0: "constant 2 (NET and SALT NET)",
-    3: "no_flow_alarm (1 = active; SALT NET; matches ins[12] bit 0x100)",
+    3: "no_flow_alarm (1 = active) / flocculant_configured (1 = floc, 0 = alg) — ambiguous",
 }
 
 _SECTION_RE = re.compile(r"(\w+):\s*(.*?)(?=\s+\w+:|$)", re.DOTALL)

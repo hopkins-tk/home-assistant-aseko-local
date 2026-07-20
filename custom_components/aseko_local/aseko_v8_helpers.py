@@ -116,7 +116,8 @@ AsekoV8_CAPABILITY_FLAGS: dict[AsekoDeviceType, AsekoV8CapabilityFlags] = {
         fncs_code=1,
         outs_ph_minus=8,  # confirmed against mirovra's hex dumps
         outs_algicide=11,  # confirmed: outs[11]=1 when algicide ON (mirovra Jul 16)
-        # outs_cl / outs_ph_plus / outs_floc / outs_oxy all default to
+        outs_floc=11,  # same physical pump port — the motor doesn't know which chemical
+        # outs_cl / outs_ph_plus / outs_oxy all default to
         # None — SALT NET does not have these pumps.
     ),
     # ASIN AQUA NET v8: same pumps as v7 NET (CL + pH−). The v8
@@ -167,6 +168,13 @@ V8_FNCS_INSTALLED_PUMPS: dict[tuple[int, int], frozenset[str]] = {
     # pH− on the fixed port + algicide on the switchable port
     # (mirovra's unit, July 2026, serial 110215844).
     (1, 10): frozenset({"ph_minus", "algicide"}),
+    # (fncs[2]=1, fncs[6]=18) → SALT family, flocculant configured:
+    # same physical pump 2 port, user switched chemical in the app
+    # to flocculant (10 ml/h). Pump type changes the setpoint field:
+    #   fncs[6]=10 → areqs[4] = algicide dose (ml/m³/day)
+    #   fncs[6]=18 → areqs[3] = flocculant dose (ml/h)
+    # Confirmed by mirovra Jul 19 2026, Issue #131 comment 5016380761.
+    (1, 18): frozenset({"ph_minus", "floc"}),
     # (fncs[2]=3, fncs[6]=2) → NET family: CL + pH− (NET v8,
     # confirmed on serial 110203680 and 110999999).
     (3, 2): frozenset({"cl", "ph_minus"}),

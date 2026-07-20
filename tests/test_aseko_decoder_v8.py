@@ -633,6 +633,28 @@ def device_salt_net_f5():
     return AsekoV8Decoder.decode(SALT_NET_FRAME_F5)
 
 
+# F6: Flocculant configured (fncs[6]=18), electrolyzer OFF, no dosing
+# Source: mirovra Jul 19 17:20:28, Issue #131 comment 5016380761
+SALT_NET_FRAME_F6 = (
+    b"{v1 110215844 100 0 31 "
+    b"ins: 336 -500 -500 -500 0 0 0 0 1 -500 -500 -500 0 24 6 1 17 20 0 "
+    b"ains: 720 720 714 7190 0 0 719 719 46 0 446 0 0 0 0 0 "
+    b"outs: 0 0 2 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 "
+    b"areqs: 74 72 4 10 0 33 33 0 0 0 33 33 33 0 55 255 255 5 5 10 0 15 0 0 0 3 "
+    b"reqs: 0 0 0 0 0 8 0 20 0 2 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 "
+    b"0 10 10 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 "
+    b"fncs: 0 0 1 0 0 0 18 0 "
+    b"mods: 2 0 0 1 0 0 0 0 "
+    b"flags: 2 0 0 1 0 0 0 0 "
+    b"crc16: 3334}\n"
+)
+
+
+@pytest.fixture
+def device_salt_net_f6():
+    return AsekoV8Decoder.decode(SALT_NET_FRAME_F6)
+
+
 # --- Identity & header ---
 
 
@@ -763,13 +785,53 @@ def test_salt_net_electrolyzer_direction_left_f4(device_salt_net_f4):
 
 
 def test_salt_net_required_algicide(device_salt_net_f1):
-    """areqs[25] = 3 → 3 ml/m³/day (SALT NET only, NET v8 areqs is too short)."""
-    assert device_salt_net_f1.required_algicide == 3
+    """F1 (fncs[6]=10): areqs[4] = 5 → 5 ml/m³/day."""
+    assert device_salt_net_f1.required_algicide == 5
+
+
+def test_salt_net_required_floc_is_none_when_algicide(device_salt_net_f1):
+    """F1 (fncs[6]=10, algicide) → required_floc must be None."""
+    assert device_salt_net_f1.required_floc is None
 
 
 def test_salt_net_filtration_hours_per_day(device_salt_net_f1):
     """reqs[7] = 20 → 20 h/day (probable, unconfirmed by user)."""
     assert device_salt_net_f1.filtration_hours_per_day == 20
+
+
+# --- Flocculant configuration (fncs[6]=18) ---
+
+
+def test_salt_net_flocculant_device_type(device_salt_net_f6):
+    """F6 must still decode as SALT_NET."""
+    assert device_salt_net_f6.device_type == AsekoDeviceType.SALT_NET
+
+
+def test_salt_net_flocculant_installed_pumps(device_salt_net_f6):
+    """F6 (fncs[6]=18) → installed_pumps must contain floc, not algicide."""
+    assert "floc" in device_salt_net_f6.installed_pumps
+    assert "algicide" not in device_salt_net_f6.installed_pumps
+    assert "ph_minus" in device_salt_net_f6.installed_pumps
+
+
+def test_salt_net_flocculant_required_floc(device_salt_net_f6):
+    """F6: areqs[3] = 10 → 10 ml/h (flocculant dose)."""
+    assert device_salt_net_f6.required_floc == 10
+
+
+def test_salt_net_flocculant_required_algicide_is_none(device_salt_net_f6):
+    """F6 (flocculant) → required_algicide must be None."""
+    assert device_salt_net_f6.required_algicide is None
+
+
+def test_salt_net_flocculant_pump_off(device_salt_net_f6):
+    """F6: outs[11] = 0 → floc_pump_running is False (same physical port)."""
+    assert device_salt_net_f6.floc_pump_running is False
+
+
+def test_salt_net_flocculant_algicide_pump_is_none(device_salt_net_f6):
+    """F6 (flocculant) → algicide_pump_running must be None (not installed)."""
+    assert device_salt_net_f6.algicide_pump_running is None
 
 
 # --- Pump states (SALT-NET-specific semantics) ---

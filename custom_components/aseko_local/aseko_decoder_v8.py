@@ -273,8 +273,8 @@ class AsekoV8Decoder:
         else:
             ph_plus_pump_running = None
 
-        # Flocculant pump: not present on any v8 device captured so far.
-        # SALT NET has algicide instead, on a different physical port.
+        # Flocculant pump: same physical port as algicide (pump 2).
+        # The user configures the chemical in the app; fncs[6]=18 → floc.
         if (
             "floc" in installed_pumps
             and capability_flags is not None
@@ -353,12 +353,19 @@ class AsekoV8Decoder:
             delay_after_dose_v8 * 60 if delay_after_dose_v8 is not None else None
         )
 
-        # SALT NET-specific setpoint: required algicide dose (ml/m³/day)
-        # at areqs[25]. Gated on device_type to avoid phantom "0" on NET
-        # frames where areqs is zero-padded to length 25+.
+        # SALT NET-specific setpoints for pump 2 (switchable port).
+        # The chemical type is encoded in fncs[6]:
+        #   fncs[6] = 10 → algicide: dose at areqs[4] (ml/m³/day)
+        #   fncs[6] = 18 → flocculant: dose at areqs[3] (ml/h)
+        # Confirmed by mirovra Jul 19 2026, Issue #131 comment 5016380761.
+        # Gated on device_type to avoid phantom "0" on NET frames.
         required_algicide: int | None = None
-        if is_salt_net:
-            required_algicide = _get(areqs, 25)
+        required_floc: int | None = None
+        if is_salt_net and fncs6 is not None:
+            if fncs6 == 10:
+                required_algicide = _get(areqs, 4)
+            elif fncs6 == 18:
+                required_floc = _get(areqs, 3)
 
         # SALT NET: filtration hours per day at reqs[7] (probable).
         # Gated on device_type for the same reason.
@@ -434,6 +441,7 @@ class AsekoV8Decoder:
             required_ph=required_ph,
             required_redox=required_redox,
             required_algicide=required_algicide,
+            required_floc=required_floc,
             pool_volume=pool_volume,
             delay_after_startup=delay_after_startup,
             delay_after_dose=delay_after_dose,
