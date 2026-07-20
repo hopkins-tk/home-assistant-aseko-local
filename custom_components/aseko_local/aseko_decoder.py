@@ -737,7 +737,9 @@ class AsekoDecoder:
                 # No period 1 schedule → device is in NONSTOP_24H mode
                 # (or filtration is not actually configured on PROFI).
                 mode = AsekoFiltrationMode.NONSTOP_24H
-            elif b != UNSPECIFIED_VALUE and not bool(b & FILTRATION_PERIOD2_ENABLED_MASK):
+            elif b != UNSPECIFIED_VALUE and not bool(
+                b & FILTRATION_PERIOD2_ENABLED_MASK
+            ):
                 # byte[37] is well-defined and bit 0x20 is clear → the
                 # controller has disabled Period 2 in the UI, regardless of
                 # what bytes 60-63 still report.

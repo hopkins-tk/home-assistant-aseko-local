@@ -254,8 +254,10 @@ def test_decode_filtration_period2_real_dtpugh_frames() -> None:
                 r = _first_frame(v)
                 if r is not None:
                     return r
-        elif isinstance(payload, str) and len(payload) >= 100 and all(
-            c in "0123456789abcdefABCDEF" for c in payload.strip()
+        elif (
+            isinstance(payload, str)
+            and len(payload) >= 100
+            and all(c in "0123456789abcdefABCDEF" for c in payload.strip())
         ):
             return payload
         return None
@@ -1574,16 +1576,16 @@ def test_filtration_pump_running_off_when_manual_override() -> None:
     for override_value in (0x35, 0x15):
         data = _make_home_bytes()
         data[4] = 0x03  # HOME REDOX (firmware B device)
-        data[29] = 0x08  # schedule-driven output bit SET (would normally mean "running")
+        data[29] = (
+            0x08  # schedule-driven output bit SET (would normally mean "running")
+        )
         data[37] = override_value  # OFF (manual override)
 
         device = AsekoDecoder.decode(bytes(data))
         assert device.filtration_mode == AsekoFiltrationMode.OFF_MANUAL, (
             f"byte[37]={override_value:#x}"
         )
-        assert device.filtration_pump_running is False, (
-            f"byte[37]={override_value:#x}"
-        )
+        assert device.filtration_pump_running is False, f"byte[37]={override_value:#x}"
 
 
 def test_filtration_pump_running_on_when_not_override() -> None:
