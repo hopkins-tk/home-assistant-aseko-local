@@ -275,7 +275,7 @@ firmware B: serial 110169464, byte 4 = 0x03 — see [Issue #133](../temp/Issue-1
   `heating_control_enabled` is decoded separately from bit 3 (`0x08`).
 
 ‡ When antifreeze is ON, `byte[55]` drops from the normal heating setpoint
-  (25°C in dtpugh's case) to the antifreeze minimum temperature (4°C).
+  (eg. 27°C) to the antifreeze setpoint (e.g. 4°C, 5°C or 9°C whatever user sets).
   `antifreeze_enabled` is decoded from bit 7 (`0x80`), independent of
   `heating_control_enabled` (bit 3).
 
@@ -318,8 +318,8 @@ Filtration mode decoding on firmware A:
 - **Heating control**: bit 3 (`0x08`) is gated on `AsekoDeviceType.HOME` in
   `_fill_heating_demand()` and decoded into `heating_control_enabled`.
 - **Antifreeze**: bit 7 (`0x80`) is decoded as `antifreeze_enabled` (Issue #136).
-  When active, `byte[55]` holds the antifreeze threshold (4°C) instead of the
-  normal heating setpoint.
+  When active, `byte[55]` holds the antifreeze setpoint (e.g. 4°C, 5°C, 9°C)
+  instead of the normal heating setpoint.
 
 **Note on `0x43` (firmware A)**: treat this as "consistent with NONSTOP 24H" rather
 than "confirmed NONSTOP 24H active". A frame captured in May 2026 from
@@ -482,7 +482,8 @@ Tests for the HOME decoder live in `tests/test_aseko_decoder.py`:
   (serial 110175608, REDOX HOME). Confirms `byte[55]` as target water temp setpoint.
   Working notes: [docs/temp/Issue-135.md](../temp/Issue-135.md).
 - Issue #136: `byte[37]` bit 7 (`0x80`) = antifreeze master enable on HOME firmware A
-  (same device). `byte[55]` shows the antifreeze threshold (4°C) when enabled.
+  (same device). `byte[55]` shows the antifreeze setpoint (e.g. 4°C, 5°C, 9°C)
+  when enabled.
 - Issue #137: `byte[22]` bit 3 (`0x08`) = variable-speed pump running state on HOME.
   `byte[78]` changes with pump brand selection (Speck/Pentair/Hayward/Dab/Uwe) but
   is not a unique brand ID — see Open Item 11.
