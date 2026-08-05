@@ -71,7 +71,7 @@ _LOGGER = logging.getLogger(__name__)
 
 # Toggle this to False once the SALT NET triage is closed and the
 # v8 helper capability map is finalised. See module docstring.
-DUMP_ENABLED: bool = True
+DUMP_ENABLED: bool = False
 
 
 # Default path used when ASEKO_DUMP_PATH is not set. `/config` is
