@@ -315,6 +315,18 @@ class AsekoV8Decoder:
         # docstring and salt_net_v8_device_analysis.md §10.
         alarm_no_flow_to_probes = bool(ins[12] & 0x100) if len(ins) > 12 else None
 
+        # --- Dosing-fault alarm (Issue #151) ---
+        # ins[12] is a multi-bit alert word. Bit 0x80 (= 128) is set while the
+        # device shows "Maximum disinfection dose exceeded" (safety dose exceeded
+        # without reaching the target — reagent empty / pump not dosing / valve
+        # blocked / no flow / probe failure). Confirmed on NET v8 (Issue #151):
+        # ins[12] = 0 → 128 when the fault fires and back to 0 after the user
+        # clears it on the controller. Maps to the SAME AsekoDevice field as the
+        # v7 byte[12] bit 0x20 dosing warning (see aseko_decoder.py
+        # `_fill_alarm_data`), so both protocols share the
+        # `alarm_orp_too_many_doses` binary sensor.
+        alarm_orp_too_many_doses = bool(ins[12] & 0x80) if len(ins) > 12 else None
+
         # --- Configuration / setpoints ---
         areqs0 = _get(areqs, 0)
         required_ph = areqs0 / 10 if areqs0 is not None else None
@@ -436,6 +448,7 @@ class AsekoV8Decoder:
             filtration_hours_per_day=filtration_hours_per_day,
             filtration_mode=filtration_mode,
             alarm_no_flow_to_probes=alarm_no_flow_to_probes,
+            alarm_orp_too_many_doses=alarm_orp_too_many_doses,
         )
 
     @classmethod

@@ -253,8 +253,12 @@ class AsekoDevice:
     # Unconfirmed by user. See docs/device analyzes/salt_net_v8_device_analysis.md §8.
     filtration_hours_per_day: int | None = None
 
-    alarm_ph_too_many_doses: bool | None = None  # v7 byte [13] bit 0x01
-    alarm_orp_too_many_doses: bool | None = None  # v7 byte [13] bit 0x02
+    alarm_ph_too_many_doses: bool | None = (
+        None  # v7 byte [13] bit 0x01 or byte [12] bit 0x40
+    )
+    alarm_orp_too_many_doses: bool | None = (
+        None  # v7 byte [13] bit 0x02 or byte [12] bit 0x20 | v8 ins[12] bit 0x80 (Issue #151)
+    )
     alarm_no_flow_to_probes: bool | None = (
         None  # v7 byte [13] bit 0x04 | v8 ins[12] bit 0x100
     )

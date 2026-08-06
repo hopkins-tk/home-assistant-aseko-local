@@ -7,6 +7,7 @@ from typing import Any
 
 from custom_components.aseko_local import (
     async_setup_entry,
+    async_unload_entry,
 )
 from custom_components.aseko_local.aseko_data import AsekoDevice
 from custom_components.aseko_local.const import (
@@ -128,6 +129,12 @@ async def test_setup_unload_entry(hass, bypass_get_data, api_server_running) -> 
         frame = b"\x03" * 120
         # Should not raise or call anything
         await server._call_forward_cb(frame)  # noqa: SLF001
+
+    # Unload the entry so the coordinator's periodic stale-check timer is
+    # stopped. pytest_homeassistant_custom_component fails any test that
+    # leaves a lingering timer behind (async_track_time_interval started in
+    # async_start_stale_check).
+    assert await async_unload_entry(hass, config_entry)
 
 
 # Hilfsfunktion: Hex-String zu Bytes

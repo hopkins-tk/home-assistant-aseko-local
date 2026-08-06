@@ -891,6 +891,52 @@ def test_salt_net_no_flow_alarm_clear_f3(device_salt_net_f3):
     assert device_salt_net_f3.alarm_no_flow_to_probes is False
 
 
+# --- Dosing-fault alarm (Issue #151) ---
+
+
+def test_net_v8_dose_exceeded_alarm_clear(device_sep):
+    """NET v8 with ins[12] = 0 → alarm_orp_too_many_doses = False (not None).
+
+    Maps to the same AsekoDevice field as the v7 byte[12] bit 0x20 dosing
+    warning, so both protocols share the `alarm_orp_too_many_doses` binary
+    sensor.
+    """
+    assert device_sep.alarm_orp_too_many_doses is False
+
+
+def test_net_v8_dose_exceeded_alarm_active():
+    """NET v8 with ins[12] = 128 (0x80) → ORP/dosing-fault alarm active.
+
+    Issue #151: ins[12] flips 0 → 128 while the device shows
+    "Maximum disinfection dose exceeded" and back to 0 after the user
+    clears it on the controller.
+    """
+    fault_frame = REFERENCE_FRAME.replace(
+        b" 0 24 6 29 22 27 0 ", b" 128 24 6 29 22 27 0 "
+    )
+    device = AsekoV8Decoder.decode(fault_frame)
+    assert device.alarm_orp_too_many_doses is True
+    # The no-flow bit (0x100) is a different bit in the same word.
+    assert device.alarm_no_flow_to_probes is False
+
+
+def test_net_v8_no_flow_and_dose_exceeded_bits_are_independent():
+    """ins[12] bit 0x100 (no flow) and bit 0x80 (dose exceeded) are distinct."""
+    no_flow_frame = REFERENCE_FRAME.replace(
+        b" 0 24 6 29 22 27 0 ", b" 256 24 6 29 22 27 0 "
+    )
+    device = AsekoV8Decoder.decode(no_flow_frame)
+    assert device.alarm_no_flow_to_probes is True
+    assert device.alarm_orp_too_many_doses is False
+
+    both_frame = REFERENCE_FRAME.replace(
+        b" 0 24 6 29 22 27 0 ", b" 384 24 6 29 22 27 0 "
+    )
+    device = AsekoV8Decoder.decode(both_frame)
+    assert device.alarm_no_flow_to_probes is True
+    assert device.alarm_orp_too_many_doses is True
+
+
 # --- Filtration mode derivation for SALT NET v8 (Issue #131 + #133) ---
 
 
