@@ -1631,14 +1631,18 @@ def test_filtration_pump_running_off_when_pump_actually_off() -> None:
 
 
 def test_home_alarm_bitmask_byte13() -> None:
-    """byte[13] alarm bitmask is decoded for all device types; tested here on HOME."""
+    """byte[13] alarm bitmask is decoded for all device types; tested here on HOME.
+
+    Bit mapping (Issue #151, serial 110175608): 0x01 = disinfection/Cl dose fault,
+    0x02 = pH dose fault, 0x04 = no flow, 0x08 = rapid pH change.
+    """
     data = _make_home_bytes()
 
     # All four bits set
     data[13] = 0x0F
     device = AsekoDecoder.decode(bytes(data))
-    assert device.alarm_ph_too_many_doses is True  # bit 0x01
-    assert device.alarm_orp_too_many_doses is True  # bit 0x02
+    assert device.alarm_ph_too_many_doses is True  # bit 0x02
+    assert device.alarm_orp_too_many_doses is True  # bit 0x01
     assert device.alarm_no_flow_to_probes is True  # bit 0x04
     assert device.alarm_rapid_ph_change is True  # bit 0x08
 
@@ -1657,6 +1661,117 @@ def test_home_alarm_bitmask_byte13() -> None:
     assert device.alarm_ph_too_many_doses is False
     assert device.alarm_orp_too_many_doses is False
     assert device.alarm_rapid_ph_change is False
+
+
+def test_home_alarm_byte13_bit01_is_disinfection() -> None:
+    """byte[13] bit 0x01 = disinfection/Cl dose fault → alarm_orp_too_many_doses.
+
+    Issue #151 regression: dtpugh's config48 frame (HOME serial 110175608) shows
+    byte[13]=0x01 while the controller displayed "Maximum disinfection dose
+    exceeded".  Pre-fix this bit was mapped to alarm_ph_too_many_doses, so the
+    chlorine fault falsely lit the "Too many doses of pH" sensor.
+    """
+    data = _make_home_bytes()
+    data[13] = 0x01
+
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.alarm_orp_too_many_doses is True
+    assert device.alarm_ph_too_many_doses is False
+    assert device.alarm_no_flow_to_probes is False
+    assert device.alarm_rapid_ph_change is False
+
+
+def test_home_alarm_byte13_bit02_is_ph() -> None:
+    """byte[13] bit 0x02 = pH dose fault → alarm_ph_too_many_doses.
+
+    Inferred mapping (symmetric to bit 0x01, per dtpugh's expectation in
+    Issue #151 that a pH fault would read 0x02).  Direct frame capture pending.
+    """
+    data = _make_home_bytes()
+    data[13] = 0x02
+
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.alarm_ph_too_many_doses is True
+    assert device.alarm_orp_too_many_doses is False
+    assert device.alarm_no_flow_to_probes is False
+    assert device.alarm_rapid_ph_change is False
+
+
+def test_home_alarm_byte12_dosing_warnings() -> None:
+    """byte[12] dosing-warning bitmask: 0x20 = disinfection, 0x40 = pH (HOME).
+
+    Confirmed by Issue #134 before/after captures (serial 110175608):
+    both → 0x60, pH only → 0x40, cleared → 0x00.
+    """
+    data = _make_home_bytes()
+
+    # Disinfection only
+    data[12] = 0x20
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.alarm_orp_too_many_doses is True
+    assert device.alarm_ph_too_many_doses is False
+
+    # pH only
+    data[12] = 0x40
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.alarm_ph_too_many_doses is True
+    assert device.alarm_orp_too_many_doses is False
+
+    # Both
+    data[12] = 0x60
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.alarm_ph_too_many_doses is True
+    assert device.alarm_orp_too_many_doses is True
+
+    # None
+    data[12] = 0x00
+    data[13] = 0x00
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.alarm_ph_too_many_doses is False
+    assert device.alarm_orp_too_many_doses is False
+
+
+def test_decode_alarm_real_dtpugh_frames() -> None:
+    """Issue #151 end-to-end: decode the three real diagnostic frames from
+    @dtpugh (HOME serial 110175608) and verify the correct alarm sensors fire.
+
+      config48 (chlorine/disinfection overdose): byte[13]=0x01 → disinfection ON,
+        pH OFF.  config49 (pH fault only): byte[12]=0x40 → pH ON, disinfection OFF.
+      config50 (cleared): both OFF.
+    """
+    frames = {
+        # chlorine / disinfection dose exceeded (2026-08-06 17:29:15)
+        "48": (
+            "0691257803011a0806111d0f000102d202d802d802d8a3fe70012ffeaa48001d000000000005027b"
+            "0691257803031a0806111d0f4a5000200800100a100f16000298012f00080515025a01e00e10a2ff"
+            "0691257803021a0806111d0f008c003c003c003c000a1e3c6e9600f00502580f050f1e1effc20283",
+            (False, True),
+        ),
+        # pH fault only (2026-08-08 09:08:40)
+        "49": (
+            "0691257803011a0808090828400002e3031003100310a3fe70012dfeaa08000000000000000102bd"
+            "0691257803031a08080908284a4a00200800100a100f16000297012d00080515025a01e00e10a2cc"
+            "0691257803021a0808090828008c003c003c003c000a1e3c6e9600f00a02580f050f1e1effc202a8",
+            (True, False),
+        ),
+        # cleared (2026-08-08 09:22:20)
+        "50": (
+            "0691257803011a0808091614000002e1031003100310a3fe70012dfeaa08000000000000000102dd"
+            "0691257803031a08080916144a4a00200800100a100f16000295012d00080515025a01e00e10a2ec"
+            "0691257803021a0808091614008c003c003c003c000a1e3c6e9600f00a02580f050f1e1effc2028a",
+            (False, False),
+        ),
+    }
+
+    for name, (hex_dump, (exp_ph, exp_orp)) in frames.items():
+        device = AsekoDecoder.decode(bytes.fromhex(hex_dump))
+        assert device.device_type == AsekoDeviceType.HOME, f"config{name}"
+        assert device.alarm_ph_too_many_doses is exp_ph, (
+            f"config{name}: alarm_ph_too_many_doses expected {exp_ph}"
+        )
+        assert device.alarm_orp_too_many_doses is exp_orp, (
+            f"config{name}: alarm_orp_too_many_doses expected {exp_orp}"
+        )
 
 
 def test_home_byte12_not_an_alarm_byte() -> None:

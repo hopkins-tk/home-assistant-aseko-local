@@ -216,9 +216,14 @@ class AsekoDevice:
     # Alarm/error bitmasks — bytes [12] (HOME dosing warnings) and [13]
     # byte [12] 0x20 = chlorine/disinfection dosing warning (HOME ✅, issue #134)
     # byte [12] 0x40 = pH dosing warning (HOME ✅, issue #134)
-    # byte [13] 0x01 / 0x02 / 0x04 / 0x08 = legacy bitmask (NET no-flow ✅)
-    alarm_ph_too_many_doses: bool | None = None  # byte [13] 0x01 | byte [12] 0x40
-    alarm_orp_too_many_doses: bool | None = None  # byte [13] 0x02 | byte [12] 0x20
+    # byte [13] 0x01 = disinfection/ORP dose fault (Issue #151, HOME serial 110175608;
+    #                  config48 frame byte[13]=0x01 during "Maximum disinfection dose
+    #                  exceeded" — same fault as v8 ins[12] bit 0x80)
+    # byte [13] 0x02 = pH dose fault (inferred, symmetric to 0x01 — no direct capture yet)
+    # byte [13] 0x04 = no flow to probes (confirmed)
+    # byte [13] 0x08 = rapid pH change (error_codes.md, unconfirmed by capture)
+    alarm_ph_too_many_doses: bool | None = None  # byte [13] 0x02 | byte [12] 0x40
+    alarm_orp_too_many_doses: bool | None = None  # byte [13] 0x01 | byte [12] 0x20
     alarm_no_flow_to_probes: bool | None = None  # byte [13] bit 0x04 (confirmed)
     alarm_rapid_ph_change: bool | None = (
         None  # byte [13] bit 0x08 (error_codes.md, unconfirmed by capture)

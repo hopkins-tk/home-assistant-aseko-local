@@ -78,6 +78,8 @@ All PROFI frames are 120 bytes, split into three 40-byte sub-frames:
 | `[4]` | Unit type = `0x10` | ✅ certain | See note on PROFI identification above |
 | `[5]` | Sub-frame type `0x01` | assumed | Not validated against a real PROFI frame |
 | `[6:12]` | Timestamp | assumed | |
+| `[12]` | Dosing-warning bitmask | assumed | See [`home_device_analysis.md`](home_device_analysis.md) §"Dosing warnings & alarms" |
+| `[13]` | Alarm bitmask (`0x01`=disinfection, `0x02`=pH, `0x04`=no flow) | assumed | See § above |
 | `[14:16]` | pH = value / 100 | assumed | PROFI has a pH probe (per manual) |
 | `[16:18]` | CLF free chlorine (mg/L) if CLF probe present | assumed | PROFI supports CLF |
 | `[18:20]` | REDOX (mV) — same byte on PROFI when both CLF and REDOX are installed | assumed | `_fill_redox_data` already special-cases this (reads 16:18 if 18:19 is `0xFFFF`, else 18:20) |
@@ -248,8 +250,10 @@ same byte positions as HOME/SALT/OXY:
 - `byte[68]` = backwash every N days
 - `byte[69:71]` = backwash time (HH:MM)
 - `byte[71]` = backwash duration (× 10 s)
-- `byte[12]` = backwash active flag (combined with byte[29] bit 0x01 for water-filling
-  state — see [`backwash_tracker.py`](../../custom_components/aseko_local/backwash_tracker.py))
+- `byte[29]` bit `0x01` = backwash relay active (combined with `byte[29]` bit `0x02`
+  for the water-filling state — see [`backwash_tracker.py`](../../custom_components/aseko_local/backwash_tracker.py)).
+  Note: byte[12] is **not** the backwash flag — it is the dosing-warning bitmask
+  (see [`home_device_analysis.md`](home_device_analysis.md) §"Dosing warnings & alarms").
 
 `last_backwash` and `next_backwash` are derived (not from raw bytes) and depend on the
 [`BackwashTracker`](../../custom_components/aseko_local/backwash_tracker.py) state

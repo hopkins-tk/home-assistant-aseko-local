@@ -49,6 +49,8 @@ convention, named `PROBE_X_MISSING` in the code).
 | `[4]` | Unit type + probe flags | `0x0E` or `0x0D` |
 | `[5]` | Sub-frame type `0x01` | |
 | `[6:12]` | Timestamp (year−2000, month, day, hour, min, sec) | Device clock |
+| `[12]` | Dosing-warning bitmask | Usually `0x00` on SALT — see [`home_device_analysis.md`](home_device_analysis.md) §"Dosing warnings & alarms" |
+| `[13]` | Alarm bitmask | `0x04` = no flow to probes; see § above |
 | `[14:16]` | pH = value / 100 | |
 | `[16:18]` | CLF or REDOX (probe-dependent) | CLF: `/100` mg/L; REDOX: `×1` mV |
 | `[18:20]` | REDOX (if CLF also present on PROFI-style) | Not applicable on basic SALT |

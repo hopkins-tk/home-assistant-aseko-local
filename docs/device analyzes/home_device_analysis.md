@@ -67,8 +67,8 @@ Seg3 (bytes 80–119): 06 90 6b bf  02 02  1a 04 1c 08 1b 07
 | 4       | `02`     | 2       | Device type              | HOME (CLF variant)   | —             | ✓      |
 | 5       | `01`     | 1       | Segment marker           | Segment 1            | —             | ✓      |
 | 6–11    | `1a 04 1c 08 1b 07` | — | Timestamp           | 2026-04-28 08:27:07  | —             | ✓      |
-| 12      | `00`     | 0       | Unknown                  | —                    | —             | ?      |
-| 13      | `28`     | 40      | Unknown                  | —                    | —             | ?      |
+| 12      | `00`     | 0       | **Dosing-warning bitmask** (`0x20`=disinfection, `0x40`=pH) | none           | —             | ✓ (Issue #134/#151) |
+| 13      | `28`     | 40      | **Alarm bitmask** (`0x01`=disinfection, `0x02`=pH, `0x04`=no flow, `0x08`=rapid pH) | low nibble `0x08` set → rapid-pH flag (unconfirmed) | — | ✓ (Issue #151) |
 | 14–15   | `0275`   | 629     | pH (÷100)                | **6.29**             | 6.56†         | ✓†     |
 | 16–17   | `0000`   | 0       | Cl free (÷100)           | **0.00 mg/l**        | 0.00 mg/l     | ✓      |
 | 18–19   | `0000`   | 0       | Unused (no REDOX probe)  | —                    | —             | —      |
@@ -163,6 +163,37 @@ Seg3 (bytes 80–119): 06 90 6b bf  02 02  1a 04 1c 08 1b 07
 | 118–119 | `0271`   | 625     | Unknown (checksum?)          | —              | —                 | ?      |
 
 Note on **bytes 94–95**: `max_filling_time` reads bytes[94:96] as a big-endian 16-bit value = `0x003c` = 60. `flowrate_ph_minus` independently reads byte[95] = `0x3c` = 60. They overlap but coincidentally produce the same result because the high byte (94) is 0x00. If byte[94] ever becomes non-zero the max_filling_time would be inflated; however for HOME this is expected to fit in one byte (max ~255 min).
+
+---
+
+## Dosing warnings & alarms (bytes 12 / 13)
+
+HOME devices report dosing safety faults in two adjacent bytes. The decoder reads
+them for **all** device types (`_fill_alarm_data` in `aseko_decoder.py`):
+
+| Binary sensor | byte[12] bit | byte[13] bit |
+|---|---|---|
+| Too many doses of disinfection (`alarm_orp_too_many_doses`) | `0x20` | `0x01` |
+| Too many doses of pH (`alarm_ph_too_many_doses`) | `0x40` | `0x02` |
+| No flow to probes (`alarm_no_flow_to_probes`) | — | `0x04` |
+| Rapid pH change (`alarm_rapid_ph_change`) | — | `0x08` (unconfirmed) |
+
+Confirmed by @dtpugh's diagnostics on HOME serial 110175608 (byte[4] = `0x03`):
+
+* **Issue #134** (2026-07-05), before/after clearing on the controller: both
+  warnings active → byte[12] = `0x60`; pH only → `0x40`; cleared → `0x00`.
+  byte[13] stayed `0x00`.
+* **Issue #151** (2026-08-06/08): chlorine/disinfection "Maximum disinfection
+  dose exceeded" → byte[13] = `0x01` (byte[12] = `0x00`); pH fault → byte[12] =
+  `0x40`; cleared → both `0x00`.
+
+The disinfection fault was observed in byte[12] `0x20` (July) **and** in byte[13]
+`0x01` (August) — likely a firmware change on the Home. The decoder ORs both
+paths so either encoding is detected. The byte[13] `0x02` = pH mapping is
+**inferred** (symmetric to `0x01`; @dtpugh expected `0x02` for a pH fault) and
+still lacks a direct frame capture. The same disinfection fault maps to `ins[12]`
+bit `0x80` on v8 frames (Issue #151, `aseko_decoder_v8.py`), so both protocols
+share the `alarm_orp_too_many_doses` sensor.
 
 ---
 

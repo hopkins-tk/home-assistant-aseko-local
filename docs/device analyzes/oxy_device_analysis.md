@@ -60,6 +60,8 @@ Checksum bytes (39, 79, 119) and timestamp second (byte[11]) change as expected.
 | `[4]` | `0x05` | Unit type / probe flags | **OXY-specific, see below** |
 | `[5]` | `0x01` | Sub-frame type | |
 | `[6:12]` | `1a 04 02 17 15 0a` | 2026-04-02 23:21:10 | Device clock desynchronised from server |
+| `[12]` | `00` | 0 | Dosing-warning bitmask — see [`home_device_analysis.md`](home_device_analysis.md) §"Dosing warnings & alarms" |
+| `[13]` | `00` | 0 | Alarm bitmask (`0x01`=disinfection, `0x02`=pH, `0x04`=no flow) — see § above |
 | `[14:16]` | `02 cd` | pH = 7.17 | ÷100 |
 | `[16:18]` | `00 1e` | CLF slot = 30 → 0.30 | **Placeholder, see §CLF/REDOX** |
 | `[18:20]` | `00 1e` | REDOX slot = 30 mV | **Placeholder, see §CLF/REDOX** |
