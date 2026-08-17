@@ -362,7 +362,7 @@ discussion](https://github.com/hopkins-tk/home-assistant-aseko-local/issues/110)
 bit 3 (`filtration_pump_running`) is still set in the frame — the firmware does
 not clear the schedule-driven bit on manual override. The decoder compensates
 by short-circuiting `filtration_pump_running` to `False` whenever
-`filtration_mode == OFF_MANUAL`. This is a HOME-only behaviour; no SALT/OXY/PROFI
+`filtration_mode == MANUAL`. This is a HOME-only behaviour; no SALT/OXY/PROFI
 OFF frame has been captured yet.
 
 **Note on Period 2 schedule bytes (Issue #133)**: All Aseko devices in
@@ -482,11 +482,11 @@ Tests for the HOME decoder live in `tests/test_aseko_decoder.py`:
 | `test_filtration_mode_new_encoding_24h` | Issue #133 firmware B: `byte[37]=0x01` → `NONSTOP_24H` |
 | `test_filtration_mode_new_encoding_p1` | Issue #133 firmware B: `byte[37]=0x11` → `TIMER_PERIOD_1` |
 | `test_filtration_mode_new_encoding_p1_and_p2` | Issue #133 firmware B: `byte[37]=0x31` → `TIMER_PERIOD_1_AND_2` |
-| `test_filtration_mode_new_encoding_off_manual` | Issue #133 firmware B: `byte[37]=0x35` → `OFF_MANUAL` |
+| `test_filtration_mode_new_encoding_off_manual` | Issue #133 firmware B: `byte[37]=0x35` → `MANUAL` |
 | `test_filtration_mode_old_encoding_24h` | Issue #110 firmware A: `byte[37]=0x43` → `NONSTOP_24H` |
 | `test_filtration_mode_old_encoding_timer` | Issue #110 firmware A: `byte[37]=0x53` → `TIMER_PERIOD_1_AND_2` |
 | `test_filtration_pump_running_off_when_manual_override` | Issue #133: `byte[37]=0x35` forces `filtration_pump_running=False` |
-| `test_filtration_pump_running_on_when_not_override` | Regression guard: `byte[29]&0x08` still drives the entity outside OFF_MANUAL |
+| `test_filtration_pump_running_on_when_not_override` | Regression guard: `byte[29]&0x08` still drives the entity outside MANUAL |
 | `test_filtration_pump_running_not_overridden_on_salt` | Override short-circuit is HOME-only |
 | `test_decode_filtration_period2_disabled` | Issue #133: bytes 60-63 stay populated; mode flips to `TIMER_PERIOD_1` |
 | `test_decode_filtration_period2_bytes_unspecified` | Issue #133: bytes 60-63 = 0xFF → `start2`/`stop2` = `None` (entity skipped) |

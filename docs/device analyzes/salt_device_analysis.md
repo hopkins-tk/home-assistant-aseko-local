@@ -126,8 +126,9 @@ entities to flip to "unknown" when the user toggled Period 2 on/off
 (Home Assistant protects the entity registry, so the entity stays but
 the value is read as `None`).  Post-fix, bytes 60-63 are read
 unconditionally for any device in `FILTRATION_TYPES` (SALT included) and
-`filtration_mode` is derived from `byte[37]` bit 5 (`0x20`) / the schedule
-bytes.  Behaviour was originally verified on SALT by diffing two frames
+`filtration_mode` is decoded directly from the `byte[37]` filtration-mode
+flag (see §byte[37] below).  Behaviour was originally verified on SALT by
+diffing two frames
 captured in PR #122 (algicide mode toggle, `0xb3` ↔ `0x33`); the
 corresponding behaviour for HOME was confirmed in Issue #133 with
 @dtpugh's four diagnostic files (see
@@ -147,6 +148,23 @@ filtration output.
 
 Bit 2 (`0x04`) appears related to dosage encoding. The full semantics of all bits are not
 confirmed.
+
+### byte[37] also carries the filtration-mode flag
+
+Since Issue #133 the decoder reads the 4-state filtration mode directly from
+`byte[37]` for every `FILTRATION_TYPES` device (SALT included), using the same
+two firmware encodings as HOME — see
+[`home_device_analysis.md`](home_device_analysis.md) §"byte[37] – Filtration
+mode flag" for the full table.  In brief:
+
+| `byte[37]` high nibble | Encoding | Filtration mode |
+|---|---|---|
+| `0x4` / `0x5` (firmware A) | exact values | `0x43` → `NONSTOP_24H`, `0x53` → `TIMER_PERIOD_1_AND_2` |
+| `0x0` / `0x1` / `0x3` (firmware B) | bit flags | `0x04` → `MANUAL`; `(b & 0x30)` → `0x00`=`NONSTOP_24H`, `0x10`=`TIMER_PERIOD_1`, `0x30`=`TIMER_PERIOD_1_AND_2` |
+
+Note the overlap with the third-pump routing / dosage encoding above: bit 2
+(`0x04`) is interpreted as the manual-override flag by the filtration-mode
+decode on SALT as well.
 
 ---
 

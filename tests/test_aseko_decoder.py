@@ -157,7 +157,7 @@ def test_decode_filtration_period2_disabled() -> None:
     Post-fix, the bytes 60-63 are read for any device in FILTRATION_TYPES
     because the controller keeps sending the last-configured Period 2 times
     (verified on dtpugh's serial 110169464: bytes 60-63 stay populated in
-    P1 only / P1&P2 / 24h / OFF_MANUAL modes).  The *mode* still flips
+    P1 only / P1&P2 / 24h / MANUAL modes).  The *mode* still flips
     between TIMER_PERIOD_1 and TIMER_PERIOD_1_AND_2 per byte[37] bit 0x20,
     so the user can tell which schedule is active.
     """
@@ -230,7 +230,7 @@ def test_decode_filtration_period2_real_dtpugh_frames() -> None:
     """Issue #133 end-to-end: decode all four real diagnostic frames from
     @dtpugh (serial 110169464, ASIN AQUA Home firmware B) and verify
     Period 2 times are stable across all four modes (P1 only / P1&P2 /
-    24h / OFF_MANUAL).  This is the user-visible regression: pre-fix the
+    24h / MANUAL).  This is the user-visible regression: pre-fix the
     entity would go "unknown" when the user toggled the controller back
     from P1&P2 to P1 only.
     """
@@ -266,7 +266,7 @@ def test_decode_filtration_period2_real_dtpugh_frames() -> None:
         "01_p1only.json": (0x11, AsekoFiltrationMode.TIMER_PERIOD_1),
         "02_p1andp2.json": (0x31, AsekoFiltrationMode.TIMER_PERIOD_1_AND_2),
         "03_24h.json": (0x01, AsekoFiltrationMode.NONSTOP_24H),
-        "04_off.json": (0x35, AsekoFiltrationMode.OFF_MANUAL),
+        "04_off.json": (0x35, AsekoFiltrationMode.MANUAL),
     }
 
     for filename, (expected_b37, expected_mode) in scenarios.items():
@@ -1342,15 +1342,11 @@ def test_filtration_nonstop24_none_for_net() -> None:
 
 
 def test_filtration_nonstop24_decoded_for_all_device_types() -> None:
-    """filtration_nonstop24 mirrors the new 4-state filtration_mode enum.
+    """filtration_nonstop24 mirrors the byte[37] filtration_mode flag for every
+    FILTRATION_TYPES device; NET has no filtration output and stays None.
 
-    For SALT / OXY / PROFI: the value is derived from the schedule bytes
-    56-63 (no schedule → NONSTOP_24H, otherwise timer with or without P2
-    depending on byte 37 bit 0x20 / start2 presence). With the base test
-    fixture (P1 + P2 schedule, byte 37 bit 0x20 set on SALT 0xb7 via
-    _make_base_bytes default), the legacy boolean reads False.
-
-    For NET: stays None (NET is excluded from FILTRATION_TYPES).
+    byte[37] = 0x01 (firmware B "nonstop 24h") → NONSTOP_24H → the legacy
+    boolean reads True on SALT, OXY, PROFI and HOME alike.
     """
     # NET: no filtration output → legacy boolean stays None
     data = _make_base_bytes()
@@ -1358,12 +1354,12 @@ def test_filtration_nonstop24_decoded_for_all_device_types() -> None:
     data[37] = 0xFF
     assert AsekoDecoder.decode(bytes(data)).filtration_nonstop24 is None
 
-    # SALT / OXY / PROFI: with default schedule (P1 + P2), legacy bool = False
-    for device_byte in (0x0E, 0x05, 0x10):  # SALT, OXY, PROFI
+    # SALT / OXY / PROFI / HOME: byte[37] = 0x01 → NONSTOP_24H
+    for device_byte in (0x0E, 0x05, 0x10, 0x03):  # SALT, OXY, PROFI, HOME
         data = _make_base_bytes()
         data[4] = device_byte
-        # keep default schedule + byte[37]
-        assert AsekoDecoder.decode(bytes(data)).filtration_nonstop24 is False, (
+        data[37] = 0x01  # firmware B: nonstop 24h
+        assert AsekoDecoder.decode(bytes(data)).filtration_nonstop24 is True, (
             f"byte[4]={device_byte:#x}"
         )
 
@@ -1433,7 +1429,7 @@ def test_filtration_mode_new_encoding_p1_and_p2() -> None:
 
 
 def test_filtration_mode_new_encoding_off_manual_p1_and_p2() -> None:
-    """Firmware B byte[37] = 0x35 → OFF_MANUAL (P1 & P2 + manual override).
+    """Firmware B byte[37] = 0x35 → MANUAL (P1 & P2 + manual override).
 
     The original frame from @dtpugh (serial 110169464) had 0x35: both
     periods enabled and the user manually toggled filtration OFF.
@@ -1441,21 +1437,21 @@ def test_filtration_mode_new_encoding_off_manual_p1_and_p2() -> None:
     data = _make_home_bytes()
     data[37] = 0x35  # new encoding: P1 & P2 + manual override (bit 2 set)
     device = AsekoDecoder.decode(bytes(data))
-    assert device.filtration_mode == AsekoFiltrationMode.OFF_MANUAL
+    assert device.filtration_mode == AsekoFiltrationMode.MANUAL
     assert device.filtration_nonstop24 is False
 
 
 def test_filtration_mode_new_encoding_off_manual_p1_only() -> None:
-    """Firmware B byte[37] = 0x15 → OFF_MANUAL (P1 only + manual override).
+    """Firmware B byte[37] = 0x15 → MANUAL (P1 only + manual override).
 
     Diagnostic 42 from @dtpugh (serial 110175608): user switched pump OFF
     while only Period 1 was active. byte[37] = 0x15 (bits 0,2,4 set).
-    Bit 2 (0x04) = manual override → must decode as OFF_MANUAL.
+    Bit 2 (0x04) = manual override → must decode as MANUAL.
     """
     data = _make_home_bytes()
     data[37] = 0x15  # P1 + manual override
     device = AsekoDecoder.decode(bytes(data))
-    assert device.filtration_mode == AsekoFiltrationMode.OFF_MANUAL
+    assert device.filtration_mode == AsekoFiltrationMode.MANUAL
     assert device.filtration_nonstop24 is False
 
 
@@ -1511,19 +1507,16 @@ def test_filtration_mode_none_for_net() -> None:
     assert device.filtration_mode is None
 
 
-def test_filtration_mode_derived_for_salt_oxy_profi() -> None:
-    """For SALT / OXY / PROFI the mode is derived from the schedule bytes 56-63.
+def test_filtration_mode_byte37_flags_for_salt_oxy_profi() -> None:
+    """SALT / OXY / PROFI decode the byte[37] mode flag exactly like HOME.
 
-    The base test fixture has start1 = 08:00 / stop1 = 10:00 / start2 = 14:00 /
-    stop2 = 16:00 (see _make_base_bytes). With both periods set, the derived
-    mode is TIMER_PERIOD_1_AND_2 regardless of the byte[37] value (SALT
-    0xb7, OXY 0x03, PROFI 0x53) — those bits are algicide routing / pump
-    presence / unknown, NOT filtration-mode flags.
+    byte[37] = 0x31 (firmware B: P1 & P2) → TIMER_PERIOD_1_AND_2 for every
+    non-NET device type — the flag is not HOME-specific.
     """
     for device_byte in (0x0E, 0x05, 0x10):  # SALT, OXY, PROFI
         data = _make_base_bytes()
         data[4] = device_byte
-        # keep default schedule (08:00, 10:00, 14:00, 16:00) and byte[37]
+        data[37] = 0x31  # firmware B: P1 & P2
         device = AsekoDecoder.decode(bytes(data))
         assert device.filtration_mode == AsekoFiltrationMode.TIMER_PERIOD_1_AND_2, (
             f"byte[4]={device_byte:#x}"
@@ -1545,31 +1538,30 @@ def test_filtration_mode_salt_p1_only_when_period2_disabled() -> None:
     assert device.filtration_mode == AsekoFiltrationMode.TIMER_PERIOD_1
 
 
-def test_filtration_mode_salt_nonstop_when_no_schedule() -> None:
-    """SALT with start1 = 0xFF (no schedule) → NONSTOP_24H.
+def test_filtration_mode_salt_byte37_nonstop() -> None:
+    """SALT decodes NONSTOP_24H from byte[37] = 0x01 even with no schedule.
 
-    Bytes 56-63 are read directly here (this test runs the decoder end-to-end
-    on a SALT fixture, and `_fill_filtration_mode` runs before the schedule
-    is decoded into `unit.start1`).
+    The mode now comes from the byte[37] flag, not from the schedule bytes
+    56-63 (which are 0xFF here and no longer drive the mode).
     """
     data = _make_base_bytes()
     data[4] = 0x0E  # SALT
     data[56:60] = bytes([0xFF, 0xFF, 0xFF, 0xFF])  # no period 1
     data[60:64] = bytes([0xFF, 0xFF, 0xFF, 0xFF])  # no period 2
-    data[37] = 0xB7  # SALT algicide routing — irrelevant for mode derivation
+    data[37] = 0x01  # firmware B: nonstop 24h
 
     device = AsekoDecoder.decode(bytes(data))
     assert device.filtration_mode == AsekoFiltrationMode.NONSTOP_24H
 
 
 def test_filtration_pump_running_off_when_manual_override() -> None:
-    """byte[29] bit 3 stays set in OFF_MANUAL mode, but pump must read as False.
+    """byte[29] bit 3 stays set in MANUAL mode, but pump must read as False.
 
     The @dtpugh issue: with the user manually switched the pump off, byte[29]
     bit 3 (filtration relay) is still 0x08 in the frame. The decoder trusts
-    the explicit OFF_MANUAL flag in byte[37] and forces False.
+    the explicit MANUAL flag in byte[37] and forces False.
 
-    Tests both known OFF_MANUAL byte[37] values:
+    Tests both known MANUAL byte[37] values:
       - 0x35 = P1 & P2 + manual override (original firmware B frame)
       - 0x15 = P1 only + manual override (new diagnostic 42, serial 110175608)
     """
@@ -1582,14 +1574,14 @@ def test_filtration_pump_running_off_when_manual_override() -> None:
         data[37] = override_value  # OFF (manual override)
 
         device = AsekoDecoder.decode(bytes(data))
-        assert device.filtration_mode == AsekoFiltrationMode.OFF_MANUAL, (
+        assert device.filtration_mode == AsekoFiltrationMode.MANUAL, (
             f"byte[37]={override_value:#x}"
         )
         assert device.filtration_pump_running is False, f"byte[37]={override_value:#x}"
 
 
 def test_filtration_pump_running_on_when_not_override() -> None:
-    """Regression guard: outside OFF_MANUAL, byte[29] bit 3 still drives the entity."""
+    """Regression guard: outside MANUAL, byte[29] bit 3 still drives the entity."""
     data = _make_home_bytes()
     data[4] = 0x03
     data[29] = 0x08
@@ -1601,26 +1593,25 @@ def test_filtration_pump_running_on_when_not_override() -> None:
 
 
 def test_filtration_pump_running_not_overridden_on_salt() -> None:
-    """The OFF_MANUAL short-circuit is gated on HOME — SALT behaviour unchanged.
+    """SALT decodes MANUAL from byte[37]=0x35, but the pump override stays
+    HOME-gated.
 
-    On SALT the override does not apply even if byte[37] is a value that
-    means OFF_MANUAL on HOME (0x35), because SALT uses byte[37] for
-    algicide routing and never reaches the OFF_MANUAL branch.
+    The filtration_pump_running short-circuit in _fill_consumable_data only
+    applies to HOME, so on SALT byte[29] bit 3 still drives the entity even
+    though the mode reads MANUAL.
     """
     data = _make_base_bytes()
     data[4] = 0x0E  # SALT
     data[29] = 0x08
-    data[37] = 0x35  # would be OFF_MANUAL on HOME — irrelevant on SALT
+    data[37] = 0x35  # firmware B: P1 & P2 + manual override → MANUAL
 
     device = AsekoDecoder.decode(bytes(data))
-    # SALT byte[37] does not encode OFF_MANUAL → mode is derived from
-    # the schedule (default base fixture: P1 + P2 → TIMER_PERIOD_1_AND_2).
-    assert device.filtration_mode == AsekoFiltrationMode.TIMER_PERIOD_1_AND_2
+    assert device.filtration_mode == AsekoFiltrationMode.MANUAL
     assert device.filtration_pump_running is True  # unchanged: byte[29] bit 3 wins
 
 
 def test_filtration_pump_running_off_when_pump_actually_off() -> None:
-    """byte[29] = 0x00 (no pump running) + OFF_MANUAL → still False (no-op)."""
+    """byte[29] = 0x00 (no pump running) + MANUAL → still False (no-op)."""
     data = _make_home_bytes()
     data[4] = 0x03
     data[29] = 0x00

@@ -188,6 +188,12 @@ On OXY, `0x03` has neither `0x80` nor `0x10` set — the SALT routing logic does
 **Implementation**: for `AsekoDeviceType.OXY`, do not apply the `ALGICIDE_CONFIGURED` byte[37]
 routing. Both flowrate_algicide and flowrate_floc are read from their own dedicated bytes.
 
+Since Issue #133 the decoder also reads the 4-state filtration mode directly
+from `byte[37]` for every `FILTRATION_TYPES` device (OXY included), using the
+same firmware A/B encodings as HOME — see
+[`home_device_analysis.md`](home_device_analysis.md) §"byte[37] – Filtration
+mode flag".
+
 ---
 
 ## CLF/REDOX Sentinel Analysis
@@ -260,8 +266,9 @@ since it exposes a filtration output).  The lazy-creation guard in
 only if the bytes are `0xFF` (the bytes have never been configured on the
 controller).  Once the entity is registered, it stays populated with the
 last-configured time even when the user disables Period 2 — the
-`filtration_mode` sensor separately reports `TIMER_PERIOD_1` so the user
-knows the schedule is inactive.
+`filtration_mode` sensor (decoded from the `byte[37]` filtration-mode flag)
+separately reports `TIMER_PERIOD_1` so the user knows the schedule is
+inactive.
 
 NET is excluded because it has no filtration output at all and is not in
 `FILTRATION_TYPES`.

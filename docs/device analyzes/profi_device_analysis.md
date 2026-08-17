@@ -88,7 +88,7 @@ All PROFI frames are 120 bytes, split into three 40-byte sub-frames:
 | `[27]` | **Water level (cm)** | ⚠️ hypothesis | See §"Water level & refill valve" below |
 | `[28]` | Water flow to probes (`0xAA` = flowing) | assumed | |
 | `[29]` | Actuator bitmask | assumed structure | See §"byte[29] – Actuator Bitmask" below |
-| `[37]` | **Not used for routing on PROFI** (`byte37_routes_pump_type = False`) | ✅ certain | PROFI has 5 independent pump ports |
+| `[37]` | **Not used for routing on PROFI** (`byte37_routes_pump_type = False`); also carries the filtration-mode flag since Issue #133 | ✅ certain (routing); ⚠️ assumed (filtration mode) | PROFI has 5 independent pump ports; no live PROFI frame captured yet |
 
 ---
 
@@ -140,8 +140,9 @@ since it exposes a filtration output).  The lazy-creation guard in
 only if the bytes are `0xFF` (the bytes have never been configured on the
 controller).  Once the entity is registered, it stays populated with the
 last-configured time even when the user disables Period 2 — the
-`filtration_mode` sensor separately reports `TIMER_PERIOD_1` so the user
-knows the schedule is inactive.
+`filtration_mode` sensor (decoded from the `byte[37]` filtration-mode flag)
+separately reports `TIMER_PERIOD_1` so the user knows the schedule is
+inactive.
 
 NET is excluded because it has no filtration output at all and is not in
 `FILTRATION_TYPES`.
