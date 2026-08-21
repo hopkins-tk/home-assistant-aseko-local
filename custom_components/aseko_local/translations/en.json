@@ -45,6 +45,15 @@
       "heating_active": {
         "name": "Heating active"
       },
+      "heating_control_enabled": {
+        "name": "Heating control"
+      },
+      "antifreeze_enabled": {
+        "name": "Antifreeze"
+      },
+      "vsp_pump_running": {
+        "name": "Variable speed pump"
+      },
       "cl_pump_running": {
         "name": "Chlorine pump running"
       },
@@ -93,9 +102,21 @@
       "filtration_1_stop": { "name": "Filtration 1 stop" },
       "filtration_2_start": { "name": "Filtration 2 start" },
       "filtration_2_stop": { "name": "Filtration 2 stop" },
+      "filtration_mode": {
+        "name": "Filtration mode",
+        "state": {
+          "nonstop_24h": "24h nonstop",
+          "timer_period_1": "Time period 1",
+          "timer_period_1_and_2": "Time periods 1 & 2",
+          "manual": "Manual operation mode"
+        }
+      },
       "pool_volume": { "name": "Pool volume" },
       "delay_after_startup": { "name": "Delay after startup" },
       "delay_after_dose": { "name": "Delay after dose" },
+      "ph_minus_concentration": {
+        "name": "pH- concentration"
+      },
       "air_temperature": {
         "name": "Air temperature"
       },

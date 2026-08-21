@@ -45,6 +45,15 @@
       "heating_active": {
         "name": "Heizung aktiv"
       },
+      "heating_control_enabled": {
+        "name": "Heizungssteuerung"
+      },
+      "antifreeze_enabled": {
+        "name": "Frostschutz"
+      },
+      "vsp_pump_running": {
+        "name": "Drehzahlregelpumpe"
+      },
       "cl_pump_running": {
         "name": "Chlorpumpe läuft"
       },
@@ -101,6 +110,15 @@
       "filtration_2_stop": {
         "name": "Filtration 2 Stopp"
       },
+      "filtration_mode": {
+        "name": "Filtriermodus",
+        "state": {
+          "nonstop_24h": "24 h durchgehend",
+          "timer_period_1": "Zeitperiode 1",
+          "timer_period_1_and_2": "Zeitperioden 1 & 2",
+          "manual": "Manueller Betriebsmodus"
+        }
+      },
       "pool_volume": {
         "name": "Poolvolumen"
       },
@@ -109,6 +127,9 @@
       },
       "delay_after_dose": {
         "name": "Verzögerung nach Dosierung"
+      },
+      "ph_minus_concentration": {
+        "name": "pH- Konzentration"
       },
       "air_temperature": {
         "name": "Lufttemperatur"

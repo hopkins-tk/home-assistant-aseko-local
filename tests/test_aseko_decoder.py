@@ -7,6 +7,7 @@ import pytest
 from custom_components.aseko_local.aseko_data import (
     AsekoDeviceType,
     AsekoElectrolyzerDirection,
+    AsekoFiltrationMode,
     AsekoProbeType,
 )
 from custom_components.aseko_local.aseko_decoder import AsekoDecoder
@@ -147,24 +148,33 @@ def test_decode_home() -> None:
 
 
 def test_decode_filtration_period2_disabled() -> None:
-    """Second filtration period is hidden when disabled (byte 37 bit 0x20 clear).
+    """Period 2 times are still populated when disabled, but the mode is P1 only.
 
-    The unit keeps reporting the last-configured start2/stop2 times in bytes
-    60-63 even when the period is switched off, so the enable flag must be
-    honoured. Confirmed on an ASIN AQUA Salt by toggling the period-2 checkbox
-    and diffing two frames (PR #122 review).
+    Issue #133: pre-fix, the decoder returned ``None`` for start2/stop2 when
+    byte[37] bit 0x20 was clear, which made already-registered entities go
+    ``unknown`` once the user switched the controller back to "P1 only"
+    (Home Assistant protects the entity registry, so the entity stays).
+    Post-fix, the bytes 60-63 are read for any device in FILTRATION_TYPES
+    because the controller keeps sending the last-configured Period 2 times
+    (verified on dtpugh's serial 110169464: bytes 60-63 stay populated in
+    P1 only / P1&P2 / 24h / MANUAL modes).  The *mode* still flips
+    between TIMER_PERIOD_1 and TIMER_PERIOD_1_AND_2 per byte[37] bit 0x20,
+    so the user can tell which schedule is active.
     """
     data = _make_base_bytes()
-    data[37] = 0x93  # bit 0x20 clear -> period 2 disabled
+    data[37] = 0x93  # bit 0x20 clear -> period 2 disabled in the controller
 
     device = AsekoDecoder.decode(bytes(data))
 
     # Period 1 is still parsed.
     assert device.start1 == time(8, 0)
     assert device.stop1 == time(10, 0)
-    # Period 2 is hidden despite configured bytes 60-63 (14:00 / 16:00).
-    assert device.start2 is None
-    assert device.stop2 is None
+    # Period 2 times ARE populated (bytes 60-63 are stable) — but the mode
+    # entity correctly reports TIMER_PERIOD_1 so the user knows the schedule
+    # is not active.
+    assert device.start2 == time(14, 0)
+    assert device.stop2 == time(16, 0)
+    assert device.filtration_mode == AsekoFiltrationMode.TIMER_PERIOD_1
 
 
 def test_decode_filtration_period2_enabled() -> None:
@@ -176,6 +186,109 @@ def test_decode_filtration_period2_enabled() -> None:
 
     assert device.start2 == time(14, 0)
     assert device.stop2 == time(16, 0)
+    assert device.filtration_mode == AsekoFiltrationMode.TIMER_PERIOD_1_AND_2
+
+
+def test_decode_filtration_period2_bytes_unspecified() -> None:
+    """When bytes 60-63 themselves are 0xFF (no schedule ever configured),
+    start2 / stop2 stay None — the lazy-creation guard in sensor.py then
+    skips registering the entity.  This is the key branch that keeps
+    devices without a filtration output (NET) from ever surfacing
+    Period 2 entities (Issue #133 contract).
+    """
+    data = _make_base_bytes()
+    data[4] = 0x0E  # SALT (in FILTRATION_TYPES)
+    data[60:64] = bytes([0xFF, 0xFF, 0xFF, 0xFF])  # no period 2 schedule at all
+    data[37] = 0xB7  # SALT algicide routing — bit 0x20 set, but no schedule
+
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.start2 is None
+    assert device.stop2 is None
+
+
+def test_decode_filtration_period2_none_for_net() -> None:
+    """NET has no filtration output — start1/2 / stop1/2 are all None
+    even if the frame happens to carry non-0xFF values in bytes 56-63.
+    Issue #133 contract: lazy creation in sensor.py never registers the
+    entities for NET.
+    """
+    data = _make_base_bytes()
+    data[4] = 0x09  # NET
+    # Garbage values in the schedule bytes (mimic real-world case where a
+    # measurement-only device reports random data in slots it doesn't implement).
+    data[56:64] = bytes([8, 0, 10, 0, 14, 0, 16, 0])
+
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.device_type == AsekoDeviceType.NET
+    assert device.start1 is None
+    assert device.stop1 is None
+    assert device.start2 is None
+    assert device.stop2 is None
+
+
+def test_decode_filtration_period2_real_dtpugh_frames() -> None:
+    """Issue #133 end-to-end: decode all four real diagnostic frames from
+    @dtpugh (serial 110169464, ASIN AQUA Home firmware B) and verify
+    Period 2 times are stable across all four modes (P1 only / P1&P2 /
+    24h / MANUAL).  This is the user-visible regression: pre-fix the
+    entity would go "unknown" when the user toggled the controller back
+    from P1&P2 to P1 only.
+    """
+    import json
+    from pathlib import Path
+
+    # Diagnostic files live in /tmp/issue133 (downloaded from the issue);
+    # when the test runs in CI without that directory, skip instead of fail.
+    diag_dir = Path("/tmp/issue133")
+    if not diag_dir.exists():
+        pytest.skip("diagnostic files from issue #133 are not available")
+
+    def _first_frame(payload):
+        if isinstance(payload, dict):
+            for v in payload.values():
+                r = _first_frame(v)
+                if r is not None:
+                    return r
+        elif isinstance(payload, list):
+            for v in payload:
+                r = _first_frame(v)
+                if r is not None:
+                    return r
+        elif (
+            isinstance(payload, str)
+            and len(payload) >= 100
+            and all(c in "0123456789abcdefABCDEF" for c in payload.strip())
+        ):
+            return payload
+        return None
+
+    scenarios = {
+        "01_p1only.json": (0x11, AsekoFiltrationMode.TIMER_PERIOD_1),
+        "02_p1andp2.json": (0x31, AsekoFiltrationMode.TIMER_PERIOD_1_AND_2),
+        "03_24h.json": (0x01, AsekoFiltrationMode.NONSTOP_24H),
+        "04_off.json": (0x35, AsekoFiltrationMode.MANUAL),
+    }
+
+    for filename, (expected_b37, expected_mode) in scenarios.items():
+        with open(diag_dir / filename) as f:
+            frame = bytes.fromhex(_first_frame(json.load(f)))
+        assert frame[37] == expected_b37, f"{filename}: byte 37 mismatch"
+
+        device = AsekoDecoder.decode(frame)
+        # Period 1 is always there.
+        assert device.start1 is not None, f"{filename}: start1 unexpectedly None"
+        assert device.stop1 is not None, f"{filename}: stop1 unexpectedly None"
+        # Period 2 is ALSO always there after the fix (entity stays populated).
+        assert device.start2 is not None, (
+            f"{filename}: start2 is None — entity would go 'unknown' (Issue #133)"
+        )
+        assert device.stop2 is not None, (
+            f"{filename}: stop2 is None — entity would go 'unknown' (Issue #133)"
+        )
+        # Mode entity correctly reports which schedule is active.
+        assert device.filtration_mode == expected_mode, (
+            f"{filename}: expected {expected_mode}, got {device.filtration_mode}"
+        )
 
 
 def test_decode_electrolyzer_data() -> None:
@@ -944,11 +1057,14 @@ def test_decode_home_clf_real_frame() -> None:
     # Schedule
     assert device.start1 == time(8, 0)
     assert device.stop1 == time(16, 0)
-    # Period 2 is disabled on this unit (byte 37 bit 0x20 clear). The 18:00-22:00
-    # bytes are the unit's last-configured/default values and must be hidden.
-    # HOME shares the Salt period-2 enable mechanism (confirmed in PR #122).
-    assert device.start2 is None
-    assert device.stop2 is None
+    # Issue #133: Period 2 times are now always populated for any device in
+    # FILTRATION_TYPES (HOME here).  The mode entity tells the user which
+    # schedule is active — on this frame byte[37] = 0x43 (firmware A) so the
+    # mode is NONSTOP_24H, but bytes 60-63 still report the last-configured
+    # Period 2 times.  Pre-fix, the assertions below were ``is None``.
+    assert device.start2 == time(18, 0)
+    assert device.stop2 == time(22, 0)
+    assert device.filtration_mode == AsekoFiltrationMode.NONSTOP_24H
     # Backwash
     assert device.backwash_every_n_days == 3
     assert device.backwash_time == time(21, 0)
@@ -1210,45 +1326,40 @@ def test_water_level_decoded_for_oxy_and_salt() -> None:
         assert device.water_level_high_alarm == 15, f"byte[4]={device_byte:#x}"
 
 
-def test_filtration_nonstop24_none_for_non_home() -> None:
-    """filtration_nonstop24 is None for NET, OXY, SALT when byte[37] has non-mode values.
+def test_filtration_nonstop24_none_for_net() -> None:
+    """filtration_nonstop24 is None for NET only (no filtration output).
 
-    Real-world byte[37] values for these devices:
-      NET = 0xFF (always UNSPECIFIED)
-      OXY = 0x03 (third-pump config, not filtration flag)
-      SALT = 0xb7, 0xb3, 0x37, 0x13 (algicide/floc routing)
-    None of those are 0x43 (nonstop) or 0x53 (timer), so filtration_nonstop24 stays None.
+    Issue #133 follow-up: SALT / OXY / PROFI now also expose a filtration
+    mode. NET is the only AsekoDeviceType that has no filtration output
+    (Issue #66), so the legacy boolean stays None on NET.
     """
-    for device_byte, real_byte37 in (
-        (0x09, 0xFF),  # NET — 0xFF always
-        (0x05, 0x03),  # OXY — third-pump config byte
-        (0x0E, 0xB7),  # SALT — algicide routing
-    ):
-        data = _make_base_bytes()
-        data[4] = device_byte
-        data[37] = real_byte37
+    data = _make_base_bytes()
+    data[4] = 0x09  # NET
+    data[37] = 0xFF  # NET byte 37 is always unspecified
 
-        device = AsekoDecoder.decode(bytes(data))
-        assert device.filtration_nonstop24 is None, (
-            f"byte[4]={device_byte:#x}, byte[37]={real_byte37:#x}"
-        )
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.filtration_nonstop24 is None
 
 
 def test_filtration_nonstop24_decoded_for_all_device_types() -> None:
-    """filtration_nonstop24 is decoded for NET, OXY, SALT when byte[37] = 0x43/0x53.
+    """filtration_nonstop24 mirrors the byte[37] filtration_mode flag for every
+    FILTRATION_TYPES device; NET has no filtration output and stays None.
 
-    The guard was removed — any device reporting 0x43 gets True, 0x53 gets False.
+    byte[37] = 0x01 (firmware B "nonstop 24h") → NONSTOP_24H → the legacy
+    boolean reads True on SALT, OXY, PROFI and HOME alike.
     """
-    for device_byte in (0x09, 0x05, 0x0E):  # NET, OXY, SALT
+    # NET: no filtration output → legacy boolean stays None
+    data = _make_base_bytes()
+    data[4] = 0x09  # NET
+    data[37] = 0xFF
+    assert AsekoDecoder.decode(bytes(data)).filtration_nonstop24 is None
+
+    # SALT / OXY / PROFI / HOME: byte[37] = 0x01 → NONSTOP_24H
+    for device_byte in (0x0E, 0x05, 0x10, 0x03):  # SALT, OXY, PROFI, HOME
         data = _make_base_bytes()
         data[4] = device_byte
-        data[37] = 0x43
+        data[37] = 0x01  # firmware B: nonstop 24h
         assert AsekoDecoder.decode(bytes(data)).filtration_nonstop24 is True, (
-            f"byte[4]={device_byte:#x}"
-        )
-
-        data[37] = 0x53
-        assert AsekoDecoder.decode(bytes(data)).filtration_nonstop24 is False, (
             f"byte[4]={device_byte:#x}"
         )
 
@@ -1287,15 +1398,242 @@ def test_home_filtration_nonstop24() -> None:
     assert AsekoDecoder.decode(bytes(data)).filtration_nonstop24 is None
 
 
+# ── Issue #133: HOME v7 firmware B (4-state enum + manual OFF override) ──────
+
+
+def test_filtration_mode_new_encoding_24h() -> None:
+    """Firmware B byte[37] = 0x01 → NONSTOP_24H (serial 110169464)."""
+    data = _make_home_bytes()
+    data[37] = 0x01  # new encoding: nonstop 24h
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.filtration_mode == AsekoFiltrationMode.NONSTOP_24H
+    assert device.filtration_nonstop24 is True  # legacy mirror
+
+
+def test_filtration_mode_new_encoding_p1() -> None:
+    """Firmware B byte[37] = 0x11 → TIMER_PERIOD_1 (P1 only, P2 disabled)."""
+    data = _make_home_bytes()
+    data[37] = 0x11  # new encoding: P1 only
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.filtration_mode == AsekoFiltrationMode.TIMER_PERIOD_1
+    assert device.filtration_nonstop24 is False
+
+
+def test_filtration_mode_new_encoding_p1_and_p2() -> None:
+    """Firmware B byte[37] = 0x31 → TIMER_PERIOD_1_AND_2 (both periods)."""
+    data = _make_home_bytes()
+    data[37] = 0x31  # new encoding: P1 & P2
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.filtration_mode == AsekoFiltrationMode.TIMER_PERIOD_1_AND_2
+    assert device.filtration_nonstop24 is False
+
+
+def test_filtration_mode_new_encoding_manual_p1_and_p2() -> None:
+    """Firmware B byte[37] = 0x35 → MANUAL (P1 & P2 + manual override).
+
+    The original frame from @dtpugh (serial 110169464) had 0x35: both
+    periods enabled and the user switched to manual operation mode.
+    """
+    data = _make_home_bytes()
+    data[37] = 0x35  # new encoding: P1 & P2 + manual override (bit 2 set)
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.filtration_mode == AsekoFiltrationMode.MANUAL
+    assert device.filtration_nonstop24 is False
+
+
+def test_filtration_mode_new_encoding_manual_p1_only() -> None:
+    """Firmware B byte[37] = 0x15 → MANUAL (P1 only + manual override).
+
+    Diagnostic 42 from @dtpugh (serial 110175608): user switched to manual
+    operation mode while only Period 1 was active. byte[37] = 0x15
+    (bits 0,2,4 set). Bit 2 (0x04) = manual override → must decode as MANUAL.
+    """
+    data = _make_home_bytes()
+    data[37] = 0x15  # P1 + manual override
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.filtration_mode == AsekoFiltrationMode.MANUAL
+    assert device.filtration_nonstop24 is False
+
+
+def test_filtration_mode_old_encoding_24h() -> None:
+    """Firmware A byte[37] = 0x43 → NONSTOP_24H (serial 110128063)."""
+    data = _make_home_bytes()
+    data[37] = 0x43
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.filtration_mode == AsekoFiltrationMode.NONSTOP_24H
+    assert device.filtration_nonstop24 is True
+
+
+def test_filtration_mode_old_encoding_timer() -> None:
+    """Firmware A byte[37] = 0x53 → TIMER_PERIOD_1_AND_2 (cannot distinguish P1 vs P1&P2)."""
+    data = _make_home_bytes()
+    data[37] = 0x53
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.filtration_mode == AsekoFiltrationMode.TIMER_PERIOD_1_AND_2
+    assert device.filtration_nonstop24 is False
+
+
+def test_filtration_mode_old_encoding_transitional() -> None:
+    """Firmware A byte[37] = 0x47 / 0x57 → leave as None (transitional edit state)."""
+    for transitional in (0x47, 0x57):
+        data = _make_home_bytes()
+        data[37] = transitional
+        device = AsekoDecoder.decode(bytes(data))
+        assert device.filtration_mode is None
+        assert device.filtration_nonstop24 is None
+
+
+def test_filtration_mode_unspecified() -> None:
+    """byte[37] = 0xFF → None (defensive, also covers NET-like values on HOME)."""
+    data = _make_home_bytes()
+    data[37] = 0xFF
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.filtration_mode is None
+    assert device.filtration_nonstop24 is None
+
+
+def test_filtration_mode_none_for_net() -> None:
+    """filtration_mode stays None for NET — no filtration output (Issue #66).
+
+    NET is the only AsekoDeviceType excluded from FILTRATION_TYPES, so the
+    decoder returns without setting filtration_mode. SALT, HOME, OXY and
+    PROFI all populate the field.
+    """
+    data = _make_base_bytes()
+    data[4] = 0x09  # NET CLF
+    data[37] = 0xFF  # NET byte 37 is always unspecified
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.device_type == AsekoDeviceType.NET
+    assert device.filtration_mode is None
+
+
+def test_filtration_mode_byte37_flags_for_salt_oxy_profi() -> None:
+    """SALT / OXY / PROFI decode the byte[37] mode flag exactly like HOME.
+
+    byte[37] = 0x31 (firmware B: P1 & P2) → TIMER_PERIOD_1_AND_2 for every
+    non-NET device type — the flag is not HOME-specific.
+    """
+    for device_byte in (0x0E, 0x05, 0x10):  # SALT, OXY, PROFI
+        data = _make_base_bytes()
+        data[4] = device_byte
+        data[37] = 0x31  # firmware B: P1 & P2
+        device = AsekoDecoder.decode(bytes(data))
+        assert device.filtration_mode == AsekoFiltrationMode.TIMER_PERIOD_1_AND_2, (
+            f"byte[4]={device_byte:#x}"
+        )
+
+
+def test_filtration_mode_salt_p1_only_when_period2_disabled() -> None:
+    """SALT with byte[37] bit 0x20 clear (period-2 disabled) → TIMER_PERIOD_1.
+
+    Mirrors test_decode_filtration_period2_disabled but checks the new
+    `filtration_mode` enum (not the legacy boolean).
+    """
+    data = _make_base_bytes()
+    data[4] = 0x0E  # SALT
+    data[60:64] = bytes([0xFF, 0xFF, 0xFF, 0xFF])  # no period 2 schedule
+    data[37] = 0x93  # bit 0x20 clear, period 2 disabled
+
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.filtration_mode == AsekoFiltrationMode.TIMER_PERIOD_1
+
+
+def test_filtration_mode_salt_byte37_nonstop() -> None:
+    """SALT decodes NONSTOP_24H from byte[37] = 0x01 even with no schedule.
+
+    The mode now comes from the byte[37] flag, not from the schedule bytes
+    56-63 (which are 0xFF here and no longer drive the mode).
+    """
+    data = _make_base_bytes()
+    data[4] = 0x0E  # SALT
+    data[56:60] = bytes([0xFF, 0xFF, 0xFF, 0xFF])  # no period 1
+    data[60:64] = bytes([0xFF, 0xFF, 0xFF, 0xFF])  # no period 2
+    data[37] = 0x01  # firmware B: nonstop 24h
+
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.filtration_mode == AsekoFiltrationMode.NONSTOP_24H
+
+
+def test_filtration_pump_running_off_when_manual_override() -> None:
+    """byte[29] bit 3 stays set in MANUAL mode, but pump must read as False.
+
+    The @dtpugh issue: with the user manually switched the pump off, byte[29]
+    bit 3 (filtration relay) is still 0x08 in the frame. The decoder trusts
+    the explicit MANUAL flag in byte[37] and forces False.
+
+    Tests both known MANUAL byte[37] values:
+      - 0x35 = P1 & P2 + manual override (original firmware B frame)
+      - 0x15 = P1 only + manual override (new diagnostic 42, serial 110175608)
+    """
+    for override_value in (0x35, 0x15):
+        data = _make_home_bytes()
+        data[4] = 0x03  # HOME REDOX (firmware B device)
+        data[29] = (
+            0x08  # schedule-driven output bit SET (would normally mean "running")
+        )
+        data[37] = override_value  # OFF (manual override)
+
+        device = AsekoDecoder.decode(bytes(data))
+        assert device.filtration_mode == AsekoFiltrationMode.MANUAL, (
+            f"byte[37]={override_value:#x}"
+        )
+        assert device.filtration_pump_running is False, f"byte[37]={override_value:#x}"
+
+
+def test_filtration_pump_running_on_when_not_override() -> None:
+    """Regression guard: outside MANUAL, byte[29] bit 3 still drives the entity."""
+    data = _make_home_bytes()
+    data[4] = 0x03
+    data[29] = 0x08
+    data[37] = 0x11  # P1 only — pump should be on per the schedule
+
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.filtration_mode == AsekoFiltrationMode.TIMER_PERIOD_1
+    assert device.filtration_pump_running is True
+
+
+def test_filtration_pump_running_not_overridden_on_salt() -> None:
+    """SALT decodes MANUAL from byte[37]=0x35, but the pump override stays
+    HOME-gated.
+
+    The filtration_pump_running short-circuit in _fill_consumable_data only
+    applies to HOME, so on SALT byte[29] bit 3 still drives the entity even
+    though the mode reads MANUAL.
+    """
+    data = _make_base_bytes()
+    data[4] = 0x0E  # SALT
+    data[29] = 0x08
+    data[37] = 0x35  # firmware B: P1 & P2 + manual override → MANUAL
+
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.filtration_mode == AsekoFiltrationMode.MANUAL
+    assert device.filtration_pump_running is True  # unchanged: byte[29] bit 3 wins
+
+
+def test_filtration_pump_running_off_when_pump_actually_off() -> None:
+    """byte[29] = 0x00 (no pump running) + MANUAL → still False (no-op)."""
+    data = _make_home_bytes()
+    data[4] = 0x03
+    data[29] = 0x00
+    data[37] = 0x35
+
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.filtration_pump_running is False
+
+
 def test_home_alarm_bitmask_byte13() -> None:
-    """byte[13] alarm bitmask is decoded for all device types; tested here on HOME."""
+    """byte[13] alarm bitmask is decoded for all device types; tested here on HOME.
+
+    Bit mapping (Issue #151, serial 110175608): 0x01 = disinfection/Cl dose fault,
+    0x02 = pH dose fault, 0x04 = no flow, 0x08 = rapid pH change.
+    """
     data = _make_home_bytes()
 
     # All four bits set
     data[13] = 0x0F
     device = AsekoDecoder.decode(bytes(data))
-    assert device.alarm_ph_too_many_doses is True  # bit 0x01
-    assert device.alarm_orp_too_many_doses is True  # bit 0x02
+    assert device.alarm_ph_too_many_doses is True  # bit 0x02
+    assert device.alarm_orp_too_many_doses is True  # bit 0x01
     assert device.alarm_no_flow_to_probes is True  # bit 0x04
     assert device.alarm_rapid_ph_change is True  # bit 0x08
 
@@ -1314,6 +1652,117 @@ def test_home_alarm_bitmask_byte13() -> None:
     assert device.alarm_ph_too_many_doses is False
     assert device.alarm_orp_too_many_doses is False
     assert device.alarm_rapid_ph_change is False
+
+
+def test_home_alarm_byte13_bit01_is_disinfection() -> None:
+    """byte[13] bit 0x01 = disinfection/Cl dose fault → alarm_orp_too_many_doses.
+
+    Issue #151 regression: dtpugh's config48 frame (HOME serial 110175608) shows
+    byte[13]=0x01 while the controller displayed "Maximum disinfection dose
+    exceeded".  Pre-fix this bit was mapped to alarm_ph_too_many_doses, so the
+    chlorine fault falsely lit the "Too many doses of pH" sensor.
+    """
+    data = _make_home_bytes()
+    data[13] = 0x01
+
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.alarm_orp_too_many_doses is True
+    assert device.alarm_ph_too_many_doses is False
+    assert device.alarm_no_flow_to_probes is False
+    assert device.alarm_rapid_ph_change is False
+
+
+def test_home_alarm_byte13_bit02_is_ph() -> None:
+    """byte[13] bit 0x02 = pH dose fault → alarm_ph_too_many_doses.
+
+    Inferred mapping (symmetric to bit 0x01, per dtpugh's expectation in
+    Issue #151 that a pH fault would read 0x02).  Direct frame capture pending.
+    """
+    data = _make_home_bytes()
+    data[13] = 0x02
+
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.alarm_ph_too_many_doses is True
+    assert device.alarm_orp_too_many_doses is False
+    assert device.alarm_no_flow_to_probes is False
+    assert device.alarm_rapid_ph_change is False
+
+
+def test_home_alarm_byte12_dosing_warnings() -> None:
+    """byte[12] dosing-warning bitmask: 0x20 = disinfection, 0x40 = pH (HOME).
+
+    Confirmed by Issue #134 before/after captures (serial 110175608):
+    both → 0x60, pH only → 0x40, cleared → 0x00.
+    """
+    data = _make_home_bytes()
+
+    # Disinfection only
+    data[12] = 0x20
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.alarm_orp_too_many_doses is True
+    assert device.alarm_ph_too_many_doses is False
+
+    # pH only
+    data[12] = 0x40
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.alarm_ph_too_many_doses is True
+    assert device.alarm_orp_too_many_doses is False
+
+    # Both
+    data[12] = 0x60
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.alarm_ph_too_many_doses is True
+    assert device.alarm_orp_too_many_doses is True
+
+    # None
+    data[12] = 0x00
+    data[13] = 0x00
+    device = AsekoDecoder.decode(bytes(data))
+    assert device.alarm_ph_too_many_doses is False
+    assert device.alarm_orp_too_many_doses is False
+
+
+def test_decode_alarm_real_dtpugh_frames() -> None:
+    """Issue #151 end-to-end: decode the three real diagnostic frames from
+    @dtpugh (HOME serial 110175608) and verify the correct alarm sensors fire.
+
+      config48 (chlorine/disinfection overdose): byte[13]=0x01 → disinfection ON,
+        pH OFF.  config49 (pH fault only): byte[12]=0x40 → pH ON, disinfection OFF.
+      config50 (cleared): both OFF.
+    """
+    frames = {
+        # chlorine / disinfection dose exceeded (2026-08-06 17:29:15)
+        "48": (
+            "0691257803011a0806111d0f000102d202d802d802d8a3fe70012ffeaa48001d000000000005027b"
+            "0691257803031a0806111d0f4a5000200800100a100f16000298012f00080515025a01e00e10a2ff"
+            "0691257803021a0806111d0f008c003c003c003c000a1e3c6e9600f00502580f050f1e1effc20283",
+            (False, True),
+        ),
+        # pH fault only (2026-08-08 09:08:40)
+        "49": (
+            "0691257803011a0808090828400002e3031003100310a3fe70012dfeaa08000000000000000102bd"
+            "0691257803031a08080908284a4a00200800100a100f16000297012d00080515025a01e00e10a2cc"
+            "0691257803021a0808090828008c003c003c003c000a1e3c6e9600f00a02580f050f1e1effc202a8",
+            (True, False),
+        ),
+        # cleared (2026-08-08 09:22:20)
+        "50": (
+            "0691257803011a0808091614000002e1031003100310a3fe70012dfeaa08000000000000000102dd"
+            "0691257803031a08080916144a4a00200800100a100f16000295012d00080515025a01e00e10a2ec"
+            "0691257803021a0808091614008c003c003c003c000a1e3c6e9600f00a02580f050f1e1effc2028a",
+            (False, False),
+        ),
+    }
+
+    for name, (hex_dump, (exp_ph, exp_orp)) in frames.items():
+        device = AsekoDecoder.decode(bytes.fromhex(hex_dump))
+        assert device.device_type == AsekoDeviceType.HOME, f"config{name}"
+        assert device.alarm_ph_too_many_doses is exp_ph, (
+            f"config{name}: alarm_ph_too_many_doses expected {exp_ph}"
+        )
+        assert device.alarm_orp_too_many_doses is exp_orp, (
+            f"config{name}: alarm_orp_too_many_doses expected {exp_orp}"
+        )
 
 
 def test_home_byte12_not_an_alarm_byte() -> None:

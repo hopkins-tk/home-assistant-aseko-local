@@ -49,6 +49,8 @@ convention, named `PROBE_X_MISSING` in the code).
 | `[4]` | Unit type + probe flags | `0x0E` or `0x0D` |
 | `[5]` | Sub-frame type `0x01` | |
 | `[6:12]` | Timestamp (year−2000, month, day, hour, min, sec) | Device clock |
+| `[12]` | Dosing-warning bitmask | Usually `0x00` on SALT — see [`home_device_analysis.md`](home_device_analysis.md) §"Dosing warnings & alarms" |
+| `[13]` | Alarm bitmask | `0x04` = no flow to probes; see § above |
 | `[14:16]` | pH = value / 100 | |
 | `[16:18]` | CLF or REDOX (probe-dependent) | CLF: `/100` mg/L; REDOX: `×1` mV |
 | `[18:20]` | REDOX (if CLF also present on PROFI-style) | Not applicable on basic SALT |
@@ -115,6 +117,25 @@ type differently in byte[37].
 firmware versions. See [byte37_algicide_floc_analysis.md](../temp/byte37_algicide_floc_analysis.md) for
 full XOR analysis.
 
+**Note on Period 2 schedule bytes (Issue #133)**: On SALT, the controller keeps
+sending the last-configured `start2`/`stop2` times in bytes 60-63 even after
+the user disables Period 2 in the controller UI.  Pre-fix, the decoder
+gated these fields on `byte[37] & 0x80` and returned `None` for any frame
+where the algicide-routing bit was clear — which caused already-registered
+entities to flip to "unknown" when the user toggled Period 2 on/off
+(Home Assistant protects the entity registry, so the entity stays but
+the value is read as `None`).  Post-fix, bytes 60-63 are read
+unconditionally for any device in `FILTRATION_TYPES` (SALT included) and
+`filtration_mode` is decoded directly from the `byte[37]` filtration-mode
+flag (see §byte[37] below).  Behaviour was originally verified on SALT by
+diffing two frames
+captured in PR #122 (algicide mode toggle, `0xb3` ↔ `0x33`); the
+corresponding behaviour for HOME was confirmed in Issue #133 with
+@dtpugh's four diagnostic files (see
+[`home_device_analysis.md`](home_device_analysis.md) §"Note on Period 2
+schedule bytes (Issue #133)").  NET is excluded because it has no
+filtration output.
+
 ### byte[37] also contains other fields
 
 `byte[37]` is a packed multi-field byte — it is **not** a pure single-bit flag:
@@ -128,6 +149,23 @@ full XOR analysis.
 Bit 2 (`0x04`) appears related to dosage encoding. The full semantics of all bits are not
 confirmed.
 
+### byte[37] also carries the filtration-mode flag
+
+Since Issue #133 the decoder reads the 4-state filtration mode directly from
+`byte[37]` for every `FILTRATION_TYPES` device (SALT included), using the same
+two firmware encodings as HOME — see
+[`home_device_analysis.md`](home_device_analysis.md) §"byte[37] – Filtration
+mode flag" for the full table.  In brief:
+
+| `byte[37]` high nibble | Encoding | Filtration mode |
+|---|---|---|
+| `0x4` / `0x5` (firmware A) | exact values | `0x43` → `NONSTOP_24H`, `0x53` → `TIMER_PERIOD_1_AND_2` |
+| `0x0` / `0x1` / `0x3` (firmware B) | bit flags | `0x04` → `MANUAL`; `(b & 0x30)` → `0x00`=`NONSTOP_24H`, `0x10`=`TIMER_PERIOD_1`, `0x30`=`TIMER_PERIOD_1_AND_2` |
+
+Note the overlap with the third-pump routing / dosage encoding above: bit 2
+(`0x04`) is interpreted as the manual-override flag by the filtration-mode
+decode on SALT as well.
+
 ---
 
 ## Byte Map – Sub-frame 2 (config / setpoints)
@@ -140,8 +178,8 @@ confirmed.
 | `[55]` | Required water temperature (°C) | |
 | `[56:58]` | Filtration start1 | HH:MM |
 | `[58:60]` | Filtration stop1 | HH:MM |
-| `[60:62]` | Filtration start2 | HH:MM |
-| `[62:64]` | Filtration stop2 | HH:MM |
+| `[60:62]` | Filtration start2 | HH:MM | Always populated — see Issue #133 |
+| `[62:64]` | Filtration stop2 | HH:MM | Always populated — see Issue #133 |
 | `[68]` | Backwash every N days | `0` = disabled |
 | `[69:71]` | Backwash time | HH:MM |
 | `[71]` | Backwash duration | ×10 seconds |

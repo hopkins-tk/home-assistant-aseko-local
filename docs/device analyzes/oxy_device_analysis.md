@@ -60,6 +60,8 @@ Checksum bytes (39, 79, 119) and timestamp second (byte[11]) change as expected.
 | `[4]` | `0x05` | Unit type / probe flags | **OXY-specific, see below** |
 | `[5]` | `0x01` | Sub-frame type | |
 | `[6:12]` | `1a 04 02 17 15 0a` | 2026-04-02 23:21:10 | Device clock desynchronised from server |
+| `[12]` | `00` | 0 | Dosing-warning bitmask — see [`home_device_analysis.md`](home_device_analysis.md) §"Dosing warnings & alarms" |
+| `[13]` | `00` | 0 | Alarm bitmask (`0x01`=disinfection, `0x02`=pH, `0x04`=no flow) — see § above |
 | `[14:16]` | `02 cd` | pH = 7.17 | ÷100 |
 | `[16:18]` | `00 1e` | CLF slot = 30 → 0.30 | **Placeholder, see §CLF/REDOX** |
 | `[18:20]` | `00 1e` | REDOX slot = 30 mV | **Placeholder, see §CLF/REDOX** |
@@ -79,8 +81,8 @@ Checksum bytes (39, 79, 119) and timestamp second (byte[11]) change as expected.
 | `[55]` | `0x19` = 25 | Required water temp = 25 °C | |
 | `[56:58]` | `08 00` | Filtration start1 = 08:00 | |
 | `[58:60]` | `10 00` | Filtration stop1 = 16:00 | |
-| `[60:62]` | `12 00` | Filtration start2 = 18:00 | |
-| `[62:64]` | `16 00` | Filtration stop2 = 22:00 | |
+| `[60:62]` | `12 00` | Filtration start2 = 18:00 | Always populated — see Issue #133 |
+| `[62:64]` | `16 00` | Filtration stop2 = 22:00 | Always populated — see Issue #133 |
 | `[68]` | `0x00` | Backwash every N days = 0 (disabled) | |
 | `[69:71]` | `0c 1e` | Backwash time = 12:30 | |
 | `[71]` | `0x0a` | Backwash duration = 100 s | ×10 |
@@ -186,6 +188,12 @@ On OXY, `0x03` has neither `0x80` nor `0x10` set — the SALT routing logic does
 **Implementation**: for `AsekoDeviceType.OXY`, do not apply the `ALGICIDE_CONFIGURED` byte[37]
 routing. Both flowrate_algicide and flowrate_floc are read from their own dedicated bytes.
 
+Since Issue #133 the decoder also reads the 4-state filtration mode directly
+from `byte[37]` for every `FILTRATION_TYPES` device (OXY included), using the
+same firmware A/B encodings as HOME — see
+[`home_device_analysis.md`](home_device_analysis.md) §"byte[37] – Filtration
+mode flag".
+
 ---
 
 ## CLF/REDOX Sentinel Analysis
@@ -239,6 +247,31 @@ All flowrate bytes on OXY use the same unit: **ml/min**.
 | `[103]` | 60 | Algicide | 60 ml/min ✓ confirmed 2026-04-11 |
 
 ---
+
+## Period 2 schedule bytes (Issue #133)
+
+Like SALT and HOME, the OXY controller keeps sending the last-configured
+`start2`/`stop2` times in bytes 60-63 even after the user disables Period 2 in
+the controller UI.  This was first verified on SALT (PR #122 frame diff) and
+on HOME (Issue #133 diagnostic files from @dtpugh, serial 110169464, firmware
+B).  The same protocol behaviour is assumed for OXY because OXY shares the
+SALT/HOME byte layout for the filtration schedule — no protocol-level
+reason exists to believe the OXY firmware clears the bytes when Period 2 is
+disabled.
+
+**Decoder behaviour** (post Issue #133 fix): the decoder reads bytes 60-63
+unconditionally for any device in `FILTRATION_TYPES` (which includes OXY
+since it exposes a filtration output).  The lazy-creation guard in
+`sensor.py` skips the `filtration_2_start` / `filtration_2_stop` entities
+only if the bytes are `0xFF` (the bytes have never been configured on the
+controller).  Once the entity is registered, it stays populated with the
+last-configured time even when the user disables Period 2 — the
+`filtration_mode` sensor (decoded from the `byte[37]` filtration-mode flag)
+separately reports `TIMER_PERIOD_1` so the user knows the schedule is
+inactive.
+
+NET is excluded because it has no filtration output at all and is not in
+`FILTRATION_TYPES`.
 
 ## Issue: `raise ValueError` Closes the TCP Connection
 

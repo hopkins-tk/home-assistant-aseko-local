@@ -45,6 +45,15 @@
             "heating_active": {
                 "name": "Chauffage actif"
             },
+            "heating_control_enabled": {
+                "name": "Contrôle du chauffage"
+            },
+            "antifreeze_enabled": {
+                "name": "Antigel"
+            },
+            "vsp_pump_running": {
+                "name": "Pompe à vitesse variable"
+            },
             "cl_pump_running": {
                 "name": "Pompe à chlore en marche"
             },
@@ -101,6 +110,15 @@
             "filtration_2_stop": {
                 "name": "Fin filtration 2"
             },
+            "filtration_mode": {
+                "name": "Mode de filtration",
+                "state": {
+                  "nonstop_24h": "24 h en continu",
+                  "timer_period_1": "Plage horaire 1",
+                  "timer_period_1_and_2": "Plages horaires 1 et 2",
+                  "manual": "Mode manuel"
+                }
+            },
             "pool_volume": {
                 "name": "Volume du bassin"
             },
@@ -109,6 +127,9 @@
             },
             "delay_after_dose": {
                 "name": "Délai après dosage"
+            },
+            "ph_minus_concentration": {
+                "name": "Concentration pH-"
             },
             "air_temperature": {
                 "name": "Température de l'air"
