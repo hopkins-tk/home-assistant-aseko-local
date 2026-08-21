@@ -116,7 +116,7 @@
                   "nonstop_24h": "24 h en continu",
                   "timer_period_1": "Plage horaire 1",
                   "timer_period_1_and_2": "Plages horaires 1 et 2",
-                  "off_manual": "Arrêt (manuel)"
+                  "manual": "Mode manuel"
                 }
             },
             "pool_volume": {

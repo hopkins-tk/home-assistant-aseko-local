@@ -1428,11 +1428,11 @@ def test_filtration_mode_new_encoding_p1_and_p2() -> None:
     assert device.filtration_nonstop24 is False
 
 
-def test_filtration_mode_new_encoding_off_manual_p1_and_p2() -> None:
+def test_filtration_mode_new_encoding_manual_p1_and_p2() -> None:
     """Firmware B byte[37] = 0x35 → MANUAL (P1 & P2 + manual override).
 
     The original frame from @dtpugh (serial 110169464) had 0x35: both
-    periods enabled and the user manually toggled filtration OFF.
+    periods enabled and the user switched to manual operation mode.
     """
     data = _make_home_bytes()
     data[37] = 0x35  # new encoding: P1 & P2 + manual override (bit 2 set)
@@ -1441,12 +1441,12 @@ def test_filtration_mode_new_encoding_off_manual_p1_and_p2() -> None:
     assert device.filtration_nonstop24 is False
 
 
-def test_filtration_mode_new_encoding_off_manual_p1_only() -> None:
+def test_filtration_mode_new_encoding_manual_p1_only() -> None:
     """Firmware B byte[37] = 0x15 → MANUAL (P1 only + manual override).
 
-    Diagnostic 42 from @dtpugh (serial 110175608): user switched pump OFF
-    while only Period 1 was active. byte[37] = 0x15 (bits 0,2,4 set).
-    Bit 2 (0x04) = manual override → must decode as MANUAL.
+    Diagnostic 42 from @dtpugh (serial 110175608): user switched to manual
+    operation mode while only Period 1 was active. byte[37] = 0x15
+    (bits 0,2,4 set). Bit 2 (0x04) = manual override → must decode as MANUAL.
     """
     data = _make_home_bytes()
     data[37] = 0x15  # P1 + manual override

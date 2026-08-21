@@ -108,7 +108,7 @@
           "nonstop_24h": "Nonstop 24 h",
           "timer_period_1": "Časové období 1",
           "timer_period_1_and_2": "Časová období 1 a 2",
-          "off_manual": "Vypnuto (ručně)"
+          "manual": "Ruční režim"
         }
       },
       "pool_volume": { "name": "Objem bazénu" },

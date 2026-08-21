@@ -482,7 +482,7 @@ Tests for the HOME decoder live in `tests/test_aseko_decoder.py`:
 | `test_filtration_mode_new_encoding_24h` | Issue #133 firmware B: `byte[37]=0x01` → `NONSTOP_24H` |
 | `test_filtration_mode_new_encoding_p1` | Issue #133 firmware B: `byte[37]=0x11` → `TIMER_PERIOD_1` |
 | `test_filtration_mode_new_encoding_p1_and_p2` | Issue #133 firmware B: `byte[37]=0x31` → `TIMER_PERIOD_1_AND_2` |
-| `test_filtration_mode_new_encoding_off_manual` | Issue #133 firmware B: `byte[37]=0x35` → `MANUAL` |
+| `test_filtration_mode_new_encoding_manual_p1_and_p2` | Issue #133 firmware B: `byte[37]=0x35` → `MANUAL` |
 | `test_filtration_mode_old_encoding_24h` | Issue #110 firmware A: `byte[37]=0x43` → `NONSTOP_24H` |
 | `test_filtration_mode_old_encoding_timer` | Issue #110 firmware A: `byte[37]=0x53` → `TIMER_PERIOD_1_AND_2` |
 | `test_filtration_pump_running_off_when_manual_override` | Issue #133: `byte[37]=0x35` forces `filtration_pump_running=False` |

@@ -523,7 +523,7 @@ SENSORS: list[AsekoSensorEntityDescription] = [
             "nonstop_24h",
             "timer_period_1",
             "timer_period_1_and_2",
-            "off_manual",
+            "manual",
         ],
         value_fn=lambda device: (
             device.filtration_mode.value if device.filtration_mode is not None else None

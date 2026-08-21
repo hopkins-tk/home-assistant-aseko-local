@@ -63,7 +63,7 @@ class AsekoFiltrationMode(Enum):
     NONSTOP_24H = "nonstop_24h"
     TIMER_PERIOD_1 = "timer_period_1"
     TIMER_PERIOD_1_AND_2 = "timer_period_1_and_2"
-    MANUAL = "off_manual"
+    MANUAL = "manual"
 
 
 # ---------------------------------------------------------------------------
