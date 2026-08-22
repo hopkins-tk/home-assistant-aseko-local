@@ -1072,7 +1072,16 @@ def test_decode_home_clf_real_frame() -> None:
     assert device.backwash_duration == 120
     # Pool parameters
     assert device.pool_volume == 60
-    assert device.max_filling_time == 60  # bytes 76-77 = 3600 s
+    # bytes 76-77 = 0x2a30 = 10800 s = 180 min, a round 3 h, in the same
+    # seconds encoding as its neighbour delay_after_startup (74-75 = 480 s).
+    #
+    # This used to assert 60, read from bytes 94-95.  That is flowrate_ph_minus
+    # — and this unit runs 60 ml/min on both the pH- and chlorine pumps, so the
+    # wrong offset produced a plausible-looking "60 min", exactly as it did for
+    # serial 110071590 in Issue #110.  Not separately confirmed against the app
+    # for this serial; the offset itself was verified on a SALT v7 by changing
+    # the setting and watching which bytes moved.
+    assert device.max_filling_time == 180
     assert device.delay_after_startup == 480
     assert device.delay_after_dose == 240
     # Flowrates
