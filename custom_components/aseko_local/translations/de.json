@@ -35,6 +35,11 @@
     }
   },
   "entity": {
+    "datetime": {
+      "last_scheduled_backwash": {
+        "name": "Letzte geplante Rückspülung"
+      }
+    },
     "binary_sensor": {
       "electrolyzer_active": {
         "name": "Elektrolyseur aktiv"
@@ -227,8 +232,11 @@
       "last_backwash": {
         "name": "Letzte Rückspülung"
       },
-      "next_backwash": {
-        "name": "Nächste Rückspülung"
+      "last_manual_backwash": {
+        "name": "Letzte manuelle Rückspülung"
+      },
+      "next_scheduled_backwash": {
+        "name": "Nächste geplante Rückspülung (geschätzt)"
       },
       "backwash_every_n_days": {
         "name": "Rückspülintervall"

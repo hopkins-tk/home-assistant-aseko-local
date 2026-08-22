@@ -227,16 +227,114 @@ If your sensor is mounted at a different height than the Aseko factory default (
 
 This mirrors the same pattern used for canister volume in the previous section and works for any device that exposes `sensor.<device>_water_level` (HOME, SALT, OXY). Devices without a water-level sensor (e.g. NET) will simply not have these entities.
 
-## Backwash schedule (ASIN Aqua Home, Salt)
+## Backwash (ASIN Aqua Home, Salt, Oxygen, Profi)
 
-Devices with a configured backwash schedule expose:
+The device transmits its backwash **configuration** and the live state of the backwash valve, but never its history — it does not report when the last cycle ran. The integration therefore watches the valve itself and builds the history from what it observes.
+
+Configuration read straight from the frame:
 
 | Entity | Description |
 |---|---|
-| `sensor.backwash_every_n_days` | Interval in days (`0` = disabled) |
+| `sensor.backwash_every_n_days` | Interval in days (`0` = automatic backwash disabled) |
 | `sensor.backwash_time` | Scheduled start time (HH:MM) |
 | `sensor.backwash_duration` | Duration in seconds |
-| `sensor.last_backwash` | Last backwash — schedule-derived until a real backwash cycle is observed, then the live/persistent value is used |
-| `sensor.next_backwash` | Next scheduled slot |
+| `binary_sensor.backwash_active` | Valve is open right now |
 
-> **Note:** `last_backwash` is initially derived from the configured schedule and frame timestamp. Once the integration observes a real backwash cycle (the backwash relay stays on for at least 60 seconds), it records and persists that timestamp and uses it instead. This survives Home Assistant restarts.
+History, recorded live and persisted across restarts. **These are not all equally reliable** — see below:
+
+| Entity | Description | Timestamp | Which bucket it lands in |
+|---|---|---|---|
+| `sensor.last_backwash` | Last cycle, whatever started it. **Unknown** until one is seen | Observed | n/a — it holds every cycle |
+| `datetime.last_scheduled_backwash` | Last cycle that looked like the unit's own scheduled run — **and settable**, see below | Observed *or* entered by hand — see its `source` attribute | Estimated |
+| `sensor.last_manual_backwash` | Last cycle that did not | Observed | Estimated |
+| `sensor.next_scheduled_backwash` | Projected next automatic cycle. **Unknown** until a scheduled cycle is known | **Calculated** | Inherited |
+
+The two columns matter separately. A cycle the integration watched has an exact
+timestamp — what is estimated is only *which* of the two buckets it belongs in.
+Only `next_scheduled_backwash` holds a timestamp that was computed rather than
+measured, which is why it is the one carrying "(estimated)" in its name.
+
+### Observed vs. estimated
+
+A cycle is **recorded** when the backwash valve stays open for at least 60 seconds — short activations (menu navigation, output test mode) are ignored. That part is a direct observation: `sensor.last_backwash` means the valve really did run a full cycle.
+
+The device does **not** report *why* the valve opened. So the split into scheduled and manual is a guess based on the only signal available — the time the valve opened:
+
+* within **±15 minutes** of `backwash_time`, on a unit whose schedule is enabled → **scheduled**;
+* anything else, including any cycle on a unit with `backwash_every_n_days = 0` → **manual**.
+
+The tolerance absorbs drift between the unit's clock and Home Assistant's, plus up to one transmit interval (~30 s) of lag before the frame reports the valve as open.
+
+`next_scheduled_backwash` is projected from the last **scheduled** cycle: that timestamp plus the configured interval, snapped to `backwash_time`, and stepped forward if cycles were missed while Home Assistant was down. A manual backwash deliberately does not move it — starting one by hand does not tell us (nor, on the unit, change) the schedule phase. Since it builds on the classification, it inherits any error in it.
+
+> **Upgrading:** `sensor.next_backwash` was renamed to `sensor.next_scheduled_backwash`. The integration rewrites the entity registry on startup, so the entity keeps its `entity_id`, its recorded history and any automation or dashboard pointing at it — only the displayed name changes.
+
+### Seeding the schedule by hand
+
+Because the device never transmits its history, `next_scheduled_backwash` stays unknown until the integration has watched a whole scheduled cycle — up to a full interval of waiting.
+
+To skip that wait, **click `datetime.last_scheduled_backwash` and pick the date** in the dialog. That is why it is a `datetime` entity rather than a read-only sensor: no helper, no script, no confirm button.
+
+The same thing from an automation:
+
+```yaml
+action: aseko_local.set_last_scheduled_backwash
+data:
+  timestamp: "2026-08-01 12:30:00"
+  # serial_number: 110071590   # optional; omit to set every backwash-capable device
+```
+
+The timestamp must be in the past. `datetime.last_scheduled_backwash` carries a
+`source` attribute saying where its value came from:
+
+| `source` | Meaning |
+|---|---|
+| `observed` | The integration watched this cycle run |
+| `manual` | You entered it |
+
+`next_scheduled_backwash` has no `source` of its own — it is always projected
+from `last_scheduled_backwash`, so that sensor's `source` covers both.
+
+**The last write wins, and the stored timestamps are never compared.**
+
+* Entering a date always applies, whatever it is and whatever was there
+  before — if you are typing it in, you have a reason to.
+* A scheduled cycle detected *after* that entry replaces it, and the source
+  flips back to `observed`. The value you entered stood in for a real cycle
+  until one turned up; one has.
+
+So a seed is only ever overtaken by an actual observation, never by an older
+record, and you can always take control back by entering a date again.
+
+Seeding deliberately does **not** touch `sensor.last_backwash`: that one means
+"the integration watched this happen", and a typed-in date has not been
+watched. It also does not touch `last_manual_backwash`, which tracks *observed*
+cycles that were started by hand — a different thing from a manually entered
+date.
+
+To undo a mistyped date there is `aseko_local.clear_last_scheduled_backwash`,
+which returns the value to unknown (optionally for one `serial_number`). If an
+older cycle is on record, clearing also re-derives the split from it — see
+below.
+
+### Upgrading from a store that predates the split
+
+`last_scheduled_backwash` and `last_manual_backwash` are newer than
+`last_backwash`, so an existing install has a stored cycle but no record of
+which kind it was. Rather than leave both empty until the next cycle — up to a
+whole interval away — the integration classifies that stored timestamp against
+the schedule on the first frame after the upgrade, and fills in whichever of
+the two it belongs to. It only ever does this while both are empty, so a real
+cycle is never second-guessed.
+
+### Known ways the estimate gets it wrong
+
+* A cycle you start **by hand near the scheduled time** is reported as scheduled.
+* Only the **time of day** is checked, not the day itself. A manual cycle at exactly `backwash_time` on a day the interval does not fall on still counts as scheduled. (Checking the day would require knowing the schedule phase — which is exactly what this is trying to establish — and would break whenever you change the interval.)
+* If the unit's **clock drifts** more than 15 minutes from Home Assistant's, its own scheduled cycles are reported as manual.
+* A cycle the unit runs on its own **for some other reason** (e.g. after a fault) is reported as manual.
+* Classification uses the schedule **as it was at the time of the cycle** and is never revisited — changing `backwash_time` later does not reclassify history.
+
+If a cycle looks misclassified, the integration's diagnostics download carries `last_backwash_trigger` alongside the raw frame, so you can see what it decided and open an issue.
+
+> **Note:** all four history sensors read "unknown" on a fresh install and stay that way until the integration actually sees a cycle. This is intentional. Earlier versions derived `last_backwash` from the schedule, which showed a confident timestamp for a backwash that may never have happened.

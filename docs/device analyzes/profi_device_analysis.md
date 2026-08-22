@@ -245,8 +245,8 @@ mapping is expected to be the same.
 ## Backwash & backwash schedule (assumed same as HOME/SALT/OXY)
 
 PROFI is documented in the manual to have a backwash valve. The decoder fills the
-backwash fields in `_fill_backwash_active` and `_fill_backwash_schedule` with the
-same byte positions as HOME/SALT/OXY:
+backwash fields in `_fill_backwash_active` and in `decode()` with the same byte
+positions as HOME/SALT/OXY:
 
 - `byte[68]` = backwash every N days
 - `byte[69:71]` = backwash time (HH:MM)
