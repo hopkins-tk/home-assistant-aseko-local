@@ -78,9 +78,15 @@ def _hass() -> MagicMock:
     ``Store.__init__`` requires ``hass.config.path(...)`` to resolve to a real
     path-like value, so we return a ``Path`` instead of letting the default
     ``MagicMock`` raise ``AttributeError`` deep in the constructor.
+
+    The tracker hands ``async_save()`` to ``async_create_task``.  A plain
+    ``MagicMock`` swallows the coroutine without awaiting it, which raises a
+    RuntimeWarning per call; closing it keeps the call recorded (tests assert on
+    it) while leaving nothing pending.
     """
     hass = MagicMock()
     hass.config.path.side_effect = lambda *parts: "/tmp/aseko_test/" + "/".join(parts)
+    hass.async_create_task.side_effect = lambda coro, *args, **kwargs: coro.close()
     return hass
 
 
