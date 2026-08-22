@@ -57,9 +57,8 @@ def _make_salt_redox_bytes() -> bytearray:
     data[71] = 2  # backwash_duration (20)
     data[74:76] = (120).to_bytes(2, "big")  # delay_after_startup
     data[92:94] = (5000).to_bytes(2, "big")  # pool_volume
-    data[94:96] = (60).to_bytes(
-        2, "big"
-    )  # max_filling_time (byte 95 = 60 = flowrate_ph_minus)
+    data[76:78] = (3600).to_bytes(2, "big")  # max_filling_time = 3600 s = 60 min
+    data[94:96] = (60).to_bytes(2, "big")  # byte 95 = flowrate_ph_minus = 60
     data[97] = 255  # flowrate_ph_plus: 0xFF = not present
     data[99] = 255  # flowrate_chlor: 0xFF = SALT has no chlorine pump
     data[101] = 255  # flowrate_floc: 0xFF = SALT has no flocculant pump
@@ -105,9 +104,8 @@ def _make_salt_clf_bytes() -> bytearray:
     data[71] = 2  # backwash_duration (20)
     data[74:76] = (120).to_bytes(2, "big")  # delay_after_startup
     data[92:94] = (5000).to_bytes(2, "big")  # pool_volume
-    data[94:96] = (60).to_bytes(
-        2, "big"
-    )  # max_filling_time (byte 95 = 60 = flowrate_ph_minus)
+    data[76:78] = (3600).to_bytes(2, "big")  # max_filling_time = 3600 s = 60 min
+    data[94:96] = (60).to_bytes(2, "big")  # byte 95 = flowrate_ph_minus = 60
     data[97] = 20  # flowrate_ph_plus
     data[99] = 255  # flowrate_chlor: 0xFF = SALT has no chlorine pump
     data[101] = 255  # flowrate_floc: 0xFF = SALT has no flocculant pump
@@ -156,7 +154,8 @@ def _make_net_clf_bytes() -> bytearray:
     data[71] = 255  # backwash_duration / HEX: 0xff
     data[74:76] = (65535).to_bytes(2, "big")  # delay_after_startup / HEX: 0xffff
     data[92:94] = (1).to_bytes(2, "big")  # pool_volume / HEX: 0x0001
-    data[94:96] = (60).to_bytes(2, "big")  # max_filling_time / HEX: 0x003c
+    data[76:78] = (3600).to_bytes(2, "big")  # max_filling_time = 3600 s = 60 min
+    data[94:96] = (60).to_bytes(2, "big")  # byte 95 = flowrate / HEX: 0x003c
     data[95] = 60  # flowrate_chlor / HEX: 0x3c
     data[97] = 255  # flowrate_ph_plus / HEX: 0xff
     data[99] = 60  # flowrate_ph_minus / HEX: 0x3c
@@ -204,7 +203,8 @@ def _make_profi_clf_redox_bytes() -> bytearray:
     data[74:76] = (120).to_bytes(2, "big")  # delay_after_startup
     data[92:94] = (5000).to_bytes(2, "big")  # pool_volume
     data[95] = 10  # flowrate_chlor
-    data[94:96] = (60).to_bytes(2, "big")  # max_filling_time
+    data[76:78] = (3600).to_bytes(2, "big")  # max_filling_time = 3600 s = 60 min
+    data[94:96] = (60).to_bytes(2, "big")  # byte 95 = flowrate_ph_minus
     data[97] = 20  # flowrate_ph_plus
     data[99] = 255  # flowrate_ph_minus (not measured)
     data[101] = 60  # flowrate_floc (PROFI has flocculant pump configured)
@@ -596,7 +596,7 @@ async def test_async_setup_profi_clf_redox(hass) -> None:
     #   no_flow_to_probes, rapid_ph_change)
     # + 3 new backwash config sensors (every_n_days, time, duration)
     # + 2 new backwash schedule sensors (last_backwash, next_backwash)
-    # + 1 max_filling_time sensor (data[94:96])
+    # + 1 max_filling_time sensor (data[76:78])
     #
     # Regular sensors (16): free_chlorine, required_free_chlorine,
     #   free_chlorine_mv, ph, required_ph, rx, water_temp, required_water_temp,

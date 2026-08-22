@@ -68,7 +68,7 @@ BACKWASH_TYPES = frozenset(
 
 # Device types that have a water-level probe + filling-valve output and
 # therefore expose the water_level live value plus the four threshold setpoints
-# (bytes 27, 102-105) and the max_filling_time (bytes 94-95).
+# (bytes 27, 102-105) and the max_filling_time (bytes 76-77).
 # NET (Aqua NET) and PROFI do not have a filling valve → skip the whole group.
 # Mirrors the existing _fill_home_water_level_data() NET early-return.
 WATER_LEVEL_TYPES = frozenset(
@@ -233,17 +233,30 @@ class AsekoDecoder:
 
     @staticmethod
     def _max_filling_time_from_bytes(data: bytes) -> int | None:
-        """Decode max_filling_time (bytes 94-95) as a 2-byte big-endian minute value.
+        """Decode max_filling_time (bytes 76-77) as 2-byte big-endian seconds.
+
+        The value is transmitted in seconds and converted to whole minutes,
+        matching the neighbouring delay_after_startup (bytes 74-75) and
+        delay_after_dose (bytes 106-107), which use the same encoding.
+
+        Verified on an ASIN AQUA Salt unit, firmware v7, by changing the
+        setting in the Aseko Live app and re-reading the frame:
+            0x0708 = 1800 s = 30 min  -> app showed 30 min
+            0x0B04 = 2820 s = 47 min  -> app showed 47 min
+
+        Bytes 94-95 were the previous guess and are wrong: byte 95 is
+        flowrate_ph_minus (ml/min).  It went unnoticed because one unit ran a
+        60 ml/min pH- pump alongside a 60 min filling limit.
 
         Returns None for the 0xFFFF sentinel (device does not implement the
         feature) so that downstream consumers see ``None`` instead of ``65535``.
         Issue #129: a bare ``int.from_bytes(...)`` would otherwise turn
-        unspecified frame data into a bogus 65535-minute value on NET/PROFI.
+        unspecified frame data into a bogus value on NET/PROFI.
         """
         value = int.from_bytes(data, "big")
         if value == 0xFFFF:
             return None
-        return value
+        return value // 60
 
     @staticmethod
     def _time(data: bytes) -> time | None:
@@ -836,7 +849,7 @@ class AsekoDecoder:
             # A bare int.from_bytes(..., "big") would otherwise turn 0xFFFF into
             # 65535 — fix that by normalising to None on 0xFFFF as well.
             max_filling_time=(
-                AsekoDecoder._max_filling_time_from_bytes(data[94:96])
+                AsekoDecoder._max_filling_time_from_bytes(data[76:78])
                 if has_water_level
                 else None
             ),

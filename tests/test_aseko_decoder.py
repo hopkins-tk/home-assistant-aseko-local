@@ -55,7 +55,8 @@ def _make_base_bytes(size: int = 120) -> bytearray:
     data[74:76] = (120).to_bytes(2, "big")  # delay_after_startup
     data[92:94] = (5000).to_bytes(2, "big")  # pool_volume
     data[95] = 10  # flowrate_chlor
-    data[94:96] = (60).to_bytes(2, "big")  # max_filling_time
+    data[76:78] = (3600).to_bytes(2, "big")  # max_filling_time = 3600 s = 60 min
+    data[94:96] = (60).to_bytes(2, "big")  # byte 95 = flowrate_ph_minus
     data[97] = 20  # flowrate_ph_plus
     data[99] = 255  # flowrate_ph_minus (not measured)
     data[101] = 40  # flowrate_floc
@@ -122,7 +123,7 @@ def test_decode_home() -> None:
     assert device.filtration_pump_running is True
     assert device.water_flow_to_probes is True
     assert device.pool_volume == 5000
-    assert device.max_filling_time == 60  # raw = minutes directly (verified Issue #110)
+    assert device.max_filling_time == 60  # bytes 76-77 = 3600 s
     assert device.delay_after_startup == 120
     assert device.delay_after_dose == 30
     assert device.start1 == time(8, 0)
@@ -498,15 +499,15 @@ def test_decode_net_no_backwash_with_garbage_bytes() -> None:
 
 
 def test_max_filling_time_unspecified_sentinel() -> None:
-    """Issue #129: 0xFFFF in bytes 94-95 must decode to None, not 65535.
+    """Issue #129: 0xFFFF in bytes 76-77 must decode to None, not 65535.
 
-    Pre-fix behaviour: a bare ``int.from_bytes(data[94:96], "big")`` returned
+    Pre-fix behaviour: a bare ``int.from_bytes(data[76:78], "big")`` returned
     65535 for the 0xFFFF sentinel, surfacing a nonsensical "max filling time
     = 65535 min" sensor on devices that do not implement filling (NET, PROFI).
     """
     data = _make_base_bytes()  # default SALT — has max_filling_time
     data[4] = 0x09  # but flip to NET
-    data[94:96] = bytes([0xFF, 0xFF])  # UNSPECIFIED sentinel
+    data[76:78] = bytes([0xFF, 0xFF])  # UNSPECIFIED sentinel
     device = AsekoDecoder.decode(bytes(data))
     assert device.device_type == AsekoDeviceType.NET
     assert device.max_filling_time is None
@@ -522,7 +523,7 @@ def test_max_filling_time_real_value_home() -> None:
     data = _make_base_bytes()
     data[4] = 0x02  # UNIT_TYPE_HOME_CLF — any HOME subtype works
     data[6:12] = bytes([24, 6, 15, 12, 34, 56])
-    data[94:96] = (60).to_bytes(2, "big")  # 60 min
+    data[76:78] = (3600).to_bytes(2, "big")  # 3600 s = 60 min
     device = AsekoDecoder.decode(bytes(data))
     assert device.device_type == AsekoDeviceType.HOME
     assert device.max_filling_time == 60
@@ -1071,7 +1072,7 @@ def test_decode_home_clf_real_frame() -> None:
     assert device.backwash_duration == 120
     # Pool parameters
     assert device.pool_volume == 60
-    assert device.max_filling_time == 60  # raw = minutes directly (verified Issue #110)
+    assert device.max_filling_time == 60  # bytes 76-77 = 3600 s
     assert device.delay_after_startup == 480
     assert device.delay_after_dose == 240
     # Flowrates
@@ -1783,19 +1784,20 @@ def test_home_byte12_not_an_alarm_byte() -> None:
 
 
 def test_home_max_filling_time() -> None:
-    """max_filling_time is stored in minutes (raw value × 1).
+    """max_filling_time is transmitted in seconds at bytes 76-77.
 
-    Confirmed against the Aseko Live app for serial 110071590:
-        raw bytes 94:95 = 0x003c = 60
-        app shows "Max filling time 60 min"
-    Earlier interpretation as "raw × 30 seconds = 1800 s = 30 min"
-    was rejected by the live app screenshot from mannekung (Issue #110).
+    Verified on an ASIN AQUA Salt (v7) by changing the setting in the Aseko
+    Live app: 0x0708 = 1800 s showed as 30 min, 0x0B04 = 2820 s as 47 min.
+
+    Bytes 94-95 were the earlier guess. Byte 95 is flowrate_ph_minus, and the
+    mistake survived because one unit ran a 60 ml/min pH- pump next to a 60 min
+    filling limit (Issue #110).
     """
     data = _make_home_bytes()
-    data[94:96] = (60).to_bytes(2, "big")  # raw = 60
+    data[76:78] = (3600).to_bytes(2, "big")  # 3600 s
 
     device = AsekoDecoder.decode(bytes(data))
-    assert device.max_filling_time == 60  # raw value = minutes directly
+    assert device.max_filling_time == 60  # seconds / 60
 
 
 # ── Backwash relay state (Issue #100) ────────────────────────────────────────
@@ -2000,6 +2002,9 @@ def test_home_issue_110_frame() -> None:
     assert device.water_level_filling_off == 13  # byte[104]
     assert device.water_level_high_alarm == 15  # byte[105]
     assert device.pool_volume == 20  # bytes[92:94] = 0x0014
-    assert (
-        device.max_filling_time == 60
-    )  # raw = minutes directly (verified Issue #110 app)
+    # max_filling_time is not asserted against 60 here: segment 2 of this frame
+    # is a zero placeholder (issue #110 only ever included segments 1 and 3),
+    # so bytes 76-77 carry no real value.  The old "60 min" came from bytes
+    # 94-95 — that is flowrate_ph_minus, and the unit happened to run a
+    # 60 ml/min pH- pump alongside a 60 min filling limit.
+    assert device.max_filling_time == 0  # 0x0000 from the placeholder segment

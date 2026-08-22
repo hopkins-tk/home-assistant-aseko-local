@@ -27,9 +27,8 @@ def _make_net_bytes() -> bytearray:
     data[29] = (
         0x00  # no pump running, but masks are set → running_attr = False (not None)
     )
-    data[94:96] = (60).to_bytes(
-        2, "big"
-    )  # max_filling_time (byte 95 = flowrate_ph_minus = 60)
+    data[76:78] = (3600).to_bytes(2, "big")  # max_filling_time = 3600 s = 60 min
+    data[94:96] = (60).to_bytes(2, "big")  # byte 95 = flowrate_ph_minus = 60
     data[99] = 60  # flowrate_chlor present
     data[101] = 0xFF  # flowrate_floc: not present
     return data
@@ -44,9 +43,8 @@ def _make_salt_bytes() -> bytearray:
     data[21] = 80
     data[28] = WATER_FLOW_TO_PROBES
     data[29] = 0x10  # electrolyzer on
-    data[94:96] = (60).to_bytes(
-        2, "big"
-    )  # max_filling_time (byte 95 = flowrate_ph_minus = 60)
+    data[76:78] = (3600).to_bytes(2, "big")  # max_filling_time = 3600 s = 60 min
+    data[94:96] = (60).to_bytes(2, "big")  # byte 95 = flowrate_ph_minus = 60
     data[99] = 0xFF  # no chlor
     data[101] = 0xFF  # no floc
     return data
