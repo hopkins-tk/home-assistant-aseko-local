@@ -670,13 +670,13 @@ class AsekoDecoder:
             0x01 = nonstop 24h
             0x11 = P1 only
             0x31 = P1 & P2
-            0x15 = P1 + manual override     → MANUAL (bit 0x04 set)
-            0x35 = P1 & P2 + manual override → MANUAL (bit 0x04 set)
+            0x15 = P1 + manual override     → SERVICE_MENU (bit 0x04 set)
+            0x35 = P1 & P2 + manual override → SERVICE_MENU (bit 0x04 set)
 
-        Bit 0x04 is an override laid on top of a schedule that stays
-        configured underneath it, so the two are decoded into separate
-        fields: `filtration_mode` reports what is in charge right now
-        (MANUAL wins), `filtration_schedule` what the unit will go back to.
+        Bit 0x04 sits on top of a schedule that stays configured underneath
+        it, so the two are decoded into separate fields:
+        `filtration_mode` reports whether anyone is at the unit
+        (SERVICE_MENU wins), `filtration_schedule` what it runs otherwise.
 
         SALT uses the same mode bits as the new encoding above; its high
         nibble carries its own flags (0x80 = algicide routing) and bit 0x40 is
@@ -685,19 +685,24 @@ class AsekoDecoder:
             0xC3 = nonstop 24h
             0xD3 = P1 only
             0xF3 = P1 & P2
-            0xD7 / 0xF7 = the above plus manual mode → MANUAL (bit 0x04 set)
+            0xD7 / 0xF7 = the above plus the settings menu being open
+                          → SERVICE_MENU (bit 0x04 set)
 
         Because bit 0x40 is set in every SALT frame, the firmware-A branch is
         taken for HOME only; every other device type reads the bit flags.
 
-        On SALT, MANUAL is a mode the user enters at the unit to switch
-        filtration by hand, and the unit stops transmitting while it is in it
-        — the frame carrying the mode change is the last one until the user
-        leaves the mode again.  It therefore shows up as a brief flip to
-        MANUAL followed by the device going offline.  Note that this is the
-        opposite of the HOME firmware-B override, which forces the pump *off*:
-        on SALT the user may equally have switched the pump on, which is why
-        the pump-off override in `_fill_pump_states` is gated on HOME.
+        On SALT, bit 0x04 marks the unit's settings menu being open — the
+        menu filtration and backwash can be started by hand from.  It
+        appears on entering, before anything is touched, and the unit stops
+        transmitting until the user leaves, so the frame carrying it is the
+        last one for the duration.  It therefore shows up as a brief flip to
+        SERVICE_MENU followed by the device going offline, and says only
+        that somebody is there — not what they did.
+
+        That is why the HOME firmware-B pump-off override in
+        `_fill_pump_states` stays gated on HOME: there Issue #133 documents
+        the bit as a standing override that forces the pump *off*, while on
+        SALT the user may equally have switched it on.
 
         """
         if unit.device_type is None or unit.device_type not in FILTRATION_TYPES:
@@ -705,8 +710,9 @@ class AsekoDecoder:
 
         # The two independent halves of byte[37]: which schedule is configured,
         # and whether the user has taken the pump over by hand.  Folding them
-        # into one value would drop the schedule exactly when manual mode makes
-        # it interesting, so they stay apart all the way to the entities.
+        # into one value would drop the schedule exactly when somebody being
+        # at the unit makes it interesting, so they stay apart all the way to
+        # the entities.
         schedule: AsekoFiltrationSchedule | None = None
         manual = False
         b = data[37]
@@ -778,7 +784,7 @@ class AsekoDecoder:
 
         unit.filtration_schedule = schedule
         unit.filtration_mode = (
-            AsekoFiltrationMode.MANUAL if manual else AsekoFiltrationMode.SCHEDULE
+            AsekoFiltrationMode.SERVICE_MENU if manual else AsekoFiltrationMode.SCHEDULE
         )
 
     @staticmethod
@@ -813,15 +819,15 @@ class AsekoDecoder:
         # Issue #133: on HOME v7 firmware B, byte[29] bit 3 stays set even
         # when the user has manually switched the pump off on the unit
         # (the override state lives in byte[37], not byte[29]). Trust the
-        # explicit MANUAL mode flag instead of the schedule-driven bit.
+        # explicit byte[37] bit 0x04 flag instead of the schedule-driven bit.
         # Gated on HOME so SALT / OXY / NET / PROFI behaviour is unchanged.
         if (
             unit.device_type == AsekoDeviceType.HOME
-            and unit.filtration_mode == AsekoFiltrationMode.MANUAL
+            and unit.filtration_mode == AsekoFiltrationMode.SERVICE_MENU
             and unit.filtration_pump_running is True
         ):
             _LOGGER.debug(
-                "Manual OFF override active (filtration_mode=MANUAL) — "
+                "Manual OFF override active (byte[37] bit 0x04) — "
                 "forcing filtration_pump_running to False (byte[29]=0x%02x)",
                 data[29],
             )
@@ -840,7 +846,7 @@ class AsekoDecoder:
         #    FILTRATION_TYPES device.  The device keeps sending the last
         #    configured start2/stop2 times even when Period 2 is disabled
         #    (Issue #133 — verified on serial 110169464, firmware B: bytes
-        #    60-63 are stable across P1 only / P1&P2 / 24h / MANUAL
+        #    60-63 are stable across P1 only / P1&P2 / 24h / bit 0x04 set
         #    modes).  Reading them unconditionally is therefore safe; the
         #    *_time helpers normalise 0xFF bytes to None and the lazy-
         #    creation guard in sensor.py skips the entity when no value is
@@ -906,7 +912,7 @@ class AsekoDecoder:
         # algicide/flocculant is determined by whether the flowrate byte is set (≠ 0xFF).
         AsekoDecoder._fill_flowrate_data(device, data)
         # Filtration mode must be decoded before consumable data (Issue #133):
-        # the MANUAL state in byte[37] short-circuits
+        # the byte[37] bit 0x04 state short-circuits
         # `filtration_pump_running` in `_fill_consumable_data`.
         AsekoDecoder._fill_filtration_mode(device, data)
         AsekoDecoder._fill_consumable_data(device, data)

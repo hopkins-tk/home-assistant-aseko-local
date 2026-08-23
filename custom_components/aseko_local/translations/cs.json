@@ -103,7 +103,7 @@
         "name": "Režim filtrace",
         "state": {
           "schedule": "Podle rozvrhu",
-          "manual": "Ruční ovládání"
+          "service_menu": "Otevřené menu přístroje"
         }
       },
       "pool_volume": { "name": "Objem bazénu" },

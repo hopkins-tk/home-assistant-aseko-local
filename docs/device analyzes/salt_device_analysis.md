@@ -147,7 +147,7 @@ filtration output.
 | Algicide 10 → Flocculant 11 (both change) | `0x80` | bit 7 only |
 
 Bit 2 (`0x04`) was read here as dosage encoding.  **That reading is
-superseded**: `0x04` is the manual-mode flag, captured directly on an ASIN
+superseded**: `0x04` marks the unit's settings menu, captured directly on an ASIN
 AQUA Salt across six byte[37] values and both directions of every transition
 (see §byte[37] – filtration mode and schedule below).  The XOR above came
 from two frames diffed in PR #122; the dosage change and a mode change most
@@ -161,7 +161,7 @@ keeps them apart because neither can stand in for the other:
 | Bits | Meaning | Field |
 |---|---|---|
 | `0x10` / `0x20` | which schedule is configured | `filtration_schedule` |
-| `0x04` | user has taken the pump over by hand | `filtration_mode` |
+| `0x04` | the unit's settings menu is open | `filtration_mode` |
 
 Every combination below was captured on an ASIN AQUA Salt with the mode shown
 on the unit itself known, in both directions of each transition:
@@ -171,9 +171,9 @@ on the unit itself known, in both directions of each transition:
 | `0xC3` | `SCHEDULE` | `NONSTOP_24H` |
 | `0xD3` | `SCHEDULE` | `TIMER_PERIOD_1` |
 | `0xF3` | `SCHEDULE` | `TIMER_PERIOD_1_AND_2` |
-| `0xC7` | `MANUAL` | `NONSTOP_24H` |
-| `0xD7` | `MANUAL` | `TIMER_PERIOD_1` |
-| `0xF7` | `MANUAL` | `TIMER_PERIOD_1_AND_2` |
+| `0xC7` | `SERVICE_MENU` | `NONSTOP_24H` |
+| `0xD7` | `SERVICE_MENU` | `TIMER_PERIOD_1` |
+| `0xF7` | `SERVICE_MENU` | `TIMER_PERIOD_1_AND_2` |
 
 These are the same mode bits HOME firmware B uses; the constant `0xC0` in the
 high nibble is SALT's own configuration (`0x80` = algicide routing).
@@ -186,25 +186,37 @@ HOME-only.  On SALT the fallback could not help anyway: the filtration times in
 bytes 56-63 are reported unchanged in every mode, so deriving the mode from
 them would return one constant answer whatever the unit is doing.
 
-**The unit goes quiet in manual mode.** Entering it produces exactly one more
-frame — the one carrying `0x04` — and then transmission stops until the user
-leaves the mode again.  Three diagnostics taken during one such excursion all
+**What the bit actually marks.** `0x04` appears the moment the settings menu
+is opened on the unit — the menu holding every Aseko setting, and the place
+filtration and backwash can be started by hand from.  It is set **before**
+anything is touched: three captures labelled "switched to manual mode, did
+nothing" carry it.  So on its own the bit says a person is standing at the
+unit, and nothing about what they did.
+
+**The unit goes quiet while the menu is open.** Opening it produces exactly
+one more frame — the one carrying `0x04` — and then transmission stops until
+the user leaves.  Three diagnostics taken during one such session all
 contained the same frame, with `online` going false between them.  Two
 consequences:
 
-* `MANUAL` is typically the last thing reported before the device goes offline,
-  and `filtration_mode` then holds that value until the user comes back out.
-  This is correct — it is the last thing the unit actually said.
-* What the user *does* inside manual mode is not observable.  The pump state in
-  that final frame is the state on the way in, not the result.  The unit will
-  not let you leave manual mode until filtration is back in the state it was in
-  before, so the value Home Assistant is holding is right again by the time
-  frames resume.
+* `SERVICE_MENU` is typically the last thing reported before the device goes
+  offline, and `filtration_mode` then holds that value until the user comes
+  back out.  This is correct — it is the last thing the unit actually said.
+* What the user *does* in there is not observable.  The pump state in that
+  final frame is the state on the way in, not the result.  The unit will not
+  let you leave until filtration is back in the state it was in before, so
+  the value Home Assistant is holding is right again by the time frames
+  resume.
 
-The exception is a manual **backwash**: there the unit keeps transmitting
-throughout, with `0x04` set from ~30 s before the valve opens until ~20 s after
-it closes.  `backwash_tracker` uses that as observed proof the cycle was manual
-rather than inferring it from the clock — see `_manual_mode_engaged`.
+Note this is **not** evidence that the schedule is suspended while the menu
+is open: in the 2026-08-11 capture the pump kept running throughout, and the
+configured period 1 covered that time of day anyway.
+
+The exception is a by-hand **backwash**: there the unit keeps transmitting
+throughout, with `0x04` set from ~30 s before the valve opens until ~20 s
+after it closes.  A cycle running while somebody is at the menu the button
+lives on is manual by observation, and `backwash_tracker` uses it as such
+rather than inferring from the clock — see `_service_menu_open`.
 
 ---
 

@@ -521,11 +521,12 @@ SENSORS: list[AsekoSensorEntityDescription] = [
         translation_key="filtration_mode",
         icon="mdi:pump",
         device_class=SensorDeviceClass.ENUM,
-        # Whether the schedule is in charge, not which schedule it is —
-        # that is filtration_schedule, and it stays readable either way.
+        # Whether the unit is running its schedule or somebody has the
+        # settings menu open — not which schedule, that is
+        # filtration_schedule, and it stays readable either way.
         options=[
             "schedule",
-            "manual",
+            "service_menu",
         ],
         value_fn=lambda device: (
             device.filtration_mode.value if device.filtration_mode is not None else None

@@ -789,9 +789,9 @@ def _decode_salt(byte37: int):
         (0xC3, "schedule", "nonstop_24h"),
         (0xD3, "schedule", "timer_period_1"),
         (0xF3, "schedule", "timer_period_1_and_2"),
-        (0xC7, "manual", "nonstop_24h"),
-        (0xD7, "manual", "timer_period_1"),
-        (0xF7, "manual", "timer_period_1_and_2"),
+        (0xC7, "service_menu", "nonstop_24h"),
+        (0xD7, "service_menu", "timer_period_1"),
+        (0xF7, "service_menu", "timer_period_1_and_2"),
     ],
 )
 def test_mode_and_schedule_are_each_readable_on_their_own(
@@ -799,10 +799,11 @@ def test_mode_and_schedule_are_each_readable_on_their_own(
 ) -> None:
     """Both halves of byte[37] stay readable, whatever the other one says.
 
-    One sensor answers "is the schedule in charge?", the other "which
-    schedule?".  Reporting them as a single value would drop the schedule
-    whenever the answer is manual — which is the moment it matters, since
-    the unit goes quiet there and this is the last frame you get.
+    One sensor answers "is anyone at the unit?", the other "which schedule
+    does it run otherwise?".  Reporting them as a single value would drop
+    the schedule exactly when somebody is there — which is the moment it
+    matters, since the unit goes quiet then and this is the last frame you
+    get.
     """
     mode = next(d for d in SENSORS if d.key == "filtration_mode")
     schedule = next(d for d in SENSORS if d.key == "filtration_schedule")
@@ -816,13 +817,13 @@ def test_mode_and_schedule_options_do_not_overlap() -> None:
     """Neither sensor can report the other's states.
 
     An ENUM sensor is validated against its options, so this is what stops
-    the two from drifting back together — no "manual" among the schedules,
-    no schedule among the modes.
+    the two from drifting back together — no "service_menu" among the
+    schedules, no schedule among the modes.
     """
     mode = next(d for d in SENSORS if d.key == "filtration_mode")
     schedule = next(d for d in SENSORS if d.key == "filtration_schedule")
 
-    assert set(mode.options) == {"schedule", "manual"}
+    assert set(mode.options) == {"schedule", "service_menu"}
     assert set(schedule.options) == {
         "nonstop_24h",
         "timer_period_1",

@@ -68,24 +68,33 @@ class AsekoFiltrationSchedule(Enum):
 class AsekoFiltrationMode(Enum):
     """What is driving the filtration pump right now.
 
-    byte[37] bit 0x04.  The schedule and the override are two independent
-    facts, and folding them into one value would lose whichever is not
-    being reported: while the user is in manual mode the unit is still
-    configured for a schedule, and it goes back to it on the way out.
+    byte[37] bit 0x04.  The schedule and this flag are two independent facts,
+    and folding them into one value would lose whichever is not being
+    reported: the unit stays configured for a schedule throughout, and goes
+    back to it afterwards.
 
-    SCHEDULE — the unit follows `filtration_schedule`.
-    MANUAL — the user has taken the pump over at the unit.  On SALT this
-        is a mode entered at the panel, and the unit stops transmitting
-        while in it, so MANUAL is typically the last thing reported
-        before the device goes offline.  On HOME firmware B it is a
-        standing override that forces the pump off.
+    SCHEDULE — the unit is running on `filtration_schedule`.
+    SERVICE_MENU — somebody has the unit's settings menu open.  That is the
+        menu filtration and backwash can be started by hand from, so the
+        schedule is not necessarily what is driving the pump while it is
+        open — but the bit says only that a person is there, not what they
+        did.  Measured on SALT: it appears on entering the menu, before
+        anything is touched, and the unit stops transmitting until they
+        leave, so this is typically the last state reported before the
+        device goes offline.
+
+        On HOME firmware B the same bit is documented by Issue #133 as a
+        standing manual override that forces the pump off, and the decoder
+        still treats it that way there (see `_fill_pump_states`).  Whether
+        the two are literally the same mechanism is unverified — there are
+        no HOME captures of the menu being opened.
 
     Enum values map to the translation keys under
     entity.sensor.filtration_mode.state.
     """
 
     SCHEDULE = "schedule"
-    MANUAL = "manual"
+    SERVICE_MENU = "service_menu"
 
 
 # ---------------------------------------------------------------------------

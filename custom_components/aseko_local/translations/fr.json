@@ -111,7 +111,7 @@
                 "name": "Mode de filtration",
                 "state": {
                     "schedule": "Selon le programme",
-                    "manual": "Commande manuelle"
+                    "service_menu": "Menu de l'appareil ouvert"
                 }
             },
             "pool_volume": {

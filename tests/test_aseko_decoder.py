@@ -264,14 +264,36 @@ def test_decode_filtration_period2_real_dtpugh_frames() -> None:
             return payload
         return None
 
+    # 04_off is the user switching to manual while both periods stay
+    # configured, which is why it carries a schedule as well as a mode.
     scenarios = {
-        "01_p1only.json": (0x11, AsekoFiltrationSchedule.TIMER_PERIOD_1),
-        "02_p1andp2.json": (0x31, AsekoFiltrationSchedule.TIMER_PERIOD_1_AND_2),
-        "03_24h.json": (0x01, AsekoFiltrationSchedule.NONSTOP_24H),
-        "04_off.json": (0x35, AsekoFiltrationMode.MANUAL),
+        "01_p1only.json": (
+            0x11,
+            AsekoFiltrationSchedule.TIMER_PERIOD_1,
+            AsekoFiltrationMode.SCHEDULE,
+        ),
+        "02_p1andp2.json": (
+            0x31,
+            AsekoFiltrationSchedule.TIMER_PERIOD_1_AND_2,
+            AsekoFiltrationMode.SCHEDULE,
+        ),
+        "03_24h.json": (
+            0x01,
+            AsekoFiltrationSchedule.NONSTOP_24H,
+            AsekoFiltrationMode.SCHEDULE,
+        ),
+        "04_off.json": (
+            0x35,
+            AsekoFiltrationSchedule.TIMER_PERIOD_1_AND_2,
+            AsekoFiltrationMode.SERVICE_MENU,
+        ),
     }
 
-    for filename, (expected_b37, expected_mode) in scenarios.items():
+    for filename, (
+        expected_b37,
+        expected_schedule,
+        expected_mode,
+    ) in scenarios.items():
         with open(diag_dir / filename) as f:
             frame = bytes.fromhex(_first_frame(json.load(f)))
         assert frame[37] == expected_b37, f"{filename}: byte 37 mismatch"
@@ -287,7 +309,12 @@ def test_decode_filtration_period2_real_dtpugh_frames() -> None:
         assert device.stop2 is not None, (
             f"{filename}: stop2 is None — entity would go 'unknown' (Issue #133)"
         )
-        # Mode entity correctly reports which schedule is active.
+        # The schedule entity reports which schedule is configured...
+        assert device.filtration_schedule == expected_schedule, (
+            f"{filename}: expected {expected_schedule}, "
+            f"got {device.filtration_schedule}"
+        )
+        # ...and the mode entity whether it is the one in charge.
         assert device.filtration_mode == expected_mode, (
             f"{filename}: expected {expected_mode}, got {device.filtration_mode}"
         )
@@ -1415,7 +1442,7 @@ def test_filtration_mode_new_encoding_manual_p1_and_p2() -> None:
     data = _make_home_bytes()
     data[37] = 0x35  # new encoding: P1 & P2 + manual override (bit 2 set)
     device = AsekoDecoder.decode(bytes(data))
-    assert device.filtration_mode == AsekoFiltrationMode.MANUAL
+    assert device.filtration_mode == AsekoFiltrationMode.SERVICE_MENU
 
 
 def test_filtration_mode_new_encoding_manual_p1_only() -> None:
@@ -1428,7 +1455,7 @@ def test_filtration_mode_new_encoding_manual_p1_only() -> None:
     data = _make_home_bytes()
     data[37] = 0x15  # P1 + manual override
     device = AsekoDecoder.decode(bytes(data))
-    assert device.filtration_mode == AsekoFiltrationMode.MANUAL
+    assert device.filtration_mode == AsekoFiltrationMode.SERVICE_MENU
 
 
 def test_filtration_mode_old_encoding_24h() -> None:
@@ -1546,7 +1573,7 @@ def test_filtration_pump_running_off_when_manual_override() -> None:
         data[37] = override_value  # OFF (manual override)
 
         device = AsekoDecoder.decode(bytes(data))
-        assert device.filtration_mode == AsekoFiltrationMode.MANUAL, (
+        assert device.filtration_mode == AsekoFiltrationMode.SERVICE_MENU, (
             f"byte[37]={override_value:#x}"
         )
         assert device.filtration_pump_running is False, f"byte[37]={override_value:#x}"
@@ -1578,7 +1605,7 @@ def test_filtration_pump_running_not_overridden_on_salt() -> None:
     data[37] = 0x35  # firmware B: P1 & P2 + manual override → MANUAL
 
     device = AsekoDecoder.decode(bytes(data))
-    assert device.filtration_mode == AsekoFiltrationMode.MANUAL
+    assert device.filtration_mode == AsekoFiltrationMode.SERVICE_MENU
     assert device.filtration_pump_running is True  # unchanged: byte[29] bit 3 wins
 
 
@@ -1996,11 +2023,15 @@ def test_home_issue_110_frame() -> None:
             AsekoFiltrationMode.SCHEDULE,
             AsekoFiltrationSchedule.TIMER_PERIOD_1_AND_2,
         ),
-        (0xC7, AsekoFiltrationMode.MANUAL, AsekoFiltrationSchedule.NONSTOP_24H),
-        (0xD7, AsekoFiltrationMode.MANUAL, AsekoFiltrationSchedule.TIMER_PERIOD_1),
+        (0xC7, AsekoFiltrationMode.SERVICE_MENU, AsekoFiltrationSchedule.NONSTOP_24H),
+        (
+            0xD7,
+            AsekoFiltrationMode.SERVICE_MENU,
+            AsekoFiltrationSchedule.TIMER_PERIOD_1,
+        ),
         (
             0xF7,
-            AsekoFiltrationMode.MANUAL,
+            AsekoFiltrationMode.SERVICE_MENU,
             AsekoFiltrationSchedule.TIMER_PERIOD_1_AND_2,
         ),
     ],
@@ -2070,11 +2101,12 @@ def test_filtration_mode_home_transitional_still_suppressed() -> None:
     assert device.filtration_mode is None
 
 
-def test_filtration_schedule_survives_manual_mode() -> None:
-    """Manual mode hides the schedule from filtration_mode, not from the unit.
+def test_filtration_schedule_survives_the_service_menu() -> None:
+    """The settings menu hides the schedule from filtration_mode, not from
+    the unit.
 
-    Going into manual mode and back out again is the same schedule throughout
-    — 0xC3 -> 0xC7 -> 0xC3 on a captured SALT — so filtration_schedule must
+    Opening the menu and leaving it again is the same schedule throughout —
+    0xC3 -> 0xC7 -> 0xC3 on a captured SALT — so filtration_schedule must
     read the same in all three, even though filtration_mode does not.
 
     This is what makes the schedule usable on a dashboard while the override
@@ -2093,6 +2125,6 @@ def test_filtration_schedule_survives_manual_mode() -> None:
     assert schedules == [AsekoFiltrationSchedule.NONSTOP_24H] * 3
     assert modes == [
         AsekoFiltrationMode.SCHEDULE,
-        AsekoFiltrationMode.MANUAL,
+        AsekoFiltrationMode.SERVICE_MENU,
         AsekoFiltrationMode.SCHEDULE,
     ]

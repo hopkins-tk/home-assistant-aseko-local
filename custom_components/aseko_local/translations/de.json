@@ -111,7 +111,7 @@
         "name": "Filtriermodus",
         "state": {
           "schedule": "Nach Plan",
-          "manual": "Handbetrieb"
+          "service_menu": "Menü am Gerät offen"
         }
       },
       "pool_volume": {

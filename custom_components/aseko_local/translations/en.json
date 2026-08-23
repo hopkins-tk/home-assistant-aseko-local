@@ -103,7 +103,7 @@
         "name": "Filtration mode",
         "state": {
           "schedule": "Following schedule",
-          "manual": "Manual operation"
+          "service_menu": "Settings menu open"
         }
       },
       "pool_volume": { "name": "Pool volume" },
