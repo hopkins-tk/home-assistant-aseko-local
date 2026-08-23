@@ -20,7 +20,7 @@ position. The two revisions are referred to throughout this document as
 | Serial (known) | 110128063 (`0x06906bbf`) | 110169464 (`0x06912578`) |
 | | 110175608* (`0x06912578`, REDOX) | |
 | `byte[37]` mode values | high nibble `0x4` / `0x5` | high nibble `0x0` / `0x1` / `0x3` |
-| Known states | nonstop 24h, timer, transitional, | nonstop 24h, P1, P1&P2, OFF manual, transitional |
+| Known states | nonstop 24h, timer, transitional, | nonstop 24h, P1, P1&P2, each ± manual override, transitional |
 | | heating ON, heating OFF, unconfigured | |
 | Source | This file (Issue #110, #135) | [Issue #133](../temp/Issue-133.md) |
 | Period 2 enable flag | bit 5 (`0x20`) — same as firmware B | bit 5 (`0x20`) |
@@ -206,7 +206,8 @@ share the `alarm_orp_too_many_doses` sensor.
 | Water temperature         | 37.9°C           | 38.2°C            | ✓ (Δt)|
 | Water flow to probes      | False            | NO                | ✓     |
 | Filtration pump running   | False            | STOP              | ✓     |
-| filtration_nonstop24      | True             | NONSTOP 24H       | ✓ (Issue #110) |
+| filtration_schedule       | NONSTOP_24H      | NONSTOP 24H       | ✓ (Issue #110) |
+| filtration_mode           | SCHEDULE         | (not in manual)   | ✓ |
 | water_level               | 8 cm             | --- (level meter disabled) | ✓ (frame value) |
 | water_level_low_alarm     | 13 cm            | (config)          | ✓ (Issue #110) |
 | water_level_filling_on    | 33 cm            | (config)          | ✓ (Issue #110) |
@@ -218,7 +219,7 @@ share the `alarm_orp_too_many_doses` sensor.
 | required_floc             | 10 ml/h          | 10 ml/h           | ✓ (fixed) |
 | required_algicide         | 0 ml/m³/day      | 0 ml/m³/day       | ✓ (fixed) |
 | required_water_temperature | 25°C            | --- (disabled)    | ⚠ Open Item 3 |
-| Filtration schedule       | 08:00–16:00 / 18:00–22:00 (last-configured) | NONSTOP 24H | ✓ (mode from `byte[37]`, schedule bytes always present) |
+| Filtration times          | 08:00–16:00 / 18:00–22:00 (last-configured) | NONSTOP 24H | ✓ (schedule from `byte[37]`, time bytes always present) |
 | backwash_every_n_days     | 3                | every 3 days      | ✓     |
 | backwash_time             | 21:00            | starts at 21:00   | ✓     |
 | backwash_duration         | 120 s            | 02:00 min         | ✓     |
@@ -300,10 +301,15 @@ firmware B: serial 110169464, byte 4 = 0x03 — see [Issue #133](../temp/Issue-1
 | Antifreeze ON (nonstop)†‡     | `0x81`     | (n/o)      | `1000_0001` / —              |
 
 † Bit 1 is clear (`0x02`) in all three heating-health values. When `byte[37]` & `0x40` is set
-  but bit-1 is clear, the decoder falls back to schedule-derived filtration mode (see
-  `_fill_filtration_mode` in `aseko_decoder.py`). The actual filtration mode is
-  determined from the schedule bytes and the `PERIOD2_ENABLED_MASK` (`0x20`).
+  but bit-1 is clear, the decoder falls back to a schedule derived from the
+  filtration times (see `_fill_filtration_mode` in `aseko_decoder.py`), using
+  the time bytes and the `PERIOD2_ENABLED_MASK` (`0x20`).
   `heating_control_enabled` is decoded separately from bit 3 (`0x08`).
+
+  Both this fallback and the firmware-A branch above it are **HOME-only**.
+  Bit `0x40` only discriminates the two encodings here: SALT sets it in every
+  frame, and reports the filtration times unchanged in every mode, so for a
+  SALT the fallback could only ever return one constant answer.
 
 ‡ When antifreeze is ON, `byte[55]` drops from the normal heating setpoint
   (eg. 27°C) to the antifreeze setpoint (e.g. 4°C, 5°C or 9°C whatever user sets).
@@ -362,8 +368,13 @@ discussion](https://github.com/hopkins-tk/home-assistant-aseko-local/issues/110)
 bit 3 (`filtration_pump_running`) is still set in the frame — the firmware does
 not clear the schedule-driven bit on manual override. The decoder compensates
 by short-circuiting `filtration_pump_running` to `False` whenever
-`filtration_mode == MANUAL`. This is a HOME-only behaviour; no SALT/OXY/PROFI
-OFF frame has been captured yet.
+`filtration_mode == MANUAL`.
+
+This override stays **HOME-only**, and SALT captures are now the reason why
+rather than just a lack of evidence: on SALT the same bit means the user is
+at the panel driving the pump, which they may equally have switched *on*.
+Forcing the pump off there would invent a state the unit never reported.
+See `salt_device_analysis.md` §byte[37] – filtration mode and schedule.
 
 **Note on Period 2 schedule bytes (Issue #133)**: All Aseko devices in
 `FILTRATION_TYPES` (SALT, HOME, OXY, PROFI) keep sending the last-configured
@@ -379,7 +390,7 @@ the controller back from "P1 & P2" to "P1 only" (the entity registry
 protects the entity, but the value is read as `None`).  Post-fix, bytes
 60-63 are read unconditionally for any device in `FILTRATION_TYPES` (so
 `start2`/`stop2` stay populated and the entity shows the last-configured
-time); the `filtration_mode` sensor separately reports `TIMER_PERIOD_1`
+time); the `filtration_schedule` sensor separately reports `TIMER_PERIOD_1`
 to tell the user that Period 2 is inactive.  This behaviour was
 verified against the four diagnostic files from
 [Issue #133](../temp/Issue-133.md) (serial 110169464, ASIN AQUA Home
@@ -425,6 +436,10 @@ frames — including the OFF frame. The override state lives in `byte[37]` bit 2
 (firmware B only, value `0x35`), not in `byte[29]`. The decoder compensates for
 this HOME-only behaviour in `_fill_consumable_data` (see `_fill_filtration_mode`
 in `aseko_decoder.py`).
+
+Bit 2 is decoded into `filtration_mode` (`SCHEDULE` / `MANUAL`) and the
+schedule bits into `filtration_schedule`, so the schedule stays readable while
+the override is on — the two are independent and one value cannot carry both.
 
 ### `byte[22]` — Variable-speed filtration pump (Issue #137)
 
@@ -479,12 +494,14 @@ Tests for the HOME decoder live in `tests/test_aseko_decoder.py`:
 | `test_decode_home_flowrates_unspecified` | 0xFF on flowrate bytes → `None` (pump not installed) |
 | `test_decode_home_algicide_pump_running` | Issue #115: `algicide_pump_running` binary sensor is registered |
 | `test_decode_home_floc_pump_running_independent` | HOME reports `floc_pump_running` correctly when only floc pump is installed |
-| `test_filtration_mode_new_encoding_24h` | Issue #133 firmware B: `byte[37]=0x01` → `NONSTOP_24H` |
-| `test_filtration_mode_new_encoding_p1` | Issue #133 firmware B: `byte[37]=0x11` → `TIMER_PERIOD_1` |
-| `test_filtration_mode_new_encoding_p1_and_p2` | Issue #133 firmware B: `byte[37]=0x31` → `TIMER_PERIOD_1_AND_2` |
-| `test_filtration_mode_new_encoding_manual_p1_and_p2` | Issue #133 firmware B: `byte[37]=0x35` → `MANUAL` |
-| `test_filtration_mode_old_encoding_24h` | Issue #110 firmware A: `byte[37]=0x43` → `NONSTOP_24H` |
-| `test_filtration_mode_old_encoding_timer` | Issue #110 firmware A: `byte[37]=0x53` → `TIMER_PERIOD_1_AND_2` |
+| `test_filtration_mode_new_encoding_24h` | Issue #133 firmware B: `byte[37]=0x01` → schedule `NONSTOP_24H` |
+| `test_filtration_mode_new_encoding_p1` | Issue #133 firmware B: `byte[37]=0x11` → schedule `TIMER_PERIOD_1` |
+| `test_filtration_mode_new_encoding_p1_and_p2` | Issue #133 firmware B: `byte[37]=0x31` → schedule `TIMER_PERIOD_1_AND_2` |
+| `test_filtration_mode_new_encoding_manual_p1_and_p2` | Issue #133 firmware B: `byte[37]=0x35` → mode `MANUAL` |
+| `test_filtration_mode_old_encoding_24h` | Issue #110 firmware A: `byte[37]=0x43` → schedule `NONSTOP_24H` |
+| `test_filtration_mode_old_encoding_timer` | Issue #110 firmware A: `byte[37]=0x53` → schedule `TIMER_PERIOD_1_AND_2` |
+| `test_filtration_mode_salt_uses_the_firmware_b_bits` | SALT: all six captured `byte[37]` values → mode + schedule |
+| `test_filtration_schedule_survives_manual_mode` | `0xC3` → `0xC7` → `0xC3`: the schedule reads the same throughout |
 | `test_filtration_pump_running_off_when_manual_override` | Issue #133: `byte[37]=0x35` forces `filtration_pump_running=False` |
 | `test_filtration_pump_running_on_when_not_override` | Regression guard: `byte[29]&0x08` still drives the entity outside MANUAL |
 | `test_filtration_pump_running_not_overridden_on_salt` | Override short-circuit is HOME-only |
