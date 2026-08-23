@@ -52,9 +52,9 @@ class AsekoElectrolyzerDirection(Enum):
 class AsekoFiltrationSchedule(Enum):
     """The filtration schedule the unit is configured for (Issue #133).
 
-    byte[37] bits 0x10 / 0x20.  Independent of whether the schedule is
-    currently in charge — see `AsekoFiltrationMode` — so it keeps reading
-    the same while the user drives the pump by hand.
+    byte[37] bits 0x10 / 0x20.  What the unit runs when nobody is at it —
+    see `AsekoDevice.service_menu_open`, which is decoded from the same
+    byte but says nothing about filtration.
 
     Enum values map to the translation keys under
     entity.sensor.filtration_schedule.state.
@@ -63,38 +63,6 @@ class AsekoFiltrationSchedule(Enum):
     NONSTOP_24H = "nonstop_24h"
     TIMER_PERIOD_1 = "timer_period_1"
     TIMER_PERIOD_1_AND_2 = "timer_period_1_and_2"
-
-
-class AsekoFiltrationMode(Enum):
-    """What is driving the filtration pump right now.
-
-    byte[37] bit 0x04.  The schedule and this flag are two independent facts,
-    and folding them into one value would lose whichever is not being
-    reported: the unit stays configured for a schedule throughout, and goes
-    back to it afterwards.
-
-    SCHEDULE — the unit is running on `filtration_schedule`.
-    SERVICE_MENU — somebody has the unit's settings menu open.  That is the
-        menu filtration and backwash can be started by hand from, so the
-        schedule is not necessarily what is driving the pump while it is
-        open — but the bit says only that a person is there, not what they
-        did.  Measured on SALT: it appears on entering the menu, before
-        anything is touched, and the unit stops transmitting until they
-        leave, so this is typically the last state reported before the
-        device goes offline.
-
-        On HOME firmware B the same bit is documented by Issue #133 as a
-        standing manual override that forces the pump off, and the decoder
-        still treats it that way there (see `_fill_pump_states`).  Whether
-        the two are literally the same mechanism is unverified — there are
-        no HOME captures of the menu being opened.
-
-    Enum values map to the translation keys under
-    entity.sensor.filtration_mode.state.
-    """
-
-    SCHEDULE = "schedule"
-    SERVICE_MENU = "service_menu"
 
 
 # ---------------------------------------------------------------------------
@@ -220,14 +188,18 @@ class AsekoDevice:
     # and both are worth showing, so the two are kept apart.
     filtration_schedule: AsekoFiltrationSchedule | None = None
 
-    # What is driving the pump right now — byte [37] bit 0x04 (Issue #133).
-    # Set for every device type in FILTRATION_TYPES = {SALT, HOME, OXY, PROFI};
-    # NET is excluded, it has no filtration output (Issue #66).
+    # Somebody has the unit's settings menu open — byte [37] bit 0x04.
     #
-    # Deliberately not folded together with `filtration_schedule`: reporting
-    # one value would mean dropping the schedule whenever it reads "manual",
-    # which is the moment you most want to know what the unit goes back to.
-    filtration_mode: AsekoFiltrationMode | None = None
+    # Not a filtration state, despite living in the same byte: it says a
+    # person is standing at the unit, and nothing about what they are doing.
+    # The menu is where filtration and backwash can be started by hand, but
+    # the unit stops transmitting while it is open, so whether anything was
+    # touched — and what — is not observable at all.  It may well override
+    # filtration; there is no way to see that from here.
+    #
+    # Only the bit-flag firmware encodes it.  Left None on firmware A, where
+    # bit 0x04 belongs to the transitional edit states, and on NET.
+    service_menu_open: bool | None = None
 
     # Alarm/error bitmasks — bytes [12] (HOME dosing warnings) and [13]
     # byte [12] 0x20 = chlorine/disinfection dosing warning (HOME ✅, issue #134)

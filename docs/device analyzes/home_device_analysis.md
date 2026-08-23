@@ -207,7 +207,7 @@ share the `alarm_orp_too_many_doses` sensor.
 | Water flow to probes      | False            | NO                | ✓     |
 | Filtration pump running   | False            | STOP              | ✓     |
 | filtration_schedule       | NONSTOP_24H      | NONSTOP 24H       | ✓ (Issue #110) |
-| filtration_mode           | SCHEDULE         | (nobody at the unit) | ✓ |
+| service_menu_open         | False            | (nobody at the unit) | ✓ |
 | water_level               | 8 cm             | --- (level meter disabled) | ✓ (frame value) |
 | water_level_low_alarm     | 13 cm            | (config)          | ✓ (Issue #110) |
 | water_level_filling_on    | 33 cm            | (config)          | ✓ (Issue #110) |
@@ -302,7 +302,7 @@ firmware B: serial 110169464, byte 4 = 0x03 — see [Issue #133](../temp/Issue-1
 
 † Bit 1 is clear (`0x02`) in all three heating-health values. When `byte[37]` & `0x40` is set
   but bit-1 is clear, the decoder falls back to a schedule derived from the
-  filtration times (see `_fill_filtration_mode` in `aseko_decoder.py`), using
+  filtration times (see `_fill_filtration_schedule` in `aseko_decoder.py`), using
   the time bytes and the `PERIOD2_ENABLED_MASK` (`0x20`).
   `heating_control_enabled` is decoded separately from bit 3 (`0x08`).
 
@@ -368,7 +368,7 @@ discussion](https://github.com/hopkins-tk/home-assistant-aseko-local/issues/110)
 bit 3 (`filtration_pump_running`) is still set in the frame — the firmware does
 not clear the schedule-driven bit on manual override. The decoder compensates
 by short-circuiting `filtration_pump_running` to `False` whenever
-`filtration_mode == SERVICE_MENU`.
+`service_menu_open is True`.
 
 This override stays **HOME-only**, and SALT captures are now the reason why
 rather than just a lack of evidence: there the same bit marks the settings
@@ -434,18 +434,18 @@ by live capture (see Open Item 7).
 | 6    | `0x40`| cl pump running             | see Open Item 7        |
 | 7    | `0x80`| pH− pump running            | see Open Item 7        |
 
-### `byte[29]` vs `filtration_mode` (firmware B manual OFF)
+### `byte[29]` vs `service_menu_open` (firmware B manual OFF)
 
 Cross-frame analysis of @dtpugh's four firmware B frames (24h nonstop, P1 only,
 P1 & P2, OFF manual) shows that `byte[29]` bit 3 stays set in **all four**
 frames — including the OFF frame. The override state lives in `byte[37]` bit 2
 (firmware B only, value `0x35`), not in `byte[29]`. The decoder compensates for
-this HOME-only behaviour in `_fill_consumable_data` (see `_fill_filtration_mode`
+this HOME-only behaviour in `_fill_consumable_data` (see `_fill_filtration_schedule`
 in `aseko_decoder.py`).
 
-Bit 2 is decoded into `filtration_mode` (`SCHEDULE` / `SERVICE_MENU`) and the
-schedule bits into `filtration_schedule`, so the schedule stays readable while
-the bit is set — the two are independent and one value cannot carry both.
+Bit 2 is decoded into `service_menu_open` (a plain bool) and the schedule bits
+into `filtration_schedule`.  They are unrelated facts sharing a byte: one says
+somebody is at the unit, the other what it runs when nobody is.
 
 ### `byte[22]` — Variable-speed filtration pump (Issue #137)
 
@@ -500,13 +500,13 @@ Tests for the HOME decoder live in `tests/test_aseko_decoder.py`:
 | `test_decode_home_flowrates_unspecified` | 0xFF on flowrate bytes → `None` (pump not installed) |
 | `test_decode_home_algicide_pump_running` | Issue #115: `algicide_pump_running` binary sensor is registered |
 | `test_decode_home_floc_pump_running_independent` | HOME reports `floc_pump_running` correctly when only floc pump is installed |
-| `test_filtration_mode_new_encoding_24h` | Issue #133 firmware B: `byte[37]=0x01` → schedule `NONSTOP_24H` |
-| `test_filtration_mode_new_encoding_p1` | Issue #133 firmware B: `byte[37]=0x11` → schedule `TIMER_PERIOD_1` |
-| `test_filtration_mode_new_encoding_p1_and_p2` | Issue #133 firmware B: `byte[37]=0x31` → schedule `TIMER_PERIOD_1_AND_2` |
-| `test_filtration_mode_new_encoding_manual_p1_and_p2` | Issue #133 firmware B: `byte[37]=0x35` → mode `SERVICE_MENU` |
-| `test_filtration_mode_old_encoding_24h` | Issue #110 firmware A: `byte[37]=0x43` → schedule `NONSTOP_24H` |
-| `test_filtration_mode_old_encoding_timer` | Issue #110 firmware A: `byte[37]=0x53` → schedule `TIMER_PERIOD_1_AND_2` |
-| `test_filtration_mode_salt_uses_the_firmware_b_bits` | SALT: all six captured `byte[37]` values → mode + schedule |
+| `test_filtration_schedule_new_encoding_24h` | Issue #133 firmware B: `byte[37]=0x01` → schedule `NONSTOP_24H` |
+| `test_filtration_schedule_new_encoding_p1` | Issue #133 firmware B: `byte[37]=0x11` → schedule `TIMER_PERIOD_1` |
+| `test_filtration_schedule_new_encoding_p1_and_p2` | Issue #133 firmware B: `byte[37]=0x31` → schedule `TIMER_PERIOD_1_AND_2` |
+| `test_service_menu_new_encoding_p1_and_p2` | Issue #133 firmware B: `byte[37]=0x35` → `service_menu_open` True |
+| `test_filtration_schedule_old_encoding_24h` | Issue #110 firmware A: `byte[37]=0x43` → schedule `NONSTOP_24H` |
+| `test_filtration_schedule_old_encoding_timer` | Issue #110 firmware A: `byte[37]=0x53` → schedule `TIMER_PERIOD_1_AND_2` |
+| `test_filtration_schedule_salt_uses_the_firmware_b_bits` | SALT: all six captured `byte[37]` values → schedule + menu flag |
 | `test_filtration_schedule_survives_the_service_menu` | `0xC3` → `0xC7` → `0xC3`: the schedule reads the same throughout |
 | `test_filtration_pump_running_off_when_manual_override` | Issue #133: `byte[37]=0x35` forces `filtration_pump_running=False` |
 | `test_filtration_pump_running_on_when_not_override` | Regression guard: `byte[29]&0x08` still drives the entity while bit 0x04 is clear |
@@ -531,7 +531,7 @@ Tests for the HOME decoder live in `tests/test_aseko_decoder.py`:
 - NET v8 analysis: `docs/device analyzes/net_v8_device_analysis.md`
 - Issue #110: byte[37] firmware A (`0x43` = nonstop 24h) — original finding, frames in this file
 - Issue #115: HOME `algicide_pump_running` missing — fixed by independent-pump-port branch
-- Issue #133: byte[37] firmware B (4-state mode + manual OFF) — fixed by `_fill_filtration_mode` rewrite.  Period 2 schedule bytes (60-63) are now read unconditionally for any device in `FILTRATION_TYPES` to avoid "unknown" entities when the user toggles the controller.  See the *Note on Period 2 schedule bytes (Issue #133)* under `byte[29]` vs `filtration_mode` below.
+- Issue #133: byte[37] firmware B (4-state mode + manual OFF) — fixed by `_fill_filtration_schedule` rewrite.  Period 2 schedule bytes (60-63) are now read unconditionally for any device in `FILTRATION_TYPES` to avoid "unknown" entities when the user toggles the controller.  See the *Note on Period 2 schedule bytes (Issue #133)* under `byte[29]` vs `service_menu_open` below.
 - Issue #135: `byte[37]` bit 3 (`0x08`) = heating control master enable on HOME firmware A
   (serial 110175608, REDOX HOME). Confirms `byte[55]` as target water temp setpoint.
   Working notes: [docs/temp/Issue-135.md](../temp/Issue-135.md).

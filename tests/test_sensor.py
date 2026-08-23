@@ -7,9 +7,12 @@ from homeassistant.helpers import entity_registry as er
 from custom_components.aseko_local.binary_sensor import (
     async_remove_retired_entities,
     async_setup_entry as binary_async_setup_entry,
+    BINARY_SENSORS,
     AsekoLocalBinarySensorEntity,
 )
 from custom_components.aseko_local.sensor import (
+    RETIRED_UNIQUE_ID_SUFFIXES as RETIRED_SENSOR_IDS,
+    async_remove_retired_entities as async_remove_retired_sensors,
     async_setup_entry,
     AsekoLocalSensorEntity,
     AsekoConsumptionSensorEntity,
@@ -283,12 +286,12 @@ async def test_async_setup_salt_redox(hass) -> None:
     # + 2 new backwash schedule sensors (last_backwash, next_backwash)
     # + 1 new backwash_active binary sensor
     # + 1 new heating_active binary sensor
-    # + 1 new filtration_mode sensor (Issue #133) — SALT has filtration
-    # The legacy filtration_nonstop24 binary sensor is gone: filtration_mode
-    # reports all four modes, so it said nothing new.  -1 entity.
-    # + 1 filtration_schedule sensor: byte[37] carries a schedule and a manual
-    #   override, and one value cannot report both.  filtration_mode says which
-    #   of the two is in charge; filtration_schedule says which schedule.
+    # byte[37] reshuffle, net zero:
+    #   -1 filtration_nonstop24 binary sensor (the schedule sensor covers it)
+    #   -1 filtration_mode sensor (it conflated the schedule with bit 0x04)
+    #   +1 filtration_schedule sensor  — what the unit runs unattended
+    #   +1 service_menu binary sensor  — bit 0x04, a device state, not a
+    #      filtration one
     assert len(added_entities) == 40
     assert any(
         getattr(e.entity_description, "key", None) != "water_flow_to_probes"
@@ -396,12 +399,12 @@ async def test_async_setup_salt_clf(hass) -> None:
     # + 2 new backwash schedule sensors (last_backwash, next_backwash)
     # + 1 new backwash_active binary sensor
     # + 1 new heating_active binary sensor
-    # + 1 new filtration_mode sensor (Issue #133) — SALT has filtration
-    # The legacy filtration_nonstop24 binary sensor is gone: filtration_mode
-    # reports all four modes, so it said nothing new.  -1 entity.
-    # + 1 filtration_schedule sensor: byte[37] carries a schedule and a manual
-    #   override, and one value cannot report both.  filtration_mode says which
-    #   of the two is in charge; filtration_schedule says which schedule.
+    # byte[37] reshuffle, net zero:
+    #   -1 filtration_nonstop24 binary sensor (the schedule sensor covers it)
+    #   -1 filtration_mode sensor (it conflated the schedule with bit 0x04)
+    #   +1 filtration_schedule sensor  — what the unit runs unattended
+    #   +1 service_menu binary sensor  — bit 0x04, a device state, not a
+    #      filtration one
     assert len(added_entities) == 41
     assert any(
         getattr(e.entity_description, "key", None) != "water_flow_to_probes"
@@ -653,13 +656,12 @@ async def test_async_setup_profi_clf_redox(hass) -> None:
     # though bytes 94-95 carry a real value. -1 entity compared to the PR #120
     # baseline.
     #
-    # Issue #133: PROFI is in FILTRATION_TYPES, so the new filtration_mode
-    # sensor is now created. +1 entity compared to the PR #120 baseline.
-    # The legacy filtration_nonstop24 binary sensor is gone: filtration_mode
-    # reports all four modes, so it said nothing new.  -1 entity.
-    # + 1 filtration_schedule sensor: byte[37] carries a schedule and a manual
-    #   override, and one value cannot report both.  filtration_mode says which
-    #   of the two is in charge; filtration_schedule says which schedule.
+    # byte[37] reshuffle, net zero:
+    #   -1 filtration_nonstop24 binary sensor (the schedule sensor covers it)
+    #   -1 filtration_mode sensor (it conflated the schedule with bit 0x04)
+    #   +1 filtration_schedule sensor  — what the unit runs unattended
+    #   +1 service_menu binary sensor  — bit 0x04, a device state, not a
+    #      filtration one
     assert len(added_entities) == 43
     assert any(
         getattr(e.entity_description, "key", None) == "free_chlorine"
@@ -740,7 +742,7 @@ async def test_retired_removal_leaves_other_entities_alone(
     keep_sensor = registry.async_get_or_create(
         "sensor",
         DOMAIN,
-        "1234filtration_mode",
+        "1234filtration_schedule",
         config_entry=mock_config_entry,
     )
 
@@ -773,7 +775,7 @@ async def test_retired_removal_is_idempotent(hass, mock_config_entry) -> None:
     ]
 
 
-# ── filtration mode and schedule as two entities ────────────────────────────
+# ── filtration schedule, and the settings-menu flag beside it ───────────────
 
 
 def _decode_salt(byte37: int):
@@ -784,61 +786,81 @@ def _decode_salt(byte37: int):
 
 
 @pytest.mark.parametrize(
-    ("byte37", "expected_mode", "expected_schedule"),
+    ("byte37", "expected_schedule", "expected_menu"),
     [
-        (0xC3, "schedule", "nonstop_24h"),
-        (0xD3, "schedule", "timer_period_1"),
-        (0xF3, "schedule", "timer_period_1_and_2"),
-        (0xC7, "service_menu", "nonstop_24h"),
-        (0xD7, "service_menu", "timer_period_1"),
-        (0xF7, "service_menu", "timer_period_1_and_2"),
+        (0xC3, "nonstop_24h", False),
+        (0xD3, "timer_period_1", False),
+        (0xF3, "timer_period_1_and_2", False),
+        (0xC7, "nonstop_24h", True),
+        (0xD7, "timer_period_1", True),
+        (0xF7, "timer_period_1_and_2", True),
     ],
 )
-def test_mode_and_schedule_are_each_readable_on_their_own(
-    byte37: int, expected_mode: str, expected_schedule: str
+def test_schedule_and_service_menu_are_independent(
+    byte37: int, expected_schedule: str, expected_menu: bool
 ) -> None:
-    """Both halves of byte[37] stay readable, whatever the other one says.
+    """byte[37] holds two unrelated things, reported by two entities.
 
-    One sensor answers "is anyone at the unit?", the other "which schedule
-    does it run otherwise?".  Reporting them as a single value would drop
-    the schedule exactly when somebody is there — which is the moment it
-    matters, since the unit goes quiet then and this is the last frame you
-    get.
+    The schedule is what the unit runs when nobody is at it.  The service
+    menu says somebody is — and nothing more, because the unit stops
+    transmitting while it is open.  Neither can stand in for the other.
     """
-    mode = next(d for d in SENSORS if d.key == "filtration_mode")
     schedule = next(d for d in SENSORS if d.key == "filtration_schedule")
+    menu = next(d for d in BINARY_SENSORS if d.key == "service_menu")
     device = _decode_salt(byte37)
 
-    assert mode.value_fn(device) == expected_mode
     assert schedule.value_fn(device) == expected_schedule
+    assert menu.value_fn(device) is expected_menu
 
 
-def test_mode_and_schedule_options_do_not_overlap() -> None:
-    """Neither sensor can report the other's states.
+def test_no_filtration_mode_sensor_remains() -> None:
+    """The conflated sensor is gone, and its registry entry with it.
 
-    An ENUM sensor is validated against its options, so this is what stops
-    the two from drifting back together — no "service_menu" among the
-    schedules, no schedule among the modes.
+    It reported a schedule *or* the menu flag, never both, so it could not
+    answer either question reliably.
     """
-    mode = next(d for d in SENSORS if d.key == "filtration_mode")
+    assert not any(d.key == "filtration_mode" for d in SENSORS)
+    assert "filtration_mode" in RETIRED_SENSOR_IDS
+
+
+def test_schedule_and_service_menu_absent_without_filtration() -> None:
+    """NET has no filtration output, so neither entity is created for it."""
     schedule = next(d for d in SENSORS if d.key == "filtration_schedule")
-
-    assert set(mode.options) == {"schedule", "service_menu"}
-    assert set(schedule.options) == {
-        "nonstop_24h",
-        "timer_period_1",
-        "timer_period_1_and_2",
-    }
-    assert not set(mode.options) & set(schedule.options)
-
-
-def test_mode_and_schedule_absent_without_filtration() -> None:
-    """NET has no filtration output, so neither sensor is created for it."""
-    mode = next(d for d in SENSORS if d.key == "filtration_mode")
-    schedule = next(d for d in SENSORS if d.key == "filtration_schedule")
+    menu = next(d for d in BINARY_SENSORS if d.key == "service_menu")
     device = AsekoDecoder.decode(bytes(_make_net_clf_bytes()))
 
     assert device.device_type == AsekoDeviceType.NET
     # A None value is what keeps an entity from being built for a device.
-    assert mode.value_fn(device) is None
     assert schedule.value_fn(device) is None
+    assert menu.value_fn(device) is None
+
+
+@pytest.mark.asyncio
+async def test_retired_filtration_mode_sensor_is_removed(
+    hass, mock_config_entry
+) -> None:
+    """The dropped filtration_mode sensor is deleted from the registry.
+
+    It shipped, so it exists in users' registries.  Dropping the
+    description alone would leave it in the UI as unavailable forever.
+    """
+    registry = er.async_get(hass)
+    retired = registry.async_get_or_create(
+        "sensor",
+        DOMAIN,
+        "1234filtration_mode",
+        config_entry=mock_config_entry,
+        suggested_object_id="aseko_filtration_mode",
+    )
+    kept = registry.async_get_or_create(
+        "sensor",
+        DOMAIN,
+        "1234filtration_schedule",
+        config_entry=mock_config_entry,
+    )
+
+    async_remove_retired_sensors(hass, mock_config_entry)
+    async_remove_retired_sensors(hass, mock_config_entry)
+
+    assert registry.async_get(retired.entity_id) is None
+    assert registry.async_get(kept.entity_id) is not None

@@ -92,6 +92,9 @@
             },
             "backwash_active": {
                 "name": "Contre-lavage actif"
+            },
+            "service_menu": {
+                "name": "Menu de service"
             }
         },
         "sensor": {
@@ -106,13 +109,6 @@
             },
             "filtration_2_stop": {
                 "name": "Fin filtration 2"
-            },
-            "filtration_mode": {
-                "name": "Mode de filtration",
-                "state": {
-                    "schedule": "Selon le programme",
-                    "service_menu": "Menu de l'appareil ouvert"
-                }
             },
             "pool_volume": {
                 "name": "Volume du bassin"

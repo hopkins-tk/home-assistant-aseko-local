@@ -161,19 +161,19 @@ keeps them apart because neither can stand in for the other:
 | Bits | Meaning | Field |
 |---|---|---|
 | `0x10` / `0x20` | which schedule is configured | `filtration_schedule` |
-| `0x04` | the unit's settings menu is open | `filtration_mode` |
+| `0x04` | the unit's settings menu is open | `service_menu_open` |
 
 Every combination below was captured on an ASIN AQUA Salt with the mode shown
 on the unit itself known, in both directions of each transition:
 
-| `byte[37]` | `filtration_mode` | `filtration_schedule` |
+| `byte[37]` | `service_menu_open` | `filtration_schedule` |
 |---|---|---|
-| `0xC3` | `SCHEDULE` | `NONSTOP_24H` |
-| `0xD3` | `SCHEDULE` | `TIMER_PERIOD_1` |
-| `0xF3` | `SCHEDULE` | `TIMER_PERIOD_1_AND_2` |
-| `0xC7` | `SERVICE_MENU` | `NONSTOP_24H` |
-| `0xD7` | `SERVICE_MENU` | `TIMER_PERIOD_1` |
-| `0xF7` | `SERVICE_MENU` | `TIMER_PERIOD_1_AND_2` |
+| `0xC3` | `False` | `NONSTOP_24H` |
+| `0xD3` | `False` | `TIMER_PERIOD_1` |
+| `0xF3` | `False` | `TIMER_PERIOD_1_AND_2` |
+| `0xC7` | `True` | `NONSTOP_24H` |
+| `0xD7` | `True` | `TIMER_PERIOD_1` |
+| `0xF7` | `True` | `TIMER_PERIOD_1_AND_2` |
 
 These are the same mode bits HOME firmware B uses; the constant `0xC0` in the
 high nibble is SALT's own configuration (`0x80` = algicide routing).
@@ -199,9 +199,9 @@ the user leaves.  Three diagnostics taken during one such session all
 contained the same frame, with `online` going false between them.  Two
 consequences:
 
-* `SERVICE_MENU` is typically the last thing reported before the device goes
-  offline, and `filtration_mode` then holds that value until the user comes
-  back out.  This is correct — it is the last thing the unit actually said.
+* `service_menu_open` going True is typically the last thing reported before
+  the device goes offline, and it stays True until the user comes back out.
+  This is correct — it is the last thing the unit actually said.
 * What the user *does* in there is not observable.  The pump state in that
   final frame is the state on the way in, not the result.  The unit will not
   let you leave until filtration is back in the state it was in before, so

@@ -114,6 +114,15 @@ BINARY_SENSORS: tuple[AsekoLocalBinarySensorEntityDescription, ...] = (
         value_fn=lambda device: device.water_filling_active,
     ),
     AsekoLocalBinarySensorEntityDescription(
+        # byte[37] bit 0x04.  A device state, not a filtration one: while it
+        # is on the unit sends nothing, so what is being done in there — to
+        # filtration or anything else — cannot be seen from here.
+        key="service_menu",
+        translation_key="service_menu",
+        icon="mdi:tune",
+        value_fn=lambda device: device.service_menu_open,
+    ),
+    AsekoLocalBinarySensorEntityDescription(
         key="alarm_ph_too_many_doses",
         translation_key="alarm_ph_too_many_doses",
         icon="mdi:alert",
@@ -153,8 +162,8 @@ BINARY_SENSORS: tuple[AsekoLocalBinarySensorEntityDescription, ...] = (
 # them at setup instead.  Suffixes, because the serial prefix varies.
 RETIRED_UNIQUE_ID_SUFFIXES: frozenset[str] = frozenset(
     {
-        # Superseded by sensor.filtration_mode, which reports all four
-        # modes instead of just "nonstop or not" (Issue #133).
+        # Superseded by sensor.filtration_schedule, which names the schedule
+        # instead of answering only "nonstop or not" (Issue #133).
         "filtration_nonstop24",
     }
 )

@@ -92,6 +92,9 @@
       },
       "backwash_active": {
         "name": "Backwash active"
+      },
+      "service_menu": {
+        "name": "Service menu"
       }
     },
     "sensor": {
@@ -99,13 +102,6 @@
       "filtration_1_stop": { "name": "Filtration 1 stop" },
       "filtration_2_start": { "name": "Filtration 2 start" },
       "filtration_2_stop": { "name": "Filtration 2 stop" },
-      "filtration_mode": {
-        "name": "Filtration mode",
-        "state": {
-          "schedule": "Following schedule",
-          "service_menu": "Settings menu open"
-        }
-      },
       "pool_volume": { "name": "Pool volume" },
       "delay_after_startup": { "name": "Delay after startup" },
       "delay_after_dose": { "name": "Delay after dose" },

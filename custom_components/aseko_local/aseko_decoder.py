@@ -8,7 +8,6 @@ from .aseko_data import (
     AsekoDevice,
     AsekoDeviceType,
     AsekoElectrolyzerDirection,
-    AsekoFiltrationMode,
     AsekoFiltrationSchedule,
     AsekoProbeType,
 )
@@ -650,8 +649,8 @@ class AsekoDecoder:
         unit.alarm_rapid_ph_change = bool(data[13] & 0x08)
 
     @staticmethod
-    def _fill_filtration_mode(unit: AsekoDevice, data: bytes) -> None:
-        """Decode filtration mode into `filtration_mode` (enum).
+    def _fill_filtration_schedule(unit: AsekoDevice, data: bytes) -> None:
+        """Decode byte[37] into `filtration_schedule` and `service_menu_open`.
 
         Runs for every device type in FILTRATION_TYPES = {SALT, HOME, OXY, PROFI}.
         NET is excluded — it has no filtration output (see Issue #66).
@@ -670,13 +669,13 @@ class AsekoDecoder:
             0x01 = nonstop 24h
             0x11 = P1 only
             0x31 = P1 & P2
-            0x15 = P1 + manual override     → SERVICE_MENU (bit 0x04 set)
-            0x35 = P1 & P2 + manual override → SERVICE_MENU (bit 0x04 set)
+            0x15 = P1, settings menu open   → service_menu_open True
+            0x35 = P1 & P2, settings menu open → service_menu_open True
 
-        Bit 0x04 sits on top of a schedule that stays configured underneath
-        it, so the two are decoded into separate fields:
-        `filtration_mode` reports whether anyone is at the unit
-        (SERVICE_MENU wins), `filtration_schedule` what it runs otherwise.
+        Bit 0x04 is not a filtration state at all: it says somebody has the
+        unit's settings menu open.  It is decoded into `service_menu_open`,
+        separately from `filtration_schedule`, which keeps reporting what
+        the unit runs when nobody is at it.
 
         SALT uses the same mode bits as the new encoding above; its high
         nibble carries its own flags (0x80 = algicide routing) and bit 0x40 is
@@ -686,7 +685,7 @@ class AsekoDecoder:
             0xD3 = P1 only
             0xF3 = P1 & P2
             0xD7 / 0xF7 = the above plus the settings menu being open
-                          → SERVICE_MENU (bit 0x04 set)
+                          → service_menu_open True (bit 0x04 set)
 
         Because bit 0x40 is set in every SALT frame, the firmware-A branch is
         taken for HOME only; every other device type reads the bit flags.
@@ -696,8 +695,9 @@ class AsekoDecoder:
         appears on entering, before anything is touched, and the unit stops
         transmitting until the user leaves, so the frame carrying it is the
         last one for the duration.  It therefore shows up as a brief flip to
-        SERVICE_MENU followed by the device going offline, and says only
-        that somebody is there — not what they did.
+        service_menu_open going True, followed by the device going offline.
+        It says only that somebody is there — not what they did, and not
+        what happened to filtration while they were.
 
         That is why the HOME firmware-B pump-off override in
         `_fill_pump_states` stays gated on HOME: there Issue #133 documents
@@ -714,7 +714,7 @@ class AsekoDecoder:
         # at the unit makes it interesting, so they stay apart all the way to
         # the entities.
         schedule: AsekoFiltrationSchedule | None = None
-        manual = False
+        menu: bool | None = None
         b = data[37]
 
         # Firmware A (high nibble 0x4/0x5, serial 110128063, byte 4 = 0x02) uses
@@ -750,7 +750,7 @@ class AsekoDecoder:
                 elif (b & 0x30) == 0x30:
                     schedule = AsekoFiltrationSchedule.TIMER_PERIOD_1_AND_2
 
-                manual = bool(b & AsekoByte37Masks.HOME_FWB_MANUAL_OVERRIDE)
+                menu = bool(b & AsekoByte37Masks.HOME_FWB_MANUAL_OVERRIDE)
 
         # Fallback for unrecognised firmware A values (Issue #135):
         # serial 110175608 (byte 4=0x03 REDOX HOME) has values 0x45/0x49/0x41
@@ -778,14 +778,12 @@ class AsekoDecoder:
             else:
                 schedule = AsekoFiltrationSchedule.TIMER_PERIOD_1
 
-        if schedule is None and not manual:
+        if schedule is None and menu is None:
             # Nothing readable in this frame — say so rather than guess.
             return
 
         unit.filtration_schedule = schedule
-        unit.filtration_mode = (
-            AsekoFiltrationMode.SERVICE_MENU if manual else AsekoFiltrationMode.SCHEDULE
-        )
+        unit.service_menu_open = menu
 
     @staticmethod
     def _fill_consumable_data(unit: AsekoDevice, data: bytes) -> None:
@@ -823,7 +821,7 @@ class AsekoDecoder:
         # Gated on HOME so SALT / OXY / NET / PROFI behaviour is unchanged.
         if (
             unit.device_type == AsekoDeviceType.HOME
-            and unit.filtration_mode == AsekoFiltrationMode.SERVICE_MENU
+            and unit.service_menu_open is True
             and unit.filtration_pump_running is True
         ):
             _LOGGER.debug(
@@ -914,7 +912,7 @@ class AsekoDecoder:
         # Filtration mode must be decoded before consumable data (Issue #133):
         # the byte[37] bit 0x04 state short-circuits
         # `filtration_pump_running` in `_fill_consumable_data`.
-        AsekoDecoder._fill_filtration_mode(device, data)
+        AsekoDecoder._fill_filtration_schedule(device, data)
         AsekoDecoder._fill_consumable_data(device, data)
         AsekoDecoder._fill_home_water_level_data(device, data)
         AsekoDecoder._fill_alarm_data(device, data)
