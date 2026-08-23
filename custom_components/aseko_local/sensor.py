@@ -351,7 +351,9 @@ SENSORS: list[AsekoSensorEntityDescription] = [
     AsekoSensorEntityDescription(
         key="max_filling_time",
         translation_key="max_filling_time",
-        native_unit_of_measurement=UnitOfTime.MINUTES,
+        device_class=SensorDeviceClass.DURATION,
+        native_unit_of_measurement=UnitOfTime.SECONDS,
+        suggested_display_precision=0,
         state_class=SensorStateClass.MEASUREMENT,
         icon="mdi:timer",
         value_fn=lambda device: device.max_filling_time,

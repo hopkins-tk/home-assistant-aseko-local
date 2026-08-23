@@ -68,7 +68,7 @@ BACKWASH_TYPES = frozenset(
 
 # Device types that have a water-level probe + filling-valve output and
 # therefore expose the water_level live value plus the four threshold setpoints
-# (bytes 27, 102-105) and the max_filling_time (bytes 94-95).
+# (bytes 27, 102-105) and the max_filling_time (bytes 76-77).
 # NET (Aqua NET) and PROFI do not have a filling valve → skip the whole group.
 # Mirrors the existing _fill_home_water_level_data() NET early-return.
 WATER_LEVEL_TYPES = frozenset(
@@ -233,12 +233,25 @@ class AsekoDecoder:
 
     @staticmethod
     def _max_filling_time_from_bytes(data: bytes) -> int | None:
-        """Decode max_filling_time (bytes 94-95) as a 2-byte big-endian minute value.
+        """Decode max_filling_time (bytes 76-77) as 2-byte big-endian seconds.
+
+        Returned in seconds, exactly as the unit transmits it, matching
+        the neighbouring delay_after_startup (bytes 74-75) and
+        delay_after_dose (bytes 106-107).  The sensor declares seconds
+        too, so Home Assistant can convert for display per entity.
+
+        Verified on an ASIN AQUA Salt unit, firmware v7, by changing the
+        setting in the Aseko Live app and re-reading the frame:
+            0x0708 = 1800  -> app showed 30 min
+            0x0B04 = 2820  -> app showed 47 min
+
+        Bytes 94-95 were the previous guess and are wrong: byte 95 is
+        flowrate_ph_minus (ml/min).
 
         Returns None for the 0xFFFF sentinel (device does not implement the
         feature) so that downstream consumers see ``None`` instead of ``65535``.
         Issue #129: a bare ``int.from_bytes(...)`` would otherwise turn
-        unspecified frame data into a bogus 65535-minute value on NET/PROFI.
+        unspecified frame data into a bogus value on NET/PROFI.
         """
         value = int.from_bytes(data, "big")
         if value == 0xFFFF:
@@ -824,19 +837,15 @@ class AsekoDecoder:
                 else None
             ),
             pool_volume=int.from_bytes(data[92:94], "big"),
-            # max_filling_time is stored in minutes (verified against Aseko Live
-            # app for serial 110071590: raw bytes 94:95 = 0x003c = 60, app shows
-            # 60 min). The earlier "× 30 seconds" interpretation was wrong.
-            # See water_level_backwash_analysis.md and home_device_analysis.md
-            # (Bug 1, the 30 s hypothesis from DomSchCoding #100 was rejected by
-            # the live app screenshot).
+            # max_filling_time is transmitted in seconds at bytes 76-77 and
+            # reported in seconds — see _max_filling_time_from_bytes.
             #
-            # Gated on WATER_LEVEL_TYPES: NET (Aqua NET) and PROFI have no filling
-            # valve, so bytes 94-95 either carry unrelated data or are 0xFFFF.
-            # A bare int.from_bytes(..., "big") would otherwise turn 0xFFFF into
-            # 65535 — fix that by normalising to None on 0xFFFF as well.
+            # Gated on WATER_LEVEL_TYPES: NET (Aqua NET) and PROFI have no
+            # filling valve, so the bytes either carry unrelated data or are
+            # 0xFFFF.  A bare int.from_bytes(..., "big") would otherwise turn
+            # 0xFFFF into 65535 — normalised to None in the helper.
             max_filling_time=(
-                AsekoDecoder._max_filling_time_from_bytes(data[94:96])
+                AsekoDecoder._max_filling_time_from_bytes(data[76:78])
                 if has_water_level
                 else None
             ),
