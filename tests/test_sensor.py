@@ -13,6 +13,7 @@ from custom_components.aseko_local.sensor import (
     async_setup_entry,
     AsekoLocalSensorEntity,
     AsekoConsumptionSensorEntity,
+    SENSORS,
 )
 from custom_components.aseko_local.aseko_decoder import AsekoDecoder
 
@@ -285,7 +286,10 @@ async def test_async_setup_salt_redox(hass) -> None:
     # + 1 new filtration_mode sensor (Issue #133) — SALT has filtration
     # The legacy filtration_nonstop24 binary sensor is gone: filtration_mode
     # reports all four modes, so it said nothing new.  -1 entity.
-    assert len(added_entities) == 39
+    # + 1 filtration_schedule sensor: byte[37] carries a schedule and a manual
+    #   override, and one value cannot report both.  filtration_mode says which
+    #   of the two is in charge; filtration_schedule says which schedule.
+    assert len(added_entities) == 40
     assert any(
         getattr(e.entity_description, "key", None) != "water_flow_to_probes"
         for e in added_entities
@@ -395,7 +399,10 @@ async def test_async_setup_salt_clf(hass) -> None:
     # + 1 new filtration_mode sensor (Issue #133) — SALT has filtration
     # The legacy filtration_nonstop24 binary sensor is gone: filtration_mode
     # reports all four modes, so it said nothing new.  -1 entity.
-    assert len(added_entities) == 40
+    # + 1 filtration_schedule sensor: byte[37] carries a schedule and a manual
+    #   override, and one value cannot report both.  filtration_mode says which
+    #   of the two is in charge; filtration_schedule says which schedule.
+    assert len(added_entities) == 41
     assert any(
         getattr(e.entity_description, "key", None) != "water_flow_to_probes"
         for e in added_entities
@@ -650,7 +657,10 @@ async def test_async_setup_profi_clf_redox(hass) -> None:
     # sensor is now created. +1 entity compared to the PR #120 baseline.
     # The legacy filtration_nonstop24 binary sensor is gone: filtration_mode
     # reports all four modes, so it said nothing new.  -1 entity.
-    assert len(added_entities) == 42
+    # + 1 filtration_schedule sensor: byte[37] carries a schedule and a manual
+    #   override, and one value cannot report both.  filtration_mode says which
+    #   of the two is in charge; filtration_schedule says which schedule.
+    assert len(added_entities) == 43
     assert any(
         getattr(e.entity_description, "key", None) == "free_chlorine"
         for e in added_entities
@@ -761,3 +771,73 @@ async def test_retired_removal_is_idempotent(hass, mock_config_entry) -> None:
         )
         if entry.unique_id.endswith("filtration_nonstop24")
     ]
+
+
+# ── filtration mode and schedule as two entities ────────────────────────────
+
+
+def _decode_salt(byte37: int):
+    """Decode a SALT frame carrying the given byte[37]."""
+    data = _make_salt_redox_bytes()
+    data[37] = byte37
+    return AsekoDecoder.decode(bytes(data))
+
+
+@pytest.mark.parametrize(
+    ("byte37", "expected_mode", "expected_schedule"),
+    [
+        (0xC3, "schedule", "nonstop_24h"),
+        (0xD3, "schedule", "timer_period_1"),
+        (0xF3, "schedule", "timer_period_1_and_2"),
+        (0xC7, "manual", "nonstop_24h"),
+        (0xD7, "manual", "timer_period_1"),
+        (0xF7, "manual", "timer_period_1_and_2"),
+    ],
+)
+def test_mode_and_schedule_are_each_readable_on_their_own(
+    byte37: int, expected_mode: str, expected_schedule: str
+) -> None:
+    """Both halves of byte[37] stay readable, whatever the other one says.
+
+    One sensor answers "is the schedule in charge?", the other "which
+    schedule?".  Reporting them as a single value would drop the schedule
+    whenever the answer is manual — which is the moment it matters, since
+    the unit goes quiet there and this is the last frame you get.
+    """
+    mode = next(d for d in SENSORS if d.key == "filtration_mode")
+    schedule = next(d for d in SENSORS if d.key == "filtration_schedule")
+    device = _decode_salt(byte37)
+
+    assert mode.value_fn(device) == expected_mode
+    assert schedule.value_fn(device) == expected_schedule
+
+
+def test_mode_and_schedule_options_do_not_overlap() -> None:
+    """Neither sensor can report the other's states.
+
+    An ENUM sensor is validated against its options, so this is what stops
+    the two from drifting back together — no "manual" among the schedules,
+    no schedule among the modes.
+    """
+    mode = next(d for d in SENSORS if d.key == "filtration_mode")
+    schedule = next(d for d in SENSORS if d.key == "filtration_schedule")
+
+    assert set(mode.options) == {"schedule", "manual"}
+    assert set(schedule.options) == {
+        "nonstop_24h",
+        "timer_period_1",
+        "timer_period_1_and_2",
+    }
+    assert not set(mode.options) & set(schedule.options)
+
+
+def test_mode_and_schedule_absent_without_filtration() -> None:
+    """NET has no filtration output, so neither sensor is created for it."""
+    mode = next(d for d in SENSORS if d.key == "filtration_mode")
+    schedule = next(d for d in SENSORS if d.key == "filtration_schedule")
+    device = AsekoDecoder.decode(bytes(_make_net_clf_bytes()))
+
+    assert device.device_type == AsekoDeviceType.NET
+    # A None value is what keeps an entity from being built for a device.
+    assert mode.value_fn(device) is None
+    assert schedule.value_fn(device) is None

@@ -110,10 +110,8 @@
             "filtration_mode": {
                 "name": "Mode de filtration",
                 "state": {
-                  "nonstop_24h": "24 h en continu",
-                  "timer_period_1": "Plage horaire 1",
-                  "timer_period_1_and_2": "Plages horaires 1 et 2",
-                  "manual": "Mode manuel"
+                    "schedule": "Selon le programme",
+                    "manual": "Commande manuelle"
                 }
             },
             "pool_volume": {
@@ -295,6 +293,14 @@
             },
             "oxy_total_consumed": {
                 "name": "OXY Pure consommé (total)"
+            },
+            "filtration_schedule": {
+                "name": "Programme de filtration",
+                "state": {
+                    "nonstop_24h": "24 h en continu",
+                    "timer_period_1": "Plage horaire 1",
+                    "timer_period_1_and_2": "Plages horaires 1 et 2"
+                }
             }
         },
         "number": {
