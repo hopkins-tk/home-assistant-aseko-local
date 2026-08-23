@@ -78,9 +78,6 @@
       "water_filling_active": {
         "name": "Plnění vody aktivní"
       },
-      "filtration_nonstop24": {
-        "name": "Filtrace nonstop 24h"
-      },
       "alarm_ph_too_many_doses": {
         "name": "Příliš mnoho dávek pH"
       },

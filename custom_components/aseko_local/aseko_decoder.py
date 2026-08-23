@@ -695,6 +695,9 @@ class AsekoDecoder:
 
         The legacy `filtration_nonstop24` boolean field is kept for
         backwards compatibility and is derived from `filtration_mode` here.
+        It no longer has an entity of its own — `filtration_mode` reports all
+        four modes rather than just whether it is nonstop — but it stays in
+        the decoded device, and so in diagnostics.
         """
         if unit.device_type is None or unit.device_type not in FILTRATION_TYPES:
             return

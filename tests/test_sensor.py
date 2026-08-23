@@ -2,8 +2,10 @@ import pytest
 from unittest.mock import MagicMock
 
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.helpers import entity_registry as er
 
 from custom_components.aseko_local.binary_sensor import (
+    async_remove_retired_entities,
     async_setup_entry as binary_async_setup_entry,
     AsekoLocalBinarySensorEntity,
 )
@@ -14,7 +16,11 @@ from custom_components.aseko_local.sensor import (
 )
 from custom_components.aseko_local.aseko_decoder import AsekoDecoder
 
-from custom_components.aseko_local.const import UNIT_TYPE_PROFI, WATER_FLOW_TO_PROBES
+from custom_components.aseko_local.const import (
+    DOMAIN,
+    UNIT_TYPE_PROFI,
+    WATER_FLOW_TO_PROBES,
+)
 from custom_components.aseko_local.aseko_data import AsekoDeviceType
 
 
@@ -232,6 +238,9 @@ async def test_async_setup_salt_redox(hass) -> None:
 
     # Create a MagicMock for ConfigEntry with runtime_data attribute
     dummy_entry = MagicMock(spec=ConfigEntry)
+    # entry_id is an instance attribute, so spec= does not provide it, but
+    # async_setup_entry needs it to clean up retired entities.
+    dummy_entry.entry_id = "test_entry_id"
     dummy_entry.runtime_data = type(
         "RuntimeData", (), {"coordinator": DummyCoordinator()}
     )
@@ -274,7 +283,9 @@ async def test_async_setup_salt_redox(hass) -> None:
     # + 1 new backwash_active binary sensor
     # + 1 new heating_active binary sensor
     # + 1 new filtration_mode sensor (Issue #133) — SALT has filtration
-    assert len(added_entities) == 40
+    # The legacy filtration_nonstop24 binary sensor is gone: filtration_mode
+    # reports all four modes, so it said nothing new.  -1 entity.
+    assert len(added_entities) == 39
     assert any(
         getattr(e.entity_description, "key", None) != "water_flow_to_probes"
         for e in added_entities
@@ -336,6 +347,9 @@ async def test_async_setup_salt_clf(hass) -> None:
 
     # Create a MagicMock for ConfigEntry with runtime_data attribute
     dummy_entry = MagicMock(spec=ConfigEntry)
+    # entry_id is an instance attribute, so spec= does not provide it, but
+    # async_setup_entry needs it to clean up retired entities.
+    dummy_entry.entry_id = "test_entry_id"
     dummy_entry.runtime_data = type(
         "RuntimeData", (), {"coordinator": DummyCoordinator()}
     )
@@ -379,7 +393,9 @@ async def test_async_setup_salt_clf(hass) -> None:
     # + 1 new backwash_active binary sensor
     # + 1 new heating_active binary sensor
     # + 1 new filtration_mode sensor (Issue #133) — SALT has filtration
-    assert len(added_entities) == 41
+    # The legacy filtration_nonstop24 binary sensor is gone: filtration_mode
+    # reports all four modes, so it said nothing new.  -1 entity.
+    assert len(added_entities) == 40
     assert any(
         getattr(e.entity_description, "key", None) != "water_flow_to_probes"
         for e in added_entities
@@ -434,6 +450,9 @@ async def test_async_setup_net_clf(hass) -> None:
 
     # Create a MagicMock for ConfigEntry with runtime_data attribute
     dummy_entry = MagicMock(spec=ConfigEntry)
+    # entry_id is an instance attribute, so spec= does not provide it, but
+    # async_setup_entry needs it to clean up retired entities.
+    dummy_entry.entry_id = "test_entry_id"
     dummy_entry.runtime_data = type(
         "RuntimeData", (), {"coordinator": DummyCoordinator()}
     )
@@ -469,7 +488,8 @@ async def test_async_setup_net_clf(hass) -> None:
         for e in added_entities
     )
     # 8 sensors + 3 new (pool_volume, delay_after_startup, delay_after_dose; filtration None)
-    # + 3 binary (water_flow, cl_pump, ph_minus_pump – NET has no filtration output)
+    # + 3 binary (water_flow, cl_pump, ph_minus_pump – NET has no filtration output,
+    #   so it never had the retired filtration_nonstop24 sensor either)
     # + 4 consumption (ph_minus canister + total, cl canister + total) + 1 connection_status
     # note: required_algicide/required_floc are absent because byte[37]=0xFF (undefined)
     # note: filtration sensors skipped because start/stop times are None in NET test data
@@ -555,6 +575,9 @@ async def test_async_setup_profi_clf_redox(hass) -> None:
 
     # Create a MagicMock for ConfigEntry with runtime_data attribute
     dummy_entry = MagicMock(spec=ConfigEntry)
+    # entry_id is an instance attribute, so spec= does not provide it, but
+    # async_setup_entry needs it to clean up retired entities.
+    dummy_entry.entry_id = "test_entry_id"
     dummy_entry.runtime_data = type(
         "RuntimeData", (), {"coordinator": DummyCoordinator()}
     )
@@ -625,7 +648,9 @@ async def test_async_setup_profi_clf_redox(hass) -> None:
     #
     # Issue #133: PROFI is in FILTRATION_TYPES, so the new filtration_mode
     # sensor is now created. +1 entity compared to the PR #120 baseline.
-    assert len(added_entities) == 43
+    # The legacy filtration_nonstop24 binary sensor is gone: filtration_mode
+    # reports all four modes, so it said nothing new.  -1 entity.
+    assert len(added_entities) == 42
     assert any(
         getattr(e.entity_description, "key", None) == "free_chlorine"
         for e in added_entities
@@ -663,3 +688,76 @@ async def test_async_setup_profi_clf_redox(hass) -> None:
         getattr(e.entity_description, "key", None) == "max_filling_time"
         for e in added_entities
     )
+
+
+# ── retired entities ────────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_retired_nonstop24_entity_is_removed(hass, mock_config_entry) -> None:
+    """The dropped filtration_nonstop24 sensor is deleted from the registry.
+
+    Removing the entity description alone would leave the registry entry
+    behind, and the entity would sit in the UI as unavailable forever with
+    no sign that it is never coming back.
+    """
+    registry = er.async_get(hass)
+    retired = registry.async_get_or_create(
+        "binary_sensor",
+        DOMAIN,
+        "1234filtration_nonstop24",
+        config_entry=mock_config_entry,
+        suggested_object_id="aseko_filtration_nonstop_24h",
+    )
+
+    async_remove_retired_entities(hass, mock_config_entry)
+
+    assert registry.async_get(retired.entity_id) is None
+
+
+@pytest.mark.asyncio
+async def test_retired_removal_leaves_other_entities_alone(
+    hass, mock_config_entry
+) -> None:
+    """Only the retired key is touched — and only in its own domain."""
+    registry = er.async_get(hass)
+    keep_binary = registry.async_get_or_create(
+        "binary_sensor",
+        DOMAIN,
+        "1234filtration_pump_running",
+        config_entry=mock_config_entry,
+    )
+    keep_sensor = registry.async_get_or_create(
+        "sensor",
+        DOMAIN,
+        "1234filtration_mode",
+        config_entry=mock_config_entry,
+    )
+
+    async_remove_retired_entities(hass, mock_config_entry)
+
+    assert registry.async_get(keep_binary.entity_id) is not None
+    assert registry.async_get(keep_sensor.entity_id) is not None
+
+
+@pytest.mark.asyncio
+async def test_retired_removal_is_idempotent(hass, mock_config_entry) -> None:
+    """A second run has nothing left to do and must not raise."""
+    registry = er.async_get(hass)
+    registry.async_get_or_create(
+        "binary_sensor",
+        DOMAIN,
+        "1234filtration_nonstop24",
+        config_entry=mock_config_entry,
+    )
+
+    async_remove_retired_entities(hass, mock_config_entry)
+    async_remove_retired_entities(hass, mock_config_entry)
+
+    assert not [
+        entry
+        for entry in er.async_entries_for_config_entry(
+            registry, mock_config_entry.entry_id
+        )
+        if entry.unique_id.endswith("filtration_nonstop24")
+    ]

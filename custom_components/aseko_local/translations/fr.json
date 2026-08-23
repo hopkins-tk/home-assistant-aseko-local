@@ -78,9 +78,6 @@
             "water_filling_active": {
                 "name": "Remplissage d'eau actif"
             },
-            "filtration_nonstop24": {
-                "name": "Filtration nonstop 24h"
-            },
             "alarm_ph_too_many_doses": {
                 "name": "Alarme pH : trop de doses"
             },

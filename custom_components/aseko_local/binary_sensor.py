@@ -9,6 +9,7 @@ from homeassistant.components.binary_sensor import (
     BinarySensorEntityDescription,
 )
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import AsekoLocalConfigEntry
@@ -113,12 +114,6 @@ BINARY_SENSORS: tuple[AsekoLocalBinarySensorEntityDescription, ...] = (
         value_fn=lambda device: device.water_filling_active,
     ),
     AsekoLocalBinarySensorEntityDescription(
-        key="filtration_nonstop24",
-        translation_key="filtration_nonstop24",
-        icon="mdi:clock-check",
-        value_fn=lambda device: device.filtration_nonstop24,
-    ),
-    AsekoLocalBinarySensorEntityDescription(
         key="alarm_ph_too_many_doses",
         translation_key="alarm_ph_too_many_doses",
         icon="mdi:alert",
@@ -151,12 +146,57 @@ BINARY_SENSORS: tuple[AsekoLocalBinarySensorEntityDescription, ...] = (
 )
 
 
+# Binary sensor keys that no longer exist.  The unique_id is
+# f"{serial_number}{key}", so a removed key leaves its registry entry
+# behind: the entity would sit in the UI as unavailable forever, with no
+# hint that it is not coming back.  async_remove_retired_entities deletes
+# them at setup instead.  Suffixes, because the serial prefix varies.
+RETIRED_UNIQUE_ID_SUFFIXES: frozenset[str] = frozenset(
+    {
+        # Superseded by sensor.filtration_mode, which reports all four
+        # modes instead of just "nonstop or not" (Issue #133).
+        "filtration_nonstop24",
+    }
+)
+
+
+@callback
+def async_remove_retired_entities(
+    hass: HomeAssistant, config_entry: AsekoLocalConfigEntry
+) -> None:
+    """Delete registry entries for binary sensors that no longer exist.
+
+    Runs before the entities are added, so the retired one never gets a
+    chance to be restored as unavailable.
+
+    Nothing happens when there is no matching entry, so this is a no-op on
+    fresh installs and on every setup after the first.
+    """
+    registry = er.async_get(hass)
+
+    for entry in er.async_entries_for_config_entry(registry, config_entry.entry_id):
+        if entry.domain != "binary_sensor":
+            continue
+        if not any(
+            entry.unique_id.endswith(suffix) for suffix in RETIRED_UNIQUE_ID_SUFFIXES
+        ):
+            continue
+        _LOGGER.info(
+            "Removing retired Aseko binary sensor %s (unique_id %s)",
+            entry.entity_id,
+            entry.unique_id,
+        )
+        registry.async_remove(entry.entity_id)
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     config_entry: AsekoLocalConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up the Aseko device binary sensors."""
+
+    async_remove_retired_entities(hass, config_entry)
 
     coordinator = config_entry.runtime_data.coordinator
     devices = coordinator.get_devices()
