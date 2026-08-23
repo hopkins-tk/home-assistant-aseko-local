@@ -55,7 +55,7 @@ def _make_base_bytes(size: int = 120) -> bytearray:
     data[74:76] = (120).to_bytes(2, "big")  # delay_after_startup
     data[92:94] = (5000).to_bytes(2, "big")  # pool_volume
     data[95] = 10  # flowrate_chlor
-    data[76:78] = (3600).to_bytes(2, "big")  # max_filling_time = 3600 s = 60 min
+    data[76:78] = (3600).to_bytes(2, "big")  # max_filling_time, raw 3600
     data[94:96] = (60).to_bytes(2, "big")  # byte 95 = flowrate_ph_minus
     data[97] = 20  # flowrate_ph_plus
     data[99] = 255  # flowrate_ph_minus (not measured)
@@ -123,7 +123,7 @@ def test_decode_home() -> None:
     assert device.filtration_pump_running is True
     assert device.water_flow_to_probes is True
     assert device.pool_volume == 5000
-    assert device.max_filling_time == 60  # bytes 76-77 = 3600 s
+    assert device.max_filling_time == 3600  # bytes 76-77, raw
     assert device.delay_after_startup == 120
     assert device.delay_after_dose == 30
     assert device.start1 == time(8, 0)
@@ -523,10 +523,10 @@ def test_max_filling_time_real_value_home() -> None:
     data = _make_base_bytes()
     data[4] = 0x02  # UNIT_TYPE_HOME_CLF — any HOME subtype works
     data[6:12] = bytes([24, 6, 15, 12, 34, 56])
-    data[76:78] = (3600).to_bytes(2, "big")  # 3600 s = 60 min
+    data[76:78] = (3600).to_bytes(2, "big")
     device = AsekoDecoder.decode(bytes(data))
     assert device.device_type == AsekoDeviceType.HOME
-    assert device.max_filling_time == 60
+    assert device.max_filling_time == 3600
 
 
 def test_decode_issue_17() -> None:
@@ -1081,7 +1081,7 @@ def test_decode_home_clf_real_frame() -> None:
     # serial 110071590 in Issue #110.  Not separately confirmed against the app
     # for this serial; the offset itself was verified on a SALT v7 by changing
     # the setting and watching which bytes moved.
-    assert device.max_filling_time == 180
+    assert device.max_filling_time == 10800
     assert device.delay_after_startup == 480
     assert device.delay_after_dose == 240
     # Flowrates
@@ -1793,7 +1793,7 @@ def test_home_byte12_not_an_alarm_byte() -> None:
 
 
 def test_home_max_filling_time() -> None:
-    """max_filling_time is transmitted in seconds at bytes 76-77.
+    """max_filling_time is transmitted at bytes 76-77.
 
     Verified on an ASIN AQUA Salt (v7) by changing the setting in the Aseko
     Live app: 0x0708 = 1800 s showed as 30 min, 0x0B04 = 2820 s as 47 min.
@@ -1803,10 +1803,10 @@ def test_home_max_filling_time() -> None:
     filling limit (Issue #110).
     """
     data = _make_home_bytes()
-    data[76:78] = (3600).to_bytes(2, "big")  # 3600 s
+    data[76:78] = (3600).to_bytes(2, "big")
 
     device = AsekoDecoder.decode(bytes(data))
-    assert device.max_filling_time == 60  # seconds / 60
+    assert device.max_filling_time == 3600  # returned as transmitted
 
 
 # ── Backwash relay state (Issue #100) ────────────────────────────────────────

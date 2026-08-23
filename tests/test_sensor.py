@@ -57,7 +57,7 @@ def _make_salt_redox_bytes() -> bytearray:
     data[71] = 2  # backwash_duration (20)
     data[74:76] = (120).to_bytes(2, "big")  # delay_after_startup
     data[92:94] = (5000).to_bytes(2, "big")  # pool_volume
-    data[76:78] = (3600).to_bytes(2, "big")  # max_filling_time = 3600 s = 60 min
+    data[76:78] = (3600).to_bytes(2, "big")  # max_filling_time, raw 3600
     data[94:96] = (60).to_bytes(2, "big")  # byte 95 = flowrate_ph_minus = 60
     data[97] = 255  # flowrate_ph_plus: 0xFF = not present
     data[99] = 255  # flowrate_chlor: 0xFF = SALT has no chlorine pump
@@ -104,7 +104,7 @@ def _make_salt_clf_bytes() -> bytearray:
     data[71] = 2  # backwash_duration (20)
     data[74:76] = (120).to_bytes(2, "big")  # delay_after_startup
     data[92:94] = (5000).to_bytes(2, "big")  # pool_volume
-    data[76:78] = (3600).to_bytes(2, "big")  # max_filling_time = 3600 s = 60 min
+    data[76:78] = (3600).to_bytes(2, "big")  # max_filling_time, raw 3600
     data[94:96] = (60).to_bytes(2, "big")  # byte 95 = flowrate_ph_minus = 60
     data[97] = 20  # flowrate_ph_plus
     data[99] = 255  # flowrate_chlor: 0xFF = SALT has no chlorine pump
@@ -154,7 +154,7 @@ def _make_net_clf_bytes() -> bytearray:
     data[71] = 255  # backwash_duration / HEX: 0xff
     data[74:76] = (65535).to_bytes(2, "big")  # delay_after_startup / HEX: 0xffff
     data[92:94] = (1).to_bytes(2, "big")  # pool_volume / HEX: 0x0001
-    data[76:78] = (3600).to_bytes(2, "big")  # max_filling_time = 3600 s = 60 min
+    data[76:78] = (3600).to_bytes(2, "big")  # max_filling_time, raw 3600
     data[94:96] = (60).to_bytes(2, "big")  # byte 95 = flowrate / HEX: 0x003c
     data[95] = 60  # flowrate_chlor / HEX: 0x3c
     data[97] = 255  # flowrate_ph_plus / HEX: 0xff
@@ -203,7 +203,7 @@ def _make_profi_clf_redox_bytes() -> bytearray:
     data[74:76] = (120).to_bytes(2, "big")  # delay_after_startup
     data[92:94] = (5000).to_bytes(2, "big")  # pool_volume
     data[95] = 10  # flowrate_chlor
-    data[76:78] = (3600).to_bytes(2, "big")  # max_filling_time = 3600 s = 60 min
+    data[76:78] = (3600).to_bytes(2, "big")  # max_filling_time, raw 3600
     data[94:96] = (60).to_bytes(2, "big")  # byte 95 = flowrate_ph_minus
     data[97] = 20  # flowrate_ph_plus
     data[99] = 255  # flowrate_ph_minus (not measured)
