@@ -8,7 +8,7 @@ from .aseko_data import (
     AsekoDevice,
     AsekoDeviceType,
     AsekoElectrolyzerDirection,
-    AsekoFiltrationMode,
+    AsekoFiltrationSchedule,
     AsekoProbeType,
 )
 from .aseko_v7_helpers import (
@@ -649,8 +649,8 @@ class AsekoDecoder:
         unit.alarm_rapid_ph_change = bool(data[13] & 0x08)
 
     @staticmethod
-    def _fill_filtration_mode(unit: AsekoDevice, data: bytes) -> None:
-        """Decode filtration mode into `filtration_mode` (enum).
+    def _fill_filtration_schedule(unit: AsekoDevice, data: bytes) -> None:
+        """Decode byte[37] into `filtration_schedule` and `service_menu_open`.
 
         Runs for every device type in FILTRATION_TYPES = {SALT, HOME, OXY, PROFI}.
         NET is excluded — it has no filtration output (see Issue #66).
@@ -669,73 +669,121 @@ class AsekoDecoder:
             0x01 = nonstop 24h
             0x11 = P1 only
             0x31 = P1 & P2
-            0x15 = P1 + manual override     → MANUAL (bit 0x04 set)
-            0x35 = P1 & P2 + manual override → MANUAL (bit 0x04 set)
+            0x15 = P1, settings menu open   → service_menu_open True
+            0x35 = P1 & P2, settings menu open → service_menu_open True
 
-        The legacy `filtration_nonstop24` boolean field is kept for
-        backwards compatibility and is derived from `filtration_mode` here.
+        Bit 0x04 is not a filtration state at all: it says somebody has the
+        unit's settings menu open.  It is decoded into `service_menu_open`,
+        separately from `filtration_schedule`, which keeps reporting what
+        the unit runs when nobody is at it.
+
+        SALT uses the same mode bits as the new encoding above; its high
+        nibble carries its own flags (0x80 = algicide routing) and bit 0x40 is
+        set in every frame.  Confirmed on an ASIN AQUA Salt, in both directions
+        of every transition:
+            0xC3 = nonstop 24h
+            0xD3 = P1 only
+            0xF3 = P1 & P2
+            0xD7 / 0xF7 = the above plus the settings menu being open
+                          → service_menu_open True (bit 0x04 set)
+
+        Because bit 0x40 is set in every SALT frame, the firmware-A branch is
+        taken for HOME only; every other device type reads the bit flags.
+
+        On SALT, bit 0x04 marks the unit's settings menu being open — the
+        menu filtration and backwash can be started by hand from.  It
+        appears on entering, before anything is touched, and the unit stops
+        transmitting until the user leaves, so the frame carrying it is the
+        last one for the duration.  It therefore shows up as a brief flip to
+        service_menu_open going True, followed by the device going offline.
+        It says only that somebody is there — not what they did, and not
+        what happened to filtration while they were.
+
+        That is why the HOME firmware-B pump-off override in
+        `_fill_pump_states` stays gated on HOME: there Issue #133 documents
+        the bit as a standing override that forces the pump *off*, while on
+        SALT the user may equally have switched it on.
+
         """
         if unit.device_type is None or unit.device_type not in FILTRATION_TYPES:
             return
 
-        mode: AsekoFiltrationMode | None = None
+        # The two independent halves of byte[37]: which schedule is configured,
+        # and whether the user has taken the pump over by hand.  Folding them
+        # into one value would drop the schedule exactly when somebody being
+        # at the unit makes it interesting, so they stay apart all the way to
+        # the entities.
+        schedule: AsekoFiltrationSchedule | None = None
+        menu: bool | None = None
         b = data[37]
 
-        # byte[37] carries the mode flag for every FILTRATION_TYPES device
-        # (SALT, HOME, OXY, PROFI).  Firmware A (high nibble 0x4/0x5,
-        # serial 110128063, byte 4 = 0x02) uses exact byte values.
-        # Firmware B (high nibble 0x0/0x1/0x3, serial 110169464, byte 4 = 0x03)
-        # uses bit flags:
+        # Firmware A (high nibble 0x4/0x5, serial 110128063, byte 4 = 0x02) uses
+        # exact byte values and encodes no manual state.  Firmware B (high nibble
+        # 0x0/0x1/0x3, serial 110169464, byte 4 = 0x03) uses bit flags:
         #   bit 2 (0x04) = manual override active
         #   bit 4 (0x10) = period 1 enabled
         #   bit 5 (0x20) = period 2 enabled
+        #
+        # Firmware A is a HOME encoding, and bit 0x40 only discriminates it
+        # there.  On the other FILTRATION_TYPES that bit is part of an unrelated
+        # configuration value — SALT sets it in every frame — so routing them by
+        # it sent them into a branch of HOME-specific exact values they can
+        # never match.
+        is_home = unit.device_type == AsekoDeviceType.HOME
+
         if b != UNSPECIFIED_VALUE:
-            if b & 0x40:
+            if is_home and b & 0x40:
                 # Firmware A: high nibble 0x4/0x5.
                 if b == 0x43:
-                    mode = AsekoFiltrationMode.NONSTOP_24H
+                    schedule = AsekoFiltrationSchedule.NONSTOP_24H
                 elif b == 0x53:
-                    mode = AsekoFiltrationMode.TIMER_PERIOD_1_AND_2
+                    schedule = AsekoFiltrationSchedule.TIMER_PERIOD_1_AND_2
                 # 0x47 / 0x57 → transitional edit state, leave as None.
             else:
-                # Firmware B: high nibble 0x0/0x1/0x3.
-                if b & 0x04:
-                    # Manual override active — bit 2 set.
-                    # Observed values: 0x15 (P1 + override),
-                    # 0x35 (P1&P2 + override).
-                    mode = AsekoFiltrationMode.MANUAL
-                elif (b & 0x30) == 0x00:
-                    mode = AsekoFiltrationMode.NONSTOP_24H
+                # Firmware B.  0x20 without 0x10 has never been seen — period 2
+                # is only offered on top of period 1 — and leaves the schedule
+                # unset rather than guessed.
+                if (b & 0x30) == 0x00:
+                    schedule = AsekoFiltrationSchedule.NONSTOP_24H
                 elif (b & 0x30) == 0x10:
-                    mode = AsekoFiltrationMode.TIMER_PERIOD_1
+                    schedule = AsekoFiltrationSchedule.TIMER_PERIOD_1
                 elif (b & 0x30) == 0x30:
-                    mode = AsekoFiltrationMode.TIMER_PERIOD_1_AND_2
+                    schedule = AsekoFiltrationSchedule.TIMER_PERIOD_1_AND_2
+
+                menu = bool(b & AsekoByte37Masks.HOME_FWB_MANUAL_OVERRIDE)
+
         # Fallback for unrecognised firmware A values (Issue #135):
         # serial 110175608 (byte 4=0x03 REDOX HOME) has values 0x45/0x49/0x41
         # that don't match the known CLF HOME patterns (0x43/0x53/0x47/0x57).
-        # Transitional edit states (0x47, 0x57) have bit 1 set — keep them
-        # as None.  All other unrecognised firmware A values fall back to
-        # schedule-derived mode.
+        # Transitional edit states (0x47, 0x57) have bit 1 set — keep them as
+        # None.  All other unrecognised firmware A values fall back to the
+        # schedule bytes.
+        #
+        # HOME-only, like the branch it backs up.  It reads the filtration
+        # times, and those are reported unchanged in every mode on SALT —
+        # identical across nonstop, P1, P1&P2 and manual — so for a SALT it
+        # could only ever return one constant answer.
         if (
-            mode is None
+            schedule is None
+            and is_home
             and b & 0x40
-            and not (b & AsekoByte37Masks.HOME_FWA_TRANSITIONAL_MASK)
+            and not b & AsekoByte37Masks.HOME_FWA_TRANSITIONAL_MASK
         ):
             p1_set = data[56] != UNSPECIFIED_VALUE and data[57] != UNSPECIFIED_VALUE
             p2_set = data[60] != UNSPECIFIED_VALUE and data[61] != UNSPECIFIED_VALUE
             if not p1_set:
-                mode = AsekoFiltrationMode.NONSTOP_24H
+                schedule = AsekoFiltrationSchedule.NONSTOP_24H
             elif p2_set or bool(b & FILTRATION_PERIOD2_ENABLED_MASK):
-                mode = AsekoFiltrationMode.TIMER_PERIOD_1_AND_2
+                schedule = AsekoFiltrationSchedule.TIMER_PERIOD_1_AND_2
             else:
-                mode = AsekoFiltrationMode.TIMER_PERIOD_1
+                schedule = AsekoFiltrationSchedule.TIMER_PERIOD_1
 
-        if mode is None:
+        if schedule is None and menu is None:
+            # Nothing readable in this frame — say so rather than guess.
             return
 
-        unit.filtration_mode = mode
-        # Mirror onto the legacy boolean for backwards compatibility.
-        unit.filtration_nonstop24 = mode == AsekoFiltrationMode.NONSTOP_24H
+        unit.filtration_schedule = schedule
+        unit.service_menu_open = menu
 
     @staticmethod
     def _fill_consumable_data(unit: AsekoDevice, data: bytes) -> None:
@@ -769,15 +817,15 @@ class AsekoDecoder:
         # Issue #133: on HOME v7 firmware B, byte[29] bit 3 stays set even
         # when the user has manually switched the pump off on the unit
         # (the override state lives in byte[37], not byte[29]). Trust the
-        # explicit MANUAL mode flag instead of the schedule-driven bit.
+        # explicit byte[37] bit 0x04 flag instead of the schedule-driven bit.
         # Gated on HOME so SALT / OXY / NET / PROFI behaviour is unchanged.
         if (
             unit.device_type == AsekoDeviceType.HOME
-            and unit.filtration_mode == AsekoFiltrationMode.MANUAL
+            and unit.service_menu_open is True
             and unit.filtration_pump_running is True
         ):
             _LOGGER.debug(
-                "Manual OFF override active (filtration_mode=MANUAL) — "
+                "Manual OFF override active (byte[37] bit 0x04) — "
                 "forcing filtration_pump_running to False (byte[29]=0x%02x)",
                 data[29],
             )
@@ -796,7 +844,7 @@ class AsekoDecoder:
         #    FILTRATION_TYPES device.  The device keeps sending the last
         #    configured start2/stop2 times even when Period 2 is disabled
         #    (Issue #133 — verified on serial 110169464, firmware B: bytes
-        #    60-63 are stable across P1 only / P1&P2 / 24h / MANUAL
+        #    60-63 are stable across P1 only / P1&P2 / 24h / bit 0x04 set
         #    modes).  Reading them unconditionally is therefore safe; the
         #    *_time helpers normalise 0xFF bytes to None and the lazy-
         #    creation guard in sensor.py skips the entity when no value is
@@ -862,9 +910,9 @@ class AsekoDecoder:
         # algicide/flocculant is determined by whether the flowrate byte is set (≠ 0xFF).
         AsekoDecoder._fill_flowrate_data(device, data)
         # Filtration mode must be decoded before consumable data (Issue #133):
-        # the MANUAL state in byte[37] short-circuits
+        # the byte[37] bit 0x04 state short-circuits
         # `filtration_pump_running` in `_fill_consumable_data`.
-        AsekoDecoder._fill_filtration_mode(device, data)
+        AsekoDecoder._fill_filtration_schedule(device, data)
         AsekoDecoder._fill_consumable_data(device, data)
         AsekoDecoder._fill_home_water_level_data(device, data)
         AsekoDecoder._fill_alarm_data(device, data)

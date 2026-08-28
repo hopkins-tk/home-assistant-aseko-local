@@ -78,9 +78,6 @@
       "water_filling_active": {
         "name": "Water filling active"
       },
-      "filtration_nonstop24": {
-        "name": "Filtration nonstop 24h"
-      },
       "alarm_ph_too_many_doses": {
         "name": "Too many doses of pH"
       },
@@ -95,6 +92,9 @@
       },
       "backwash_active": {
         "name": "Backwash active"
+      },
+      "service_menu": {
+        "name": "Service menu"
       }
     },
     "sensor": {
@@ -102,15 +102,6 @@
       "filtration_1_stop": { "name": "Filtration 1 stop" },
       "filtration_2_start": { "name": "Filtration 2 start" },
       "filtration_2_stop": { "name": "Filtration 2 stop" },
-      "filtration_mode": {
-        "name": "Filtration mode",
-        "state": {
-          "nonstop_24h": "24h nonstop",
-          "timer_period_1": "Time period 1",
-          "timer_period_1_and_2": "Time periods 1 & 2",
-          "manual": "Manual operation mode"
-        }
-      },
       "pool_volume": { "name": "Pool volume" },
       "delay_after_startup": { "name": "Delay after startup" },
       "delay_after_dose": { "name": "Delay after dose" },
@@ -284,6 +275,14 @@
       },
       "oxy_total_consumed": {
         "name": "OXY Pure consumed (total)"
+      },
+      "filtration_schedule": {
+        "name": "Filtration schedule",
+        "state": {
+          "nonstop_24h": "24h nonstop",
+          "timer_period_1": "Time period 1",
+          "timer_period_1_and_2": "Time periods 1 & 2"
+        }
       }
     },
     "number": {

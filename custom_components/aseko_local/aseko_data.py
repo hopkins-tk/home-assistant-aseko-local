@@ -49,21 +49,20 @@ class AsekoElectrolyzerDirection(Enum):
     WAITING = "waiting"
 
 
-class AsekoFiltrationMode(Enum):
-    """Enumeration of the 4 filtration schedule states.
+class AsekoFiltrationSchedule(Enum):
+    """The filtration schedule the unit is configured for (Issue #133).
 
-    Surfaced by the new `filtration_mode` sensor (Issue #133) and used
-    internally to override `filtration_pump_running` when the user has
-    manually switched the pump off on a HOME v7 device (firmware B).
+    byte[37] bits 0x10 / 0x20.  What the unit runs when nobody is at it —
+    see `AsekoDevice.service_menu_open`, which is decoded from the same
+    byte but says nothing about filtration.
 
-    Enum values map directly to the translation keys in
-    translations/{en,de,cs,fr}.json under entity.sensor.filtration_mode.state.
+    Enum values map to the translation keys under
+    entity.sensor.filtration_schedule.state.
     """
 
     NONSTOP_24H = "nonstop_24h"
     TIMER_PERIOD_1 = "timer_period_1"
     TIMER_PERIOD_1_AND_2 = "timer_period_1_and_2"
-    MANUAL = "manual"
 
 
 # ---------------------------------------------------------------------------
@@ -183,30 +182,24 @@ class AsekoDevice:
     # Water filling active — byte [29] bit 0x02
     water_filling_active: bool | None = None
 
-    # Filtration mode — byte [37]
-    # True = nonstop 24 h (0x43), False = timer (0x53), None = transitional/unknown
-    filtration_nonstop24: bool | None = None
+    # The filtration schedule the unit is configured for — byte [37]
+    # bits 0x10 / 0x20, which the manual override (bit 0x04) does not
+    # touch.  A unit can be in manual mode *and* configured for nonstop,
+    # and both are worth showing, so the two are kept apart.
+    filtration_schedule: AsekoFiltrationSchedule | None = None
 
-    # Filtration mode — 4-state enum (Issue #133).
-    # Set for every device type in FILTRATION_TYPES = {SALT, HOME, OXY, PROFI}.
-    # NET is excluded — no filtration output (see Issue #66).
+    # Somebody has the unit's settings menu open — byte [37] bit 0x04.
     #
-    # Every device type in FILTRATION_TYPES encodes the 4-state mode directly
-    # in byte[37] with two firmware variants:
-    #   Firmware A (serial 110128063, byte 4 = 0x02): high nibble 0x4 / 0x5
-    #     0x43 → NONSTOP_24H
-    #     0x53 → TIMER_PERIOD_1_AND_2 (cannot distinguish P1 vs P1&P2)
-    #     0x47 / 0x57 → leave as None (transitional edit state)
-    #   Firmware B (serial 110169464, byte 4 = 0x03): high nibble 0x0 / 0x1 / 0x3
-    #     0x01 → NONSTOP_24H
-    #     0x11 → TIMER_PERIOD_1
-    #     0x31 → TIMER_PERIOD_1_AND_2
-    #     0x15 → MANUAL (P1 + manual override, bit 0x04 set)
-    #     0x35 → MANUAL (P1&P2 + manual override, bit 0x04 set)
+    # Not a filtration state, despite living in the same byte: it says a
+    # person is standing at the unit, and nothing about what they are doing.
+    # The menu is where filtration and backwash can be started by hand, but
+    # the unit stops transmitting while it is open, so whether anything was
+    # touched — and what — is not observable at all.  It may well override
+    # filtration; there is no way to see that from here.
     #
-    # This guarantees that a single `filtration_mode` sensor shows the
-    # same 4 states on every filtration-capable device.
-    filtration_mode: AsekoFiltrationMode | None = None
+    # Only the bit-flag firmware encodes it.  Left None on firmware A, where
+    # bit 0x04 belongs to the transitional edit states, and on NET.
+    service_menu_open: bool | None = None
 
     # Alarm/error bitmasks — bytes [12] (HOME dosing warnings) and [13]
     # byte [12] 0x20 = chlorine/disinfection dosing warning (HOME ✅, issue #134)

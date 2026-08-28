@@ -21,6 +21,7 @@ from homeassistant.const import (
     UnitOfVolume,
 )
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.typing import StateType
 
@@ -187,6 +188,18 @@ CONSUMPTION_SENSORS: list[AsekoConsumptionSensorEntityDescription] = [
 ]
 
 # ---------- Fixed (system-level) sensors ----------
+
+# Sensor keys that no longer exist.  The registry entry outlives the
+# description, so without this the old entity sits in the UI as unavailable
+# forever.  Suffixes, because the unique_id is prefixed with the serial.
+RETIRED_UNIQUE_ID_SUFFIXES: frozenset[str] = frozenset(
+    {
+        # byte[37] bit 0x04 is not a filtration state — it marks the unit's
+        # settings menu being open, and is now binary_sensor.service_menu.
+        # What is left of the old sensor is filtration_schedule.
+        "filtration_mode",
+    }
+)
 
 SENSORS: list[AsekoSensorEntityDescription] = [
     AsekoSensorEntityDescription(
@@ -517,18 +530,21 @@ SENSORS: list[AsekoSensorEntityDescription] = [
         ),
     ),
     AsekoSensorEntityDescription(
-        key="filtration_mode",
-        translation_key="filtration_mode",
-        icon="mdi:pump",
+        key="filtration_schedule",
+        translation_key="filtration_schedule",
+        icon="mdi:calendar-clock",
         device_class=SensorDeviceClass.ENUM,
+        # What the unit runs when nobody is at it.  byte[37] bit 0x04 is a
+        # separate fact and lives on binary_sensor.service_menu.
         options=[
             "nonstop_24h",
             "timer_period_1",
             "timer_period_1_and_2",
-            "manual",
         ],
         value_fn=lambda device: (
-            device.filtration_mode.value if device.filtration_mode is not None else None
+            device.filtration_schedule.value
+            if device.filtration_schedule is not None
+            else None
         ),
     ),
     AsekoSensorEntityDescription(
@@ -614,12 +630,41 @@ CONNECTION_STATUS_SENSOR = AsekoSensorEntityDescription(
 # ---------- Setup ----------
 
 
+@callback
+def async_remove_retired_entities(
+    hass: HomeAssistant, config_entry: AsekoLocalConfigEntry
+) -> None:
+    """Delete registry entries for sensors that no longer exist.
+
+    Runs before the entities are added, so a retired one never gets a
+    chance to come back as unavailable.  A no-op once there is nothing
+    left to remove.
+    """
+    registry = er.async_get(hass)
+
+    for entry in er.async_entries_for_config_entry(registry, config_entry.entry_id):
+        if entry.domain != "sensor":
+            continue
+        if not any(
+            entry.unique_id.endswith(suffix) for suffix in RETIRED_UNIQUE_ID_SUFFIXES
+        ):
+            continue
+        _LOGGER.info(
+            "Removing retired Aseko sensor %s (unique_id %s)",
+            entry.entity_id,
+            entry.unique_id,
+        )
+        registry.async_remove(entry.entity_id)
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     config_entry: AsekoLocalConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     """Set up the Aseko device sensors."""
+
+    async_remove_retired_entities(hass, config_entry)
 
     coordinator = config_entry.runtime_data.coordinator
     devices = coordinator.get_devices() or []

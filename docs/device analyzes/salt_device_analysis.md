@@ -125,9 +125,9 @@ where the algicide-routing bit was clear — which caused already-registered
 entities to flip to "unknown" when the user toggled Period 2 on/off
 (Home Assistant protects the entity registry, so the entity stays but
 the value is read as `None`).  Post-fix, bytes 60-63 are read
-unconditionally for any device in `FILTRATION_TYPES` (SALT included) and
-`filtration_mode` is decoded directly from the `byte[37]` filtration-mode
-flag (see §byte[37] below).  Behaviour was originally verified on SALT by
+unconditionally for any device in `FILTRATION_TYPES` (SALT included), and
+the mode and schedule are decoded from the `byte[37]` bits (see
+§byte[37] – filtration mode and schedule below).  Behaviour was originally verified on SALT by
 diffing two frames
 captured in PR #122 (algicide mode toggle, `0xb3` ↔ `0x33`); the
 corresponding behaviour for HOME was confirmed in Issue #133 with
@@ -146,25 +146,77 @@ filtration output.
 | Algicide 11 → Flocculant 11 (type change) | `0x84` | bit 7 + bit 2 |
 | Algicide 10 → Flocculant 11 (both change) | `0x80` | bit 7 only |
 
-Bit 2 (`0x04`) appears related to dosage encoding. The full semantics of all bits are not
-confirmed.
+Bit 2 (`0x04`) was read here as dosage encoding.  **That reading is
+superseded**: `0x04` marks the unit's settings menu, captured directly on an ASIN
+AQUA Salt across six byte[37] values and both directions of every transition
+(see §byte[37] – filtration mode and schedule below).  The XOR above came
+from two frames diffed in PR #122; the dosage change and a mode change most
+likely coincided in that pair.  The remaining bits are unconfirmed.
 
-### byte[37] also carries the filtration-mode flag
+### byte[37] – filtration mode and schedule
 
-Since Issue #133 the decoder reads the 4-state filtration mode directly from
-`byte[37]` for every `FILTRATION_TYPES` device (SALT included), using the same
-two firmware encodings as HOME — see
-[`home_device_analysis.md`](home_device_analysis.md) §"byte[37] – Filtration
-mode flag" for the full table.  In brief:
+`byte[37]` carries **two independent facts** about filtration, and the decoder
+keeps them apart because neither can stand in for the other:
 
-| `byte[37]` high nibble | Encoding | Filtration mode |
+| Bits | Meaning | Field |
 |---|---|---|
-| `0x4` / `0x5` (firmware A) | exact values | `0x43` → `NONSTOP_24H`, `0x53` → `TIMER_PERIOD_1_AND_2` |
-| `0x0` / `0x1` / `0x3` (firmware B) | bit flags | `0x04` → `MANUAL`; `(b & 0x30)` → `0x00`=`NONSTOP_24H`, `0x10`=`TIMER_PERIOD_1`, `0x30`=`TIMER_PERIOD_1_AND_2` |
+| `0x10` / `0x20` | which schedule is configured | `filtration_schedule` |
+| `0x04` | the unit's settings menu is open | `service_menu_open` |
 
-Note the overlap with the third-pump routing / dosage encoding above: bit 2
-(`0x04`) is interpreted as the manual-override flag by the filtration-mode
-decode on SALT as well.
+Every combination below was captured on an ASIN AQUA Salt with the mode shown
+on the unit itself known, in both directions of each transition:
+
+| `byte[37]` | `service_menu_open` | `filtration_schedule` |
+|---|---|---|
+| `0xC3` | `False` | `NONSTOP_24H` |
+| `0xD3` | `False` | `TIMER_PERIOD_1` |
+| `0xF3` | `False` | `TIMER_PERIOD_1_AND_2` |
+| `0xC7` | `True` | `NONSTOP_24H` |
+| `0xD7` | `True` | `TIMER_PERIOD_1` |
+| `0xF7` | `True` | `TIMER_PERIOD_1_AND_2` |
+
+These are the same mode bits HOME firmware B uses; the constant `0xC0` in the
+high nibble is SALT's own configuration (`0x80` = algicide routing).
+
+**Bit `0x40` does not select the firmware variant here.** SALT sets it in every
+frame, so routing on it sent SALT into the HOME firmware-A branch, where it
+matched none of the exact values and came out with no mode at all.  The
+firmware-A branch — and the schedule-derived fallback behind it — are therefore
+HOME-only.  On SALT the fallback could not help anyway: the filtration times in
+bytes 56-63 are reported unchanged in every mode, so deriving the mode from
+them would return one constant answer whatever the unit is doing.
+
+**What the bit actually marks.** `0x04` appears the moment the settings menu
+is opened on the unit — the menu holding every Aseko setting, and the place
+filtration and backwash can be started by hand from.  It is set **before**
+anything is touched: three captures labelled "switched to manual mode, did
+nothing" carry it.  So on its own the bit says a person is standing at the
+unit, and nothing about what they did.
+
+**The unit goes quiet while the menu is open.** Opening it produces exactly
+one more frame — the one carrying `0x04` — and then transmission stops until
+the user leaves.  Three diagnostics taken during one such session all
+contained the same frame, with `online` going false between them.  Two
+consequences:
+
+* `service_menu_open` going True is typically the last thing reported before
+  the device goes offline, and it stays True until the user comes back out.
+  This is correct — it is the last thing the unit actually said.
+* What the user *does* in there is not observable.  The pump state in that
+  final frame is the state on the way in, not the result.  The unit will not
+  let you leave until filtration is back in the state it was in before, so
+  the value Home Assistant is holding is right again by the time frames
+  resume.
+
+Note this is **not** evidence that the schedule is suspended while the menu
+is open: in the 2026-08-11 capture the pump kept running throughout, and the
+configured period 1 covered that time of day anyway.
+
+The exception is a by-hand **backwash**: there the unit keeps transmitting
+throughout, with `0x04` set from ~30 s before the valve opens until ~20 s
+after it closes.  A cycle running while somebody is at the menu the button
+lives on is manual by observation, and `backwash_tracker` uses it as such
+rather than inferring from the clock — see `_service_menu_open`.
 
 ---
 

@@ -78,9 +78,6 @@
       "water_filling_active": {
         "name": "Wasserauffüllung aktiv"
       },
-      "filtration_nonstop24": {
-        "name": "Filtration Nonstop 24h"
-      },
       "alarm_ph_too_many_doses": {
         "name": "pH-Alarm: zu viele Dosierungen"
       },
@@ -95,6 +92,9 @@
       },
       "backwash_active": {
         "name": "Rückspülung aktiv"
+      },
+      "service_menu": {
+        "name": "Servicemenü"
       }
     },
     "sensor": {
@@ -109,15 +109,6 @@
       },
       "filtration_2_stop": {
         "name": "Filtration 2 Stopp"
-      },
-      "filtration_mode": {
-        "name": "Filtriermodus",
-        "state": {
-          "nonstop_24h": "24 h durchgehend",
-          "timer_period_1": "Zeitperiode 1",
-          "timer_period_1_and_2": "Zeitperioden 1 & 2",
-          "manual": "Manueller Betriebsmodus"
-        }
       },
       "pool_volume": {
         "name": "Poolvolumen"
@@ -298,6 +289,14 @@
       },
       "oxy_total_consumed": {
         "name": "OXY Pure verbraucht (gesamt)"
+      },
+      "filtration_schedule": {
+        "name": "Filtrationsplan",
+        "state": {
+          "nonstop_24h": "24 h durchgehend",
+          "timer_period_1": "Zeitperiode 1",
+          "timer_period_1_and_2": "Zeitperioden 1 & 2"
+        }
       }
     },
     "number": {

@@ -140,7 +140,7 @@ since it exposes a filtration output).  The lazy-creation guard in
 only if the bytes are `0xFF` (the bytes have never been configured on the
 controller).  Once the entity is registered, it stays populated with the
 last-configured time even when the user disables Period 2 — the
-`filtration_mode` sensor (decoded from the `byte[37]` filtration-mode flag)
+`filtration_schedule` sensor (decoded from the `byte[37]` schedule bits)
 separately reports `TIMER_PERIOD_1` so the user knows the schedule is
 inactive.
 
