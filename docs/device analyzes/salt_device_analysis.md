@@ -56,12 +56,47 @@ convention, named `PROBE_X_MISSING` in the code).
 | `[18:20]` | REDOX (if CLF also present on PROFI-style) | Not applicable on basic SALT |
 | `[20]` | Salinity = value / 10 | SALT-specific |
 | `[21]` | Electrolyzer power (% or raw) | `0` when electrolyzer not running |
+| `[23:25]` | Air temperature = signed value / 10 | °C — see §Air temperature |
 | `[25:27]` | Water temperature = value / 10 | °C |
 | `[28]` | Water flow to probes | `0xAA` = flowing |
 | `[29]` | Actuator bitmask | **See §byte[29]** |
 | `[37]` | Third-pump routing (algicide vs. flocculant) | **See §byte[37]** |
 
 ---
+
+## Air temperature — byte `[23:25]`
+
+Bytes 23-24 hold the air (ambient) temperature as a 16-bit big-endian two's
+complement value, `value / 10` = °C — the same encoding as the water
+temperature that follows it in bytes 25-26. The field was previously listed as
+"unknown".
+
+**Evidence** — two diagnostics dumps from serial 110194590 (ASIN AQUA Salt,
+type byte `0x0d`), both matching the readings shown on the unit:
+
+| Captured | Bytes 23-24 | Air | Bytes 25-26 | Water |
+|---|---|---|---|---|
+| 2026-08-11 10:33 | `0x0168` = 360 | 36.0 °C | `0x0128` = 296 | 29.6 °C |
+| 2026-08-17 18:50 | `0x0134` = 308 | 30.8 °C | `0x0122` = 290 | 29.0 °C |
+
+Both fields move independently, and each raw air value occurs exactly once in
+its 120-byte frame, so the offset is unambiguous. Byte 22 stayed `0x18` in both
+samples, so this is a plain 16-bit field and not the low half of a 24-bit one.
+
+**Signedness.** Read unsigned, frames from units without an air probe decode to
+6513.6 °C (`0xFE70`) and 6502.8 °C (`0xFDC4`); as two's complement the same
+bytes read -40.0 °C and -57.2 °C, i.e. an open-circuit temperature input. The
+decoder therefore reads the field signed and discards anything outside
+-30.0 … 60.0 °C, which filters both sentinels. A genuine sub-zero reading has
+not been captured yet, so the cold-weather encoding remains unverified.
+
+`0xFFFF` is rejected up front as the protocol-wide "unspecified" marker — read
+signed it would otherwise pass the window as -0.1 °C.
+
+**Scope.** Only SALT is enabled (`AIR_TEMPERATURE_TYPES`). Frames from other
+types carry values in these bytes that do not read as an ambient temperature
+(e.g. `0x0C3C` = 313.2 °C on a NET unit), so they stay excluded until a dump
+from that type is checked against its display.
 
 ## byte[29] – Actuator Bitmask
 

@@ -203,12 +203,12 @@ RETIRED_UNIQUE_ID_SUFFIXES: frozenset[str] = frozenset(
 
 SENSORS: list[AsekoSensorEntityDescription] = [
     AsekoSensorEntityDescription(
-        # Air temperature is missing in decoder, no idea which byte is
         key="airTemp",
         translation_key="air_temperature",
         device_class=SensorDeviceClass.TEMPERATURE,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
         state_class=SensorStateClass.MEASUREMENT,
+        icon="mdi:sun-thermometer",
         value_fn=lambda device: device.air_temperature,
     ),
     AsekoSensorEntityDescription(

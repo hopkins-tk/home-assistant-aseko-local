@@ -2120,3 +2120,104 @@ def test_filtration_schedule_survives_the_service_menu() -> None:
 
     assert schedules == [AsekoFiltrationSchedule.NONSTOP_24H] * 3
     assert menus == [False, True, False]
+
+
+# --- Air temperature (bytes 23-24) --------------------------------------
+#
+# Two diagnostics dumps from the same unit — ASIN AQUA Salt, serial 110194590
+# (type byte 0x0d).  Both were checked against the values shown on the device:
+#
+#   2026-08-11 10:33 → 0x0168 = 36.0 °C air | 0x0128 = 29.6 °C water
+#   2026-08-17 18:50 → 0x0134 = 30.8 °C air | 0x0122 = 29.0 °C water
+#
+# Air and water move independently between the two captures, and each raw air
+# value occurs exactly once in its frame, so the offset is unambiguous.
+
+_SALT_AIR_TEMP_2026_08_11_HEX = (
+    "06916f9e0d011a080b0a2100000002b1004d003b1b16180168012822aa1804380000000000d3203d"
+    "06916f9e0d031a080b0a210046090319090013001200160002d201280e0b2a09ff1401e00e10f282"
+    "06916f9e0d021a080b0a21000032003c3401ddff003c1f21232800f00a0bb80f0e011328fffc0191"
+)
+
+_SALT_AIR_TEMP_2026_08_17_HEX = (
+    "06916f9e0d011a0811123200000002bc005d00461a00180134012222aa4800000000000000d32061"
+    "06916f9e0d031a081112320046090319090013001200160002dd01220e0b2a09ff1401e00e10e286"
+    "06916f9e0d021a08111232000032003c2001f0ff003c1f21232800f00a0bb80f0e015728fffc01fd"
+)
+
+
+def test_decode_air_temperature_salt_real_frames() -> None:
+    """Air temperature (bytes 23-24) on the two confirmed SALT frames."""
+
+    device = AsekoDecoder.decode(bytes.fromhex(_SALT_AIR_TEMP_2026_08_11_HEX))
+    assert device.device_type == AsekoDeviceType.SALT
+    assert device.serial_number == 110_194_590
+    assert device.timestamp is not None
+    assert device.timestamp.replace(tzinfo=None) == datetime(2026, 8, 11, 10, 33, 0)
+    assert device.air_temperature == pytest.approx(36.0)
+    assert device.water_temperature == pytest.approx(29.6)
+
+    device = AsekoDecoder.decode(bytes.fromhex(_SALT_AIR_TEMP_2026_08_17_HEX))
+    assert device.device_type == AsekoDeviceType.SALT
+    assert device.timestamp is not None
+    assert device.timestamp.replace(tzinfo=None) == datetime(2026, 8, 17, 18, 50, 0)
+    assert device.air_temperature == pytest.approx(30.8)
+    assert device.water_temperature == pytest.approx(29.0)
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        (0x0168, 36.0),  # confirmed capture
+        (0x0134, 30.8),  # confirmed capture
+        (0x0000, 0.0),  # exactly 0 °C is a valid reading, not "missing"
+        (0xFFE2, -3.0),  # two's complement, sub-zero (encoding still unverified)
+        (0xFED4, -30.0),  # lower bound, inclusive
+        (0x0258, 60.0),  # upper bound, inclusive
+        (0xFED3, None),  # just below the lower bound
+        (0x0259, None),  # just above the upper bound
+        (0xFE70, None),  # -40.0 °C — open-circuit sentinel seen on real units
+        (0xFDC4, None),  # -57.2 °C — same, second sentinel value
+        (0x0C3C, None),  # 313.2 °C — unrelated data, seen on NET frames
+        (0xFFFF, None),  # protocol-wide "unspecified" marker, not -0.1 °C
+    ],
+)
+def test_air_temperature_plausibility_window(raw: int, expected: float | None) -> None:
+    """Only plausible ambient values are reported; sentinels decode to None."""
+
+    data = _make_base_bytes()
+    data[4] = 0x0D  # SALT with CLF probe
+    data[23:25] = raw.to_bytes(2, "big")
+
+    device = AsekoDecoder.decode(bytes(data))
+
+    if expected is None:
+        assert device.air_temperature is None
+    else:
+        assert device.air_temperature == pytest.approx(expected)
+
+
+@pytest.mark.parametrize(
+    "unit_type",
+    [
+        0x02,  # HOME CLF
+        0x03,  # HOME REDOX
+        0x05,  # OXY
+        0x09,  # NET CLF
+        UNIT_TYPE_PROFI,
+    ],
+)
+def test_air_temperature_only_on_salt(unit_type: int) -> None:
+    """Bytes 23-24 are read on SALT only — other types are unverified.
+
+    A plausible-looking value must not create an air-temperature sensor on a
+    device type where the mapping has never been checked against the display.
+    """
+
+    data = _make_base_bytes()
+    data[4] = unit_type
+    data[23:25] = (0x0168).to_bytes(2, "big")  # 36.0 °C if it were decoded
+
+    device = AsekoDecoder.decode(bytes(data))
+
+    assert device.air_temperature is None

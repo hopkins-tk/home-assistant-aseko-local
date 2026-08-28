@@ -79,6 +79,24 @@ WATER_LEVEL_TYPES = frozenset(
     }
 )
 
+# Device types verified to report the air (ambient) temperature in bytes 23-24.
+# Confirmed on an ASIN AQUA Salt only (see _air_temperature); every other type
+# is excluded until a dump from that type is checked against the unit display,
+# so an unverified type can never surface a wrong air-temperature sensor.
+AIR_TEMPERATURE_TYPES = frozenset(
+    {
+        AsekoDeviceType.SALT,
+    }
+)
+
+# Plausibility window for the air temperature (°C). Units without an air probe
+# report an open-circuit value in bytes 23-24 (0xFE70 = -40.0 °C and
+# 0xFDC4 = -57.2 °C were both observed), and unrelated data lands there on
+# types that do not carry the field at all. Anything outside this window is
+# treated as "not measured" and reported as None.
+AIR_TEMPERATURE_MIN = -30.0
+AIR_TEMPERATURE_MAX = 60.0
+
 
 class AsekoDecoder:
     """Decoder of Aseko unit data."""
@@ -786,6 +804,48 @@ class AsekoDecoder:
         unit.service_menu_open = menu
 
     @staticmethod
+    def _air_temperature(data: bytes) -> float | None:
+        """Decode the air (ambient) temperature from bytes 23-24.
+
+        16-bit big-endian, two's complement, value / 10 = °C - the same
+        encoding as water_temperature, which sits directly after it in bytes
+        25-26.  The field was previously unmapped ("unknown" in the annotated
+        diagnostics table).
+
+        Confirmed on an ASIN AQUA Salt (serial 110194590) against two
+        diagnostics dumps, both matching the values shown on the unit:
+
+          2026-08-11 10:33 -> 0x0168 = 36.0 °C air | 0x0128 = 29.6 °C water
+          2026-08-17 18:50 -> 0x0134 = 30.8 °C air | 0x0122 = 29.0 °C water
+
+        Both fields change independently, and each raw air value occurs exactly
+        once in the 120-byte frame, so the offset is unambiguous.  Byte 22
+        stayed 0x18 in both samples, so this is a plain 16-bit field, not the
+        low half of a 24-bit one.
+
+        Signedness: read as unsigned, frames from units without an air probe
+        decode to 6513.6 °C (0xFE70) and 6502.8 °C (0xFDC4); as two's
+        complement the same bytes read -40.0 °C and -57.2 °C, i.e. an
+        open-circuit temperature input.  That is why the field is decoded
+        signed.  A genuine sub-zero reading has still not been captured, so the
+        exact cold-weather encoding remains unverified - the plausibility
+        window below keeps both sentinels out either way.
+
+        0xFFFF is the protocol-wide "unspecified" marker and is rejected before
+        the window, since as a signed value it would read a plausible -0.1 °C.
+        """
+
+        raw = data[23:25]
+        if all(byte == UNSPECIFIED_VALUE for byte in raw):
+            return None
+
+        value = int.from_bytes(raw, "big", signed=True) / 10
+        if not AIR_TEMPERATURE_MIN <= value <= AIR_TEMPERATURE_MAX:
+            return None
+
+        return value
+
+    @staticmethod
     def _fill_consumable_data(unit: AsekoDevice, data: bytes) -> None:
         masks = ACTUATOR_MASKS.get(unit.device_type)
         if masks is None:
@@ -855,12 +915,16 @@ class AsekoDecoder:
         # from non-0xFF frame data.
         has_backwash = unit_type in BACKWASH_TYPES
         has_water_level = unit_type in WATER_LEVEL_TYPES
+        has_air_temperature = unit_type in AIR_TEMPERATURE_TYPES
 
         device = AsekoDevice(
             serial_number=int.from_bytes(data[0:4], "big"),
             device_type=unit_type,
             configuration=probes,
             timestamp=ts,
+            air_temperature=(
+                AsekoDecoder._air_temperature(data) if has_air_temperature else None
+            ),
             water_temperature=int.from_bytes(data[25:27], "big") / 10,
             water_flow_to_probes=(data[28] == WATER_FLOW_TO_PROBES),
             required_water_temperature=AsekoDecoder._normalize_value(data[55], int),
