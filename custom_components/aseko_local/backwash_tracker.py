@@ -14,10 +14,16 @@ moment the relay opened against the unit's configured ``backwash_time``:
     * anything else                                    →  MANUAL
 
 The device does not transmit *why* the valve opened, nor when it last ran, so
-the start time is the only signal available and the classification is a guess
-that can be wrong — ``_classify`` lists the specific ways.  Consumers should
-treat ``last_backwash`` as reliable and the scheduled/manual split (and the
-``next_scheduled_backwash`` projection built on it) as an estimate.
+on most units the start time is the only signal available and the
+classification is a guess that can be wrong — ``_classify`` lists the specific
+ways.  Consumers should treat ``last_backwash`` as reliable and the
+scheduled/manual split (and the ``next_scheduled_backwash`` projection built
+on it) as an estimate.
+
+SALT is the exception: byte[37] bit 0x04 marks its settings menu being open,
+and that is the menu a backwash is started by hand from — so a cycle that
+runs while the bit is set is manual as a matter of observation rather than
+inference.  See ``_service_menu_open``.
 
 Nothing is guessed before the first observation, though: every value starts out
 as ``None``: until a cycle has actually been seen, the honest answer is
@@ -56,12 +62,43 @@ from typing import TYPE_CHECKING
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
 
-from .aseko_data import AsekoBackwashSource, AsekoBackwashTrigger
+from .aseko_data import (
+    AsekoBackwashSource,
+    AsekoBackwashTrigger,
+    AsekoDeviceType,
+)
 
 if TYPE_CHECKING:
     from .aseko_data import AsekoDevice
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _service_menu_open(device: "AsekoDevice") -> bool:
+    """Return True if somebody has the unit's settings menu open.
+
+    On SALT, byte[37] bit 0x04 marks that menu — the one filtration and
+    backwash can be started by hand from.  It appears on entering, before
+    anything is touched, so on its own it says only that a person is at the
+    unit.  Paired with a running backwash it says more: a capture of a
+    by-hand cycle has the bit set on every frame from ~30 s before the valve
+    opened until ~20 s after it closed.  Somebody was standing at the menu
+    the button lives on — observed, not inferred from the clock.
+
+    Restricted to SALT because the same bit is documented differently on
+    HOME firmware B (Issue #133): a standing manual override that forces the
+    pump off and can stay set indefinitely.  Honouring it there would
+    misclassify every scheduled cycle that ran while the override was on.
+
+    The bit is only ever *additional* evidence.  It is never used to call a
+    cycle scheduled: nobody being at the unit is no proof that the unit
+    started the cycle itself.
+    """
+    return (
+        device.device_type is AsekoDeviceType.SALT
+        and device.service_menu_open is True
+    )
+
 
 # Minimum continuous relay-on duration to count as a real backwash cycle.
 # The device has reported backwash durations of 1:40 to 2:00 minutes; 60 s
@@ -112,6 +149,12 @@ class BackwashTracker:
         # State machine: when did the current "relay on" window start?
         # None = relay is currently off, or we have not seen it on yet.
         self._relay_on_since: datetime | None = None
+
+        # Was the settings menu open during the current window?  Latched
+        # across the whole window rather than read at the end: the unit
+        # drops the flag a frame or two after the valve closes, so by the
+        # time the window is recorded it has usually gone again.
+        self._service_menu_in_window = False
 
         # Last frame timestamp we processed — used to detect dropped connections.
         self._last_frame_at: datetime | None = None
@@ -304,18 +347,24 @@ class BackwashTracker:
                 self._serial,
             )
             self._relay_on_since = None
+            self._service_menu_in_window = False
         self._last_frame_at = now
 
         # Step 2: if the relay is on, start (or continue) a new window.
         if device.backwash_active:
             if self._relay_on_since is None:
                 self._relay_on_since = now
+                self._service_menu_in_window = False
+            self._service_menu_in_window |= _service_menu_open(device)
             return
 
         # Step 3: relay just went off.  Evaluate the previous "on" window.
         if self._relay_on_since is not None:
-            self._record_window(device, self._relay_on_since, now)
+            self._record_window(
+                device, self._relay_on_since, now, self._service_menu_in_window
+            )
             self._relay_on_since = None
+            self._service_menu_in_window = False
 
     def clear_last_scheduled_backwash(self) -> None:
         """Forget the last scheduled backwash, returning it to unknown.
@@ -381,7 +430,11 @@ class BackwashTracker:
         self._hass.async_create_task(self.async_save())
 
     def _record_window(
-        self, device: "AsekoDevice", started_at: datetime, ended_at: datetime
+        self,
+        device: "AsekoDevice",
+        started_at: datetime,
+        ended_at: datetime,
+        service_menu_observed: bool = False,
     ) -> None:
         """Record a completed relay-on window if it is long enough to be real."""
         duration = ended_at - started_at
@@ -406,7 +459,7 @@ class BackwashTracker:
         # opened the valve, and therefore the moment to compare against the
         # configured schedule.  The midpoint is shifted by half the cycle
         # duration and would bias every comparison.
-        trigger = self._classify(device, started_at)
+        trigger = self._classify(device, started_at, service_menu_observed)
 
         self._last_backwash = recorded_at
         self._last_trigger = trigger
@@ -432,20 +485,29 @@ class BackwashTracker:
         self._hass.async_create_task(self.async_save())
 
     @staticmethod
-    def _classify(device: "AsekoDevice", started_at: datetime) -> AsekoBackwashTrigger:
+    def _classify(
+        device: "AsekoDevice",
+        started_at: datetime,
+        service_menu_observed: bool = False,
+    ) -> AsekoBackwashTrigger:
         """Return whether a cycle starting at ``started_at`` was scheduled.
 
-        A cycle counts as scheduled only if the unit could have started it
-        itself: the schedule must be configured and enabled, and the relay
-        must have opened within ``SCHEDULED_MATCH_TOLERANCE`` of the
+        ``service_menu_observed`` is the one hard signal available: on SALT the
+        unit reports that somebody was operating it by hand while the valve
+        was open (see ``_service_menu_open``), which settles the question.
+        It is only ever raised, never lowered — its absence proves nothing.
+
+        Without it, a cycle counts as scheduled only if the unit could have
+        started it itself: the schedule must be configured and enabled, and
+        the relay must have opened within ``SCHEDULED_MATCH_TOLERANCE`` of the
         configured time of day.  Everything else is a manual start.
 
-        This is a guess, not a fact.  The device reports that the valve opened,
-        never why, so the start time is all there is to go on.  Known ways it
-        gets the answer wrong:
+        That part is a guess, not a fact.  The device reports that the valve
+        opened, never why, so the start time is all there is to go on.  Known
+        ways it gets the answer wrong:
 
         * A cycle started by hand within the tolerance window of the scheduled
-          time is reported as scheduled.
+          time is reported as scheduled (unless ``service_menu_observed``).
         * Only the time of day is checked, not the day itself — a manual cycle
           at exactly ``backwash_time`` on a day the interval does not fall on
           still counts as scheduled.  Checking the day would need the schedule
@@ -460,6 +522,10 @@ class BackwashTracker:
         the cycle, and is never revisited: changing ``backwash_time`` later
         does not reclassify history.
         """
+        if service_menu_observed:
+            # Observed fact rather than inference: a person was at the unit.
+            return AsekoBackwashTrigger.MANUAL
+
         scheduled_time = device.backwash_time
         interval = device.backwash_every_n_days
         if scheduled_time is None or interval is None or interval <= 0:

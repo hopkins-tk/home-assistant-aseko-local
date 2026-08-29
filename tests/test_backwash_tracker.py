@@ -15,6 +15,7 @@ from unittest.mock import AsyncMock, MagicMock
 from custom_components.aseko_local.aseko_data import (
     AsekoBackwashSource,
     AsekoBackwashTrigger,
+    AsekoDeviceType,
 )
 from custom_components.aseko_local.backwash_tracker import (
     BackwashTracker,
@@ -741,3 +742,116 @@ async def test_clear_is_persisted():
     saved = tracker._store.async_save.call_args.args[0]  # type: ignore[attr-defined]
     assert saved["last_scheduled_backwash"] is None
     assert saved["last_scheduled_source"] is None
+
+
+# ── the settings menu as an observed signal (SALT byte[37] bit 0x04) ─────────
+
+
+def _salt_device(
+    backwash_active: bool | None,
+    menu_open: bool,
+    device_type: AsekoDeviceType = AsekoDeviceType.SALT,
+) -> Any:
+    """A scheduled device that also reports a device type and the menu flag."""
+    dev = _scheduled_device(backwash_active)
+    dev.device_type = device_type
+    dev.service_menu_open = menu_open
+    return dev
+
+
+def _run_service_menu_cycle(
+    tracker: BackwashTracker,
+    start: datetime,
+    menu_during: bool,
+    device_type: AsekoDeviceType = AsekoDeviceType.SALT,
+) -> None:
+    """Drive a cycle that ends with the menu flag already dropped.
+
+    Mirrors the captured cycle: the unit clears bit 0x04 a frame or two
+    after the valve closes, so the closing frame no longer carries it.
+    """
+    tracker.update(_salt_device(True, menu_during, device_type), start)
+    tracker.update(
+        _salt_device(True, menu_during, device_type),
+        start + timedelta(seconds=45),
+    )
+    tracker.update(
+        _salt_device(False, False, device_type),
+        start + timedelta(seconds=90),
+    )
+
+
+def test_service_menu_during_the_window_means_manual():
+    """A SALT cycle run from the settings menu is manual, whatever the clock says.
+
+    This is the case the time-only rule gets wrong: started by hand, but
+    within tolerance of the configured time, so it used to be filed as the
+    unit's own scheduled run and would have moved the next-backwash
+    projection with it.
+    """
+    tracker = BackwashTracker(_hass(), serial_number=110071590)
+
+    _run_service_menu_cycle(tracker, T0, True)
+
+    assert tracker.last_trigger is AsekoBackwashTrigger.MANUAL
+    assert tracker.last_manual_backwash is not None
+    assert tracker.last_scheduled_backwash is None
+
+
+def test_service_menu_is_latched_across_the_whole_window():
+    """The flag counts even though the closing frame has already lost it.
+
+    Reading the mode at the end of the window would miss every real cycle:
+    in the capture the bit went out ~20 s after the valve closed, before
+    the frame that ends the window arrived.
+    """
+    tracker = BackwashTracker(_hass(), serial_number=110071590)
+
+    tracker.update(_salt_device(True, True), T0)
+    # the flag is already back down for the rest of the window
+    tracker.update(
+        _salt_device(True, False),
+        T0 + timedelta(seconds=45),
+    )
+    tracker.update(
+        _salt_device(False, False),
+        T0 + timedelta(seconds=90),
+    )
+
+    assert tracker.last_trigger is AsekoBackwashTrigger.MANUAL
+
+
+def test_without_the_service_menu_the_schedule_still_decides():
+    """The flag only ever adds evidence; its absence changes nothing."""
+    tracker = BackwashTracker(_hass(), serial_number=110071590)
+
+    _run_service_menu_cycle(tracker, T0, False)
+
+    assert tracker.last_trigger is AsekoBackwashTrigger.SCHEDULED
+    assert tracker.last_scheduled_backwash is not None
+
+
+def test_service_menu_signal_does_not_apply_to_home():
+    """On HOME the same bit is a standing pump override, not a person.
+
+    It can sit set indefinitely, so honouring it there would refile every
+    scheduled cycle that happened to run while it was on.
+    """
+    tracker = BackwashTracker(_hass(), serial_number=110071590)
+
+    _run_service_menu_cycle(tracker, T0, True, AsekoDeviceType.HOME)
+
+    assert tracker.last_trigger is AsekoBackwashTrigger.SCHEDULED
+
+
+def test_service_menu_flag_does_not_leak_into_the_next_cycle():
+    """Each window starts from a clean slate."""
+    tracker = BackwashTracker(_hass(), serial_number=110071590)
+
+    _run_service_menu_cycle(tracker, T0, True)
+    assert tracker.last_trigger is AsekoBackwashTrigger.MANUAL
+
+    later = T0 + timedelta(days=SCHEDULE_EVERY_N_DAYS)
+    _run_service_menu_cycle(tracker, later, False)
+
+    assert tracker.last_trigger is AsekoBackwashTrigger.SCHEDULED
