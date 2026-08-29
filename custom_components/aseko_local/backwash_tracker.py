@@ -382,6 +382,21 @@ class BackwashTracker:
         self._last_frame_at = now
 
         # Step 2: if the relay is on, start (or continue) a new window.
+        #
+        # The menu flag is latched (|=) rather than read when the window ends:
+        # the unit drops it around the moment the valve shuts, so the frame
+        # that closes the window has usually lost it already.
+        #
+        # The latch deliberately starts at the window and does not look at
+        # frames before it.  The flag cannot be cleared while the valve is
+        # open — in both captures of a by-hand cycle it is set in every frame
+        # the valve is open in, and in the 2026-08-11 one it stays up ~20 s
+        # after the valve shuts.  So a frame showing the valve open with the
+        # flag down is evidence the cycle was not started from the menu, not
+        # evidence that we looked too late.  Widening the window backwards
+        # would only let a stale flag — the unit emits one frame on entering
+        # the menu and then goes quiet — reach a cycle it has nothing to do
+        # with.
         if device.backwash_active:
             if self._relay_on_since is None:
                 self._relay_on_since = now
