@@ -246,24 +246,29 @@ History, recorded live and persisted across restarts. **These are not all equall
 |---|---|---|---|
 | `sensor.last_backwash` | Last cycle, whatever started it. **Unknown** until one is seen | Observed | n/a — it holds every cycle |
 | `datetime.last_scheduled_backwash` | Last cycle that looked like the unit's own scheduled run — **and settable**, see below | Observed *or* entered by hand — see its `source` attribute | Estimated |
-| `sensor.last_manual_backwash` | Last cycle that did not | Observed | Estimated |
+| `sensor.last_manual_backwash` | Last cycle the unit's settings menu was open for (ASIN AQUA Salt only) | Observed | Observed |
 | `sensor.next_scheduled_backwash` | Projected next automatic cycle. **Unknown** until a scheduled cycle is known | **Calculated** | Inherited |
 
 The two columns matter separately. A cycle the integration watched has an exact
-timestamp — what is estimated is only *which* of the two buckets it belongs in.
-Only `next_scheduled_backwash` holds a timestamp that was computed rather than
+timestamp — what is estimated is only *which* bucket it belongs in. Only
+`next_scheduled_backwash` holds a timestamp that was computed rather than
 measured, which is why it is the one carrying "(estimated)" in its name.
 
 ### Observed vs. estimated
 
 A cycle is **recorded** when the backwash valve stays open for at least 60 seconds — short activations (menu navigation, output test mode) are ignored. That part is a direct observation: `sensor.last_backwash` means the valve really did run a full cycle.
 
-The device does **not** report *why* the valve opened. So the split into scheduled and manual is a guess based on the only signal available — the time the valve opened:
+The device does **not** report *why* the valve opened. Two things are checked, in this order:
 
-* within **±15 minutes** of `backwash_time`, on a unit whose schedule is enabled → **scheduled**;
-* anything else, including any cycle on a unit with `backwash_every_n_days = 0` → **manual**.
+* the unit's **settings menu was open** while the valve was → **manual**;
+* menu shut, and the valve opened within **±15 minutes** of `backwash_time` on a unit whose schedule is enabled → **scheduled**;
+* anything else → **unattributed**: `sensor.last_backwash` moves and neither of the other two does.
 
-The tolerance absorbs drift between the unit's clock and Home Assistant's, plus up to one transmit interval (~30 s) of lag before the frame reports the valve as open.
+The first is an observation, not a guess. On the ASIN AQUA Salt the frame reports the settings menu being open — the menu a backwash is started by hand from — so a cycle running while it is open was started by a person. (`binary_sensor.service_menu` shows the same bit live.) Other device types do not report it in a form that can be trusted here, so on those `sensor.last_manual_backwash` stays unknown and by-hand cycles come out unattributed.
+
+The second is a comparison against a clock. The tolerance absorbs drift between the unit's clock and Home Assistant's, plus up to one transmit interval (~30 s) of lag before the frame reports the valve as open.
+
+Nothing falls through to "manual" by elimination. A cycle that does not match the schedule tells you the unit's own timer does not explain it — not that somebody started it. A fault-triggered cycle, or one on a unit whose clock has drifted, would look exactly the same. So those are recorded as having happened and left at that.
 
 `next_scheduled_backwash` is projected from the last **scheduled** cycle: that timestamp plus the configured interval, snapped to `backwash_time`, and stepped forward if cycles were missed while Home Assistant was down. A manual backwash deliberately does not move it — starting one by hand does not tell us (nor, on the unit, change) the schedule phase. Since it builds on the classification, it inherits any error in it.
 
@@ -323,18 +328,20 @@ below.
 `last_backwash`, so an existing install has a stored cycle but no record of
 which kind it was. Rather than leave both empty until the next cycle — up to a
 whole interval away — the integration classifies that stored timestamp against
-the schedule on the first frame after the upgrade, and fills in whichever of
-the two it belongs to. It only ever does this while both are empty, so a real
-cycle is never second-guessed.
+the schedule on the first frame after the upgrade, and fills in
+`last_scheduled_backwash` if it matches. It cannot reach the other half — the
+settings-menu bit is not recoverable after the fact — so a stored cycle that
+does not match the schedule stays unattributed. It only ever does this while
+both are empty, so a real cycle is never second-guessed.
 
 ### Known ways the estimate gets it wrong
 
-* A cycle you start **by hand near the scheduled time** is reported as scheduled.
-* Only the **time of day** is checked, not the day itself. A manual cycle at exactly `backwash_time` on a day the interval does not fall on still counts as scheduled. (Checking the day would require knowing the schedule phase — which is exactly what this is trying to establish — and would break whenever you change the interval.)
-* If the unit's **clock drifts** more than 15 minutes from Home Assistant's, its own scheduled cycles are reported as manual.
-* A cycle the unit runs on its own **for some other reason** (e.g. after a fault) is reported as manual.
+* A cycle you start **by hand near the scheduled time** is reported as scheduled — unless the unit reported its settings menu open for it, which on the ASIN AQUA Salt settles it as manual.
+* Only the **time of day** is checked, not the day itself. A cycle at exactly `backwash_time` on a day the interval does not fall on still counts as scheduled. (Checking the day would require knowing the schedule phase — which is exactly what this is trying to establish — and would break whenever you change the interval.)
+* If the unit's **clock drifts** more than 15 minutes from Home Assistant's, its own scheduled cycles come out unattributed.
+* A cycle the unit runs on its own **for some other reason** (e.g. after a fault) comes out unattributed.
 * Classification uses the schedule **as it was at the time of the cycle** and is never revisited — changing `backwash_time` later does not reclassify history.
 
-If a cycle looks misclassified, the integration's diagnostics download carries `last_backwash_trigger` alongside the raw frame, so you can see what it decided and open an issue.
+If a cycle looks misclassified, the integration's diagnostics download carries `last_backwash_trigger` alongside the raw frame, so you can see what it decided — `scheduled`, `manual` or `unknown` — and open an issue.
 
 > **Note:** all four history sensors read "unknown" on a fresh install and stay that way until the integration actually sees a cycle. This is intentional. Earlier versions derived `last_backwash` from the schedule, which showed a confident timestamp for a backwash that may never have happened.

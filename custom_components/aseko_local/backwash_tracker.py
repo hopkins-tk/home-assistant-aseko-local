@@ -6,24 +6,30 @@ activations (e.g. menu navigation, output-test mode) are ignored.
 
 That much is observed fact.  Everything else here is derived from it.
 
-Each recorded cycle is *classified* as scheduled or manual by comparing the
-moment the relay opened against the unit's configured ``backwash_time``:
+Each recorded cycle is then *classified*, in this order:
 
-    * within ±``SCHEDULED_MATCH_TOLERANCE`` of the configured time, on a unit
-      whose schedule is enabled  →  SCHEDULED (the unit ran it itself)
-    * anything else                                    →  MANUAL
+    * the settings menu was open while the valve was  →  MANUAL
+    * menu shut, and the relay opened within ±``SCHEDULED_MATCH_TOLERANCE``
+      of the configured ``backwash_time`` on a unit whose schedule is
+      enabled                                        →  SCHEDULED
+    * anything else                                  →  UNKNOWN
 
-The device does not transmit *why* the valve opened, nor when it last ran, so
-on most units the start time is the only signal available and the
-classification is a guess that can be wrong — ``_classify`` lists the specific
-ways.  Consumers should treat ``last_backwash`` as reliable and the
-scheduled/manual split (and the ``next_scheduled_backwash`` projection built
-on it) as an estimate.
+The device does not transmit *why* the valve opened, nor when it last ran.
+Only the first rule is an observation: on SALT, byte[37] bit 0x04 marks the
+settings menu being open, and that is the menu a backwash is started by hand
+from, so a cycle running while the bit is set was started by a person.  See
+``_service_menu_open``.
 
-SALT is the exception: byte[37] bit 0x04 marks its settings menu being open,
-and that is the menu a backwash is started by hand from — so a cycle that
-runs while the bit is set is manual as a matter of observation rather than
-inference.  See ``_service_menu_open``.
+The second rule is a comparison against a clock and can be wrong — the ways
+are listed in ``_classify``.  Everything left over is UNKNOWN rather than
+manual: the valve opening is a fact, but a cycle that does not fit the
+schedule is not thereby evidence that somebody started it, and calling it
+manual would put a guess in the same field the menu bit fills with an
+observation.
+
+Consumers should treat ``last_backwash`` as reliable, ``last_manual_backwash``
+as observed, and ``last_scheduled_backwash`` — with the
+``next_scheduled_backwash`` projection built on it — as an estimate.
 
 Nothing is guessed before the first observation, though: every value starts out
 as ``None``: until a cycle has actually been seen, the honest answer is
@@ -164,6 +170,9 @@ class BackwashTracker:
         self._last_scheduled_backwash: datetime | None = None
         self._last_manual_backwash: datetime | None = None
         self._last_trigger: AsekoBackwashTrigger | None = None
+
+        # _backfill_split runs at most once per session — see its docstring.
+        self._backfill_attempted = False
 
         # Where _last_scheduled_backwash came from: OBSERVED (we watched the
         # valve run) or MANUAL (the user seeded it).  Drives the "source"
@@ -393,11 +402,19 @@ class BackwashTracker:
         sensors empty until the next cycle (up to a full interval away), work
         it out from the timestamp we already have.
 
+        The menu bit is not available retroactively, so this can only ever
+        reach the schedule half of the answer: a stored cycle that does not
+        match the schedule comes out ``UNKNOWN`` and fills neither bucket.
+
         Runs from ``update`` rather than ``async_load`` because the schedule
         comes from the frame, not from storage.  It is a no-op once either
-        bucket is filled, so a later real cycle is never second-guessed.
+        bucket is filled, so a later real cycle is never second-guessed, and
+        runs at most once per session either way — an UNKNOWN verdict fills
+        nothing, and re-deciding it on every frame would only re-log it.
         """
         if self._last_backwash is None:
+            return
+        if self._backfill_attempted:
             return
         if (
             self._last_scheduled_backwash is not None
@@ -412,14 +429,25 @@ class BackwashTracker:
         # classification wants its start.  The offset is half a cycle (~50 s on
         # a 100 s backwash), an order of magnitude inside the tolerance, so the
         # midpoint stands in for the start without changing any verdict.
+        self._backfill_attempted = True
         trigger = self._classify(device, self._last_backwash)
+        if self._last_trigger is None:
+            self._last_trigger = trigger
+
         if trigger is AsekoBackwashTrigger.SCHEDULED:
             self._last_scheduled_backwash = self._last_backwash
             self._last_scheduled_source = AsekoBackwashSource.OBSERVED
         else:
-            self._last_manual_backwash = self._last_backwash
-        if self._last_trigger is None:
-            self._last_trigger = trigger
+            # UNKNOWN — the stored timestamp does not match the schedule, and
+            # whether somebody was at the unit for it is not recoverable now.
+            # It stays in last_backwash alone.
+            _LOGGER.debug(
+                "Pre-existing backwash record for serial=%s (%s) matches no "
+                "schedule; leaving the split empty",
+                self._serial,
+                self._last_backwash.isoformat(),
+            )
+            return
 
         _LOGGER.info(
             "Classified pre-existing backwash record for serial=%s as %s (%s)",
@@ -470,8 +498,11 @@ class BackwashTracker:
             # covered the gap until a real cycle showed up; it has.
             self._last_scheduled_backwash = recorded_at
             self._last_scheduled_source = AsekoBackwashSource.OBSERVED
-        else:
+        elif trigger is AsekoBackwashTrigger.MANUAL:
             self._last_manual_backwash = recorded_at
+        # UNKNOWN updates neither split: last_backwash records that a cycle
+        # happened, and that is all this frame supports.  Filing it under one
+        # of the two would also drag next_scheduled_backwash with it.
 
         _LOGGER.info(
             "Backwash detected for serial=%s: %s (duration %s, trigger %s)",
@@ -500,23 +531,27 @@ class BackwashTracker:
         Without it, a cycle counts as scheduled only if the unit could have
         started it itself: the schedule must be configured and enabled, and
         the relay must have opened within ``SCHEDULED_MATCH_TOLERANCE`` of the
-        configured time of day.  Everything else is a manual start.
+        configured time of day.
 
-        That part is a guess, not a fact.  The device reports that the valve
-        opened, never why, so the start time is all there is to go on.  Known
-        ways it gets the answer wrong:
+        Anything that is neither is ``UNKNOWN``.  The valve opening is a fact;
+        who opened it is not, and a cycle outside the schedule window is only
+        evidence that the unit's own timer does not explain it — not evidence
+        that a person does.  Calling those manual would put a guess in the
+        same field the menu signal fills with an observation.
 
-        * A cycle started by hand within the tolerance window of the scheduled
-          time is reported as scheduled (unless ``service_menu_observed``).
-        * Only the time of day is checked, not the day itself — a manual cycle
-          at exactly ``backwash_time`` on a day the interval does not fall on
+        The schedule match itself is still a comparison against a clock, so it
+        can be wrong in ways worth knowing:
+
+        * A cycle started by hand within the tolerance window, on a unit whose
+          menu bit is not available (anything but SALT), is reported as
+          scheduled.
+        * Only the time of day is checked, not the day itself — a cycle at
+          exactly ``backwash_time`` on a day the interval does not fall on
           still counts as scheduled.  Checking the day would need the schedule
           phase, which is precisely what we are trying to establish, and would
           break whenever the user changes the interval.
         * If the unit's clock drifts more than the tolerance from Home
-          Assistant's, its own scheduled cycles are reported as manual.
-        * A cycle the unit runs on its own for some other reason (e.g. after a
-          fault) is reported as manual.
+          Assistant's, its own scheduled cycles come out UNKNOWN.
 
         Classification uses the schedule as it was in the frame at the time of
         the cycle, and is never revisited: changing ``backwash_time`` later
@@ -528,15 +563,15 @@ class BackwashTracker:
 
         scheduled_time = device.backwash_time
         interval = device.backwash_every_n_days
-        if scheduled_time is None or interval is None or interval <= 0:
-            # No usable schedule (0xFF in the config bytes, or interval 0 =
-            # "automatic backwash disabled") — the unit cannot have started
-            # this on its own, so somebody did.
-            return AsekoBackwashTrigger.MANUAL
-
-        if _within_tolerance(started_at, scheduled_time, SCHEDULED_MATCH_TOLERANCE):
+        if (
+            scheduled_time is not None
+            and interval is not None
+            and interval > 0
+            and _within_tolerance(started_at, scheduled_time, SCHEDULED_MATCH_TOLERANCE)
+        ):
             return AsekoBackwashTrigger.SCHEDULED
-        return AsekoBackwashTrigger.MANUAL
+
+        return AsekoBackwashTrigger.UNKNOWN
 
     def next_scheduled_backwash(
         self, device: "AsekoDevice", now: datetime

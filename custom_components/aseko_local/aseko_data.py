@@ -52,18 +52,25 @@ class AsekoElectrolyzerDirection(Enum):
 class AsekoBackwashTrigger(Enum):
     """What started the most recently observed backwash cycle.
 
-    SCHEDULED — the cycle started within the tolerance window around the
-        configured ``backwash_time`` on a device whose backwash schedule is
-        enabled, so the unit ran it on its own.
-    MANUAL — anything else: the cycle started outside that window, or the
-        schedule is disabled/unconfigured, so a human started it.
+    MANUAL — the unit's settings menu was open while the valve was, so a
+        person was standing at the menu the backwash button lives on.
+        Observed, not inferred.
+    SCHEDULED — the menu was shut and the cycle started within the tolerance
+        window around the configured ``backwash_time`` on a device whose
+        backwash schedule is enabled, so the unit ran it on its own.
+    UNKNOWN — neither.  The valve was seen to open, which is a fact, but
+        nothing in the frame says who opened it.
 
-    The device does not transmit *why* the valve opened, so this is derived
-    from the observed start time.  See ``backwash_tracker.py``.
+    The device does not transmit *why* the valve opened.  Only the menu bit
+    is direct evidence; the schedule match is a comparison against the clock.
+    Everything outside those two is left as UNKNOWN rather than guessed, so a
+    cycle is never filed under a cause that was never observed.
+    See ``backwash_tracker.py``.
     """
 
     SCHEDULED = "scheduled"
     MANUAL = "manual"
+    UNKNOWN = "unknown"
 
 
 class AsekoBackwashSource(Enum):
@@ -271,23 +278,32 @@ class AsekoDevice:
     # OBSERVED — the integration watched the backwash valve stay open for a
     # full cycle, so this happened:
     #   last_backwash           = most recent cycle, whatever started it.
+    #   last_manual_backwash    = most recent cycle the unit's settings menu
+    #                             was open for.  Somebody was standing at the
+    #                             menu the backwash button lives on, so this
+    #                             is observed too — SALT only, since that is
+    #                             the only device the bit is trusted on.
     #
-    # DERIVED — split out of the above by a heuristic on the start time, which
-    # can misclassify (see BackwashTracker._classify for how and when):
-    #   last_scheduled_backwash = most recent cycle that looked like the unit's
-    #                             own scheduled run.
-    #   last_manual_backwash    = most recent cycle that did not.
-    #   last_backwash_trigger   = which of the two the latest cycle was.  No
-    #                             entity — it is redundant with comparing the
-    #                             two timestamps above — but it is surfaced in
-    #                             diagnostics so a misclassification is visible
-    #                             in a dump.
+    # DERIVED — matched against the configured schedule, which is a comparison
+    # against a clock (see BackwashTracker._classify for how it can be wrong):
+    #   last_scheduled_backwash = most recent cycle that ran at the configured
+    #                             time with the menu shut.
     #   next_scheduled_backwash = last_scheduled_backwash projected forward by
     #                             backwash_every_n_days, so it inherits any
-    #                             error in that classification.  None while no
-    #                             scheduled cycle is known: a manual backwash
-    #                             does not reveal the schedule phase, and an
-    #                             unscheduled one cannot be predicted.
+    #                             error in that match.  None while no scheduled
+    #                             cycle is known: a manual backwash does not
+    #                             reveal the schedule phase, and an unscheduled
+    #                             one cannot be predicted.
+    #
+    # A cycle that is neither is left as UNKNOWN and updates only
+    # last_backwash.  It is not filed as manual: not matching the schedule
+    # says the unit's own timer does not explain the cycle, which is not the
+    # same as knowing a person started it.
+    #   last_backwash_trigger   = which of the three the latest cycle was.  No
+    #                             entity — it is nearly redundant with
+    #                             comparing the timestamps above — but it is
+    #                             surfaced in diagnostics so a misclassified
+    #                             or unattributed cycle is visible in a dump.
     #
     # last_scheduled_backwash_source says whether that timestamp was observed
     # or entered by hand, and is exposed as a "source" state attribute so a

@@ -295,21 +295,31 @@ def test_cycle_just_inside_tolerance_is_scheduled():
     assert tracker.last_trigger is AsekoBackwashTrigger.SCHEDULED
 
 
-def test_cycle_outside_tolerance_is_manual():
-    """A cycle well away from the scheduled time was started by hand."""
+def test_cycle_outside_tolerance_is_unknown():
+    """A cycle away from the scheduled time is recorded, not attributed.
+
+    The unit's timer does not explain it, which is not the same as knowing a
+    person started it — that would need the menu bit, and this device is not
+    reporting it.  So the cycle lands in last_backwash and nowhere else.
+    """
     tracker = BackwashTracker(_hass(), serial_number=110071590)
 
     started = T0 + timedelta(hours=2)
     _run_cycle(tracker, started)
 
-    assert tracker.last_trigger is AsekoBackwashTrigger.MANUAL
-    assert tracker.last_manual_backwash == started + timedelta(seconds=45)
-    assert tracker.last_backwash == tracker.last_manual_backwash
+    assert tracker.last_trigger is AsekoBackwashTrigger.UNKNOWN
+    assert tracker.last_backwash == started + timedelta(seconds=45)
+    assert tracker.last_manual_backwash is None
     assert tracker.last_scheduled_backwash is None
 
 
-def test_cycle_is_manual_when_schedule_disabled():
-    """interval 0 = automatic backwash off → the unit cannot have started it."""
+def test_cycle_is_unknown_when_schedule_disabled():
+    """interval 0 = automatic backwash off, so there is nothing to match.
+
+    It is tempting to call this manual — the unit's own timer is off, so what
+    else could it be?  A fault-triggered cycle, for one.  The frame does not
+    say, so neither do we.
+    """
     tracker = BackwashTracker(_hass(), serial_number=110071590)
 
     def _disabled(active):
@@ -317,16 +327,19 @@ def test_cycle_is_manual_when_schedule_disabled():
 
     _run_cycle(tracker, T0, device_factory=_disabled)
 
-    assert tracker.last_trigger is AsekoBackwashTrigger.MANUAL
+    assert tracker.last_trigger is AsekoBackwashTrigger.UNKNOWN
+    assert tracker.last_manual_backwash is None
+    assert tracker.last_scheduled_backwash is None
 
 
-def test_cycle_is_manual_when_schedule_unconfigured():
+def test_cycle_is_unknown_when_schedule_unconfigured():
     """No backwash_time in the frame (0xFF) → nothing to match against."""
     tracker = BackwashTracker(_hass(), serial_number=110071590)
 
     _run_cycle(tracker, T0, device_factory=_device)
 
-    assert tracker.last_trigger is AsekoBackwashTrigger.MANUAL
+    assert tracker.last_trigger is AsekoBackwashTrigger.UNKNOWN
+    assert tracker.last_manual_backwash is None
 
 
 def test_scheduled_time_near_midnight_matches_across_days():
@@ -360,13 +373,30 @@ def test_manual_cycle_keeps_earlier_scheduled_record():
     assert scheduled is not None
 
     manual_start = T0 + timedelta(days=1, hours=4)
-    _run_cycle(tracker, manual_start)
+    _run_service_menu_cycle(tracker, manual_start, True)
 
     assert tracker.last_trigger is AsekoBackwashTrigger.MANUAL
     assert tracker.last_manual_backwash == manual_start + timedelta(seconds=45)
     assert tracker.last_scheduled_backwash == scheduled
     # "Last backwash" tracks whichever came last, regardless of kind.
     assert tracker.last_backwash == tracker.last_manual_backwash
+
+
+def test_unknown_cycle_keeps_earlier_scheduled_record():
+    """An unattributed run must not move the schedule phase either."""
+    tracker = BackwashTracker(_hass(), serial_number=110071590)
+
+    _run_cycle(tracker, T0)
+    scheduled = tracker.last_scheduled_backwash
+    assert scheduled is not None
+
+    _run_cycle(tracker, T0 + timedelta(days=1, hours=4))
+
+    assert tracker.last_trigger is AsekoBackwashTrigger.UNKNOWN
+    assert tracker.last_scheduled_backwash == scheduled
+    assert tracker.last_manual_backwash is None
+    # It still happened, so it is the latest backwash.
+    assert tracker.last_backwash == T0 + timedelta(days=1, hours=4, seconds=45)
 
 
 # ── next-backwash projection ────────────────────────────────────────────────
@@ -377,9 +407,20 @@ def test_next_scheduled_backwash_unknown_after_manual_only():
     tracker = BackwashTracker(_hass(), serial_number=110071590)
     device = _scheduled_device(False)
 
-    _run_cycle(tracker, T0 + timedelta(hours=2))
+    _run_service_menu_cycle(tracker, T0 + timedelta(hours=2), True)
 
     assert tracker.last_manual_backwash is not None
+    assert tracker.next_scheduled_backwash(device, T0 + timedelta(hours=3)) is None
+
+
+def test_next_scheduled_backwash_unknown_after_unattributed_only():
+    """An unattributed cycle says nothing about the schedule phase either."""
+    tracker = BackwashTracker(_hass(), serial_number=110071590)
+    device = _scheduled_device(False)
+
+    _run_cycle(tracker, T0 + timedelta(hours=2))
+
+    assert tracker.last_trigger is AsekoBackwashTrigger.UNKNOWN
     assert tracker.next_scheduled_backwash(device, T0 + timedelta(hours=3)) is None
 
 
@@ -442,6 +483,37 @@ async def test_async_load_restores_classified_state():
     assert tracker.last_scheduled_backwash == T0
     assert tracker.last_manual_backwash == T0 + timedelta(days=1)
     assert tracker.last_trigger is AsekoBackwashTrigger.MANUAL
+
+
+async def test_async_load_accepts_an_unknown_trigger():
+    """UNKNOWN round-trips through the store like the other two."""
+    tracker = BackwashTracker(_hass(), serial_number=110071590)
+    tracker._store.async_load = AsyncMock(  # type: ignore[method-assign]
+        return_value={
+            "last_backwash": T0.isoformat(),
+            "last_trigger": "unknown",
+        }
+    )
+
+    await tracker.async_load()
+
+    assert tracker.last_backwash == T0
+    assert tracker.last_trigger is AsekoBackwashTrigger.UNKNOWN
+    assert tracker.last_scheduled_backwash is None
+    assert tracker.last_manual_backwash is None
+
+
+async def test_async_save_writes_an_unknown_trigger():
+    """The verdict survives a restart rather than being re-derived."""
+    tracker = BackwashTracker(_hass(), serial_number=110071590)
+
+    _run_cycle(tracker, T0 + timedelta(hours=2))
+    await tracker.async_save()
+
+    saved = tracker._store.async_save.call_args.args[0]  # type: ignore[attr-defined]
+    assert saved["last_trigger"] == "unknown"
+    assert saved["last_manual_backwash"] is None
+    assert saved["last_scheduled_backwash"] is None
 
 
 async def test_async_load_tolerates_version_1_payload():
@@ -556,7 +628,8 @@ def test_observed_manual_cycle_leaves_the_seed_alone():
 
     seeded = T0 - timedelta(days=1)
     tracker.set_last_scheduled_backwash(seeded)
-    _run_cycle(tracker, T0 + timedelta(hours=3))  # far from backwash_time
+    # far from backwash_time, and observed from the settings menu
+    _run_service_menu_cycle(tracker, T0 + timedelta(hours=3), True)
 
     assert tracker.last_trigger is AsekoBackwashTrigger.MANUAL
     assert tracker.last_scheduled_backwash == seeded
@@ -638,16 +711,35 @@ def test_backfill_classifies_a_pre_split_record_as_scheduled():
     assert tracker.last_manual_backwash is None
 
 
-def test_backfill_classifies_a_pre_split_record_as_manual():
-    """Same, for a stored cycle that did not run at the scheduled time."""
+def test_backfill_leaves_an_unmatched_pre_split_record_unattributed():
+    """A stored cycle that did not run at the scheduled time stays unattributed.
+
+    The menu bit is not recoverable after the fact, so the schedule is the
+    only thing left to check — and it does not match.  The record keeps its
+    place in last_backwash and fills neither half of the split.
+    """
     tracker = BackwashTracker(_hass(), serial_number=110071590)
     off_schedule = T0 + timedelta(hours=4)
     tracker._last_backwash = off_schedule  # type: ignore[attr-defined]
 
     tracker.update(_scheduled_device(False), off_schedule + timedelta(minutes=5))
 
-    assert tracker.last_manual_backwash == off_schedule
-    assert tracker.last_trigger is AsekoBackwashTrigger.MANUAL
+    assert tracker.last_trigger is AsekoBackwashTrigger.UNKNOWN
+    assert tracker.last_manual_backwash is None
+    assert tracker.last_scheduled_backwash is None
+
+
+def test_backfill_does_not_retry_an_unattributed_record():
+    """The verdict does not change frame to frame, so it is reached once."""
+    tracker = BackwashTracker(_hass(), serial_number=110071590)
+    off_schedule = T0 + timedelta(hours=4)
+    tracker._last_backwash = off_schedule  # type: ignore[attr-defined]
+
+    tracker.update(_scheduled_device(False), off_schedule + timedelta(minutes=5))
+    tracker.update(_scheduled_device(False), off_schedule + timedelta(minutes=10))
+
+    assert tracker._backfill_attempted is True  # type: ignore[attr-defined]
+    assert tracker.last_manual_backwash is None
     assert tracker.last_scheduled_backwash is None
 
 
