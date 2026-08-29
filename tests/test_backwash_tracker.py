@@ -511,6 +511,7 @@ async def test_async_load_accepts_an_unknown_trigger():
 async def test_async_save_writes_an_unknown_trigger():
     """The verdict survives a restart rather than being re-derived."""
     tracker = BackwashTracker(_hass(), serial_number=110071590)
+    tracker._store.async_save = AsyncMock()  # type: ignore[method-assign]
 
     _run_service_menu_cycle(tracker, T0 + timedelta(hours=2), False)
     await tracker.async_save()

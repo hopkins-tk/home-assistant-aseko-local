@@ -459,6 +459,11 @@ class BackwashTracker:
         if trigger is AsekoBackwashTrigger.SCHEDULED:
             self._last_scheduled_backwash = self._last_backwash
             self._last_scheduled_source = AsekoBackwashSource.OBSERVED
+        elif trigger is AsekoBackwashTrigger.MANUAL:
+            # Only reachable on a device with no menu signal, where MANUAL is
+            # the elimination verdict — the bit itself is not recoverable
+            # after the fact, so a live MANUAL can never be backfilled.
+            self._last_manual_backwash = self._last_backwash
         else:
             # UNKNOWN — the stored timestamp does not match the schedule, and
             # whether somebody was at the unit for it is not recoverable now.
