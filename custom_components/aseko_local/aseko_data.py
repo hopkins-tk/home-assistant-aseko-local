@@ -58,14 +58,16 @@ class AsekoBackwashTrigger(Enum):
     SCHEDULED — the menu was shut and the cycle started within the tolerance
         window around the configured ``backwash_time`` on a device whose
         backwash schedule is enabled, so the unit ran it on its own.
-    UNKNOWN — neither.  The valve was seen to open, which is a fact, but
-        nothing in the frame says who opened it.
+    UNKNOWN — neither, on a device that reports the menu.  The valve was seen
+        to open, which is a fact, but the unit would have said if somebody had
+        been at it and it did not, so nothing explains the cycle.
 
-    The device does not transmit *why* the valve opened.  Only the menu bit
-    is direct evidence; the schedule match is a comparison against the clock.
-    Everything outside those two is left as UNKNOWN rather than guessed, so a
-    cycle is never filed under a cause that was never observed.
-    See ``backwash_tracker.py``.
+    The device does not transmit *why* the valve opened.  Only the menu bit is
+    direct evidence; the schedule match is a comparison against the clock.  On
+    a device that does not report the menu there is no third option worth
+    having — leftovers there are MANUAL by elimination, as they always were,
+    because the alternative is a ``last_manual_backwash`` that is never filled.
+    See ``BackwashTracker._classify``.
     """
 
     SCHEDULED = "scheduled"
@@ -280,9 +282,11 @@ class AsekoDevice:
     #   last_backwash           = most recent cycle, whatever started it.
     #   last_manual_backwash    = most recent cycle the unit's settings menu
     #                             was open for.  Somebody was standing at the
-    #                             menu the backwash button lives on, so this
-    #                             is observed too — SALT only, since that is
-    #                             the only device the bit is trusted on.
+    #                             menu the backwash button lives on, so on
+    #                             SALT this is observed.  Elsewhere the bit is
+    #                             not trusted and the field falls back to
+    #                             "did not match the schedule", which is a
+    #                             guess — see BackwashTracker._classify.
     #
     # DERIVED — matched against the configured schedule, which is a comparison
     # against a clock (see BackwashTracker._classify for how it can be wrong):
@@ -295,10 +299,11 @@ class AsekoDevice:
     #                             reveal the schedule phase, and an unscheduled
     #                             one cannot be predicted.
     #
-    # A cycle that is neither is left as UNKNOWN and updates only
-    # last_backwash.  It is not filed as manual: not matching the schedule
-    # says the unit's own timer does not explain the cycle, which is not the
-    # same as knowing a person started it.
+    # On SALT a cycle that is neither is left as UNKNOWN and updates only
+    # last_backwash: not matching the schedule says the unit's own timer does
+    # not explain the cycle, which is not the same as knowing a person started
+    # it, and the unit would have reported the menu if one had.  Other device
+    # types cannot report that, so there UNKNOWN never appears.
     #   last_backwash_trigger   = which of the three the latest cycle was.  No
     #                             entity — it is nearly redundant with
     #                             comparing the timestamps above — but it is

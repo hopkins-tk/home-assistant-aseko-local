@@ -12,7 +12,8 @@ Each recorded cycle is then *classified*, in this order:
     * menu shut, and the relay opened within ±``SCHEDULED_MATCH_TOLERANCE``
       of the configured ``backwash_time`` on a unit whose schedule is
       enabled                                        →  SCHEDULED
-    * anything else                                  →  UNKNOWN
+    * anything else, on a device that reports the menu →  UNKNOWN
+    * anything else, on a device that does not        →  MANUAL
 
 The device does not transmit *why* the valve opened, nor when it last ran.
 Only the first rule is an observation: on SALT, byte[37] bit 0x04 marks the
@@ -21,11 +22,15 @@ from, so a cycle running while the bit is set was started by a person.  See
 ``_service_menu_open``.
 
 The second rule is a comparison against a clock and can be wrong — the ways
-are listed in ``_classify``.  Everything left over is UNKNOWN rather than
-manual: the valve opening is a fact, but a cycle that does not fit the
-schedule is not thereby evidence that somebody started it, and calling it
+are listed in ``_classify``.
+
+What is left over depends on the device.  Where the menu bit is available the
+answer is UNKNOWN: the valve opening is a fact, but a cycle that does not fit
+the schedule is not thereby evidence that somebody started it, and calling it
 manual would put a guess in the same field the menu bit fills with an
-observation.
+observation.  Where it is not available the older elimination rule stands and
+the cycle is called MANUAL — no better, but the alternative there is an
+answer that is always empty.
 
 Consumers should treat ``last_backwash`` as reliable, ``last_manual_backwash``
 as observed, and ``last_scheduled_backwash`` — with the
@@ -100,9 +105,26 @@ def _service_menu_open(device: "AsekoDevice") -> bool:
     cycle scheduled: nobody being at the unit is no proof that the unit
     started the cycle itself.
     """
+    return _service_menu_reported(device) and device.service_menu_open is True
+
+
+def _service_menu_reported(device: "AsekoDevice") -> bool:
+    """Return True if this device reports the settings menu usefully at all.
+
+    Only SALT does.  NET has no filtration output and leaves the field None;
+    on HOME firmware B the same bit is documented as a standing pump override
+    (Issue #133) that can sit set indefinitely, so it says nothing about
+    whether somebody was at the unit for any one cycle.
+
+    This gates more than the MANUAL verdict — it decides whether a cycle that
+    matches nothing can be left UNKNOWN.  Where the signal exists, "not
+    observed and not on schedule" is a real answer.  Where it does not, there
+    is nothing better to say than the pre-existing guess, so the elimination
+    rule stands.  See ``_classify``.
+    """
     return (
         device.device_type is AsekoDeviceType.SALT
-        and device.service_menu_open is True
+        and device.service_menu_open is not None
     )
 
 
@@ -533,11 +555,18 @@ class BackwashTracker:
         the relay must have opened within ``SCHEDULED_MATCH_TOLERANCE`` of the
         configured time of day.
 
-        Anything that is neither is ``UNKNOWN``.  The valve opening is a fact;
-        who opened it is not, and a cycle outside the schedule window is only
-        evidence that the unit's own timer does not explain it — not evidence
-        that a person does.  Calling those manual would put a guess in the
-        same field the menu signal fills with an observation.
+        What happens to a cycle that is neither depends on whether the device
+        reports the menu at all (``_service_menu_reported``):
+
+        * It does (SALT) — ``UNKNOWN``.  The valve opening is a fact; who
+          opened it is not, and a cycle outside the schedule window is only
+          evidence that the unit's own timer does not explain it, not evidence
+          that a person does.  Calling it manual would put a guess in the same
+          field the menu signal fills with an observation.
+        * It does not (everything else) — ``MANUAL``, by elimination, as
+          before this signal existed.  The guess is no better there, but it is
+          all there is, and leaving those devices with a permanently empty
+          ``last_manual_backwash`` would trade a rough answer for none at all.
 
         The schedule match itself is still a comparison against a clock, so it
         can be wrong in ways worth knowing:
@@ -571,7 +600,14 @@ class BackwashTracker:
         ):
             return AsekoBackwashTrigger.SCHEDULED
 
-        return AsekoBackwashTrigger.UNKNOWN
+        if _service_menu_reported(device):
+            # The device would have told us if somebody had been at it, and it
+            # did not — so this matched nothing, and that is the answer.
+            return AsekoBackwashTrigger.UNKNOWN
+
+        # No menu signal on this device type: fall back to the elimination
+        # rule this integration has always used.
+        return AsekoBackwashTrigger.MANUAL
 
     def next_scheduled_backwash(
         self, device: "AsekoDevice", now: datetime
