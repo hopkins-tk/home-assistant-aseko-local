@@ -253,6 +253,30 @@ after it closes.  A cycle running while somebody is at the menu the button
 lives on is manual by observation, and `backwash_tracker` uses it as such
 rather than inferring from the clock — see `_service_menu_open`.
 
+Confirmed a second time on 2026-08-28, in six diagnostics taken across one
+by-hand cycle (SALT, `backwash_every_n_days = 15`, `backwash_time = 08:30`,
+`backwash_duration = 100 s`):
+
+| Frame time | `byte[29]` | Backwash | `byte[37]` | Menu |
+|---|---|---|---|---|
+| 17:30:40 | `0x48` | – | `0xd3` | – |
+| 17:31:02 | `0x48` | – | `0xd7` | **open** |
+| 17:32:10 | `0x49` | **on** | `0xd7` | **open** |
+| 17:32:20 | `0x49` | **on** | `0xd7` | **open** |
+| 17:32:40 | `0x48` | – | `0xd3` | – |
+
+The menu bit is up at least 68 s before the valve is first seen open and is
+down again in the first frame that shows it shut, so it brackets the cycle on
+both sides — which is why `backwash_tracker` latches it across the window
+instead of reading it when the window closes.  The unit stayed `online` and
+`filtration_pump_running` throughout, and `filtration_schedule` reads
+`timer_period_1` in every frame: `0xd7` and `0xd3` differ only in `0x04`.
+
+Note what this capture does *not* settle: at 17:32 it is nowhere near the
+configured 08:30, so the time-only rule would have called it manual anyway.
+It confirms that the signal is present and correctly bracketed, not that it
+overrides a wrong answer — that case is still the 2026-08-11 capture's.
+
 ---
 
 ## Byte Map – Sub-frame 2 (config / setpoints)

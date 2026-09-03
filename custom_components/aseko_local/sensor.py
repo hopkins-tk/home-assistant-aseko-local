@@ -26,7 +26,11 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.typing import StateType
 
 from . import AsekoLocalConfigEntry
-from .aseko_data import AsekoDevice, AsekoElectrolyzerDirection, ACTUATOR_MASKS
+from .aseko_data import (
+    ACTUATOR_MASKS,
+    AsekoDevice,
+    AsekoElectrolyzerDirection,
+)
 from .coordinator import AsekoLocalDataUpdateCoordinator
 from .entity import AsekoLocalEntity
 
@@ -41,6 +45,17 @@ class AsekoSensorEntityDescription(SensorEntityDescription):
 
     value_fn: Callable[[AsekoDevice], StateType]
     enabled: bool = True
+    # Decides whether the device has this sensor at all.  By default a sensor
+    # is created only when its value is already known, which is right for
+    # values read straight out of the frame: a None there means the device
+    # does not report that quantity.
+    #
+    # It is wrong for values that are legitimately unknown until an event is
+    # observed — the observed-backwash timestamps start out None on a device
+    # that does have a backwash valve, and without an explicit check their
+    # entities would never be created.  Set this to decide presence from
+    # something other than the current value.
+    supported_fn: Callable[[AsekoDevice], bool] | None = None
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -200,6 +215,18 @@ RETIRED_UNIQUE_ID_SUFFIXES: frozenset[str] = frozenset(
         "filtration_mode",
     }
 )
+
+
+def _has_backwash(device: AsekoDevice) -> bool:
+    """Return True if the device has a backwash valve.
+
+    ``backwash_active`` is the decoder's presence marker for the backwash
+    output: it is left as None on device types without one (NET), and is a
+    real bool on every type that has one, whether or not the valve is
+    currently open.  See ``AsekoDecoder._fill_backwash_active`` and Issue #129.
+    """
+    return device.backwash_active is not None
+
 
 SENSORS: list[AsekoSensorEntityDescription] = [
     AsekoSensorEntityDescription(
@@ -600,21 +627,62 @@ SENSORS: list[AsekoSensorEntityDescription] = [
         icon="mdi:timer-sand",
         value_fn=lambda device: device.backwash_duration,
     ),
+    # Observed backwash history.  All four are gated on _has_backwash rather
+    # than on their own value, because they are unknown until a cycle has
+    # actually been seen — see supported_fn.
+    #
+    # last_backwash is the *observed* one: the integration watched the backwash
+    # valve stay open, so the cycle definitely happened.
+    #
+    # The scheduled/manual split is *derived* from it by a heuristic comparing
+    # the start time against the configured schedule, and that heuristic can
+    # get it wrong — the device never says why the valve opened.  Only the
+    # timestamps stay exact.  "(estimated)" therefore marks just
+    # next_scheduled_backwash, the one value that is calculated rather than
+    # measured.  See backwash_tracker.BackwashTracker._classify.
     AsekoSensorEntityDescription(
         key="last_backwash",
         translation_key="last_backwash",
         device_class=SensorDeviceClass.TIMESTAMP,
         icon="mdi:clock-check-outline",
         value_fn=lambda device: device.last_backwash,
+        supported_fn=_has_backwash,
+    ),
+    # last_scheduled_backwash is not here: it is a writable datetime entity
+    # (see datetime.py) so it can be set from the UI in one click, rather than
+    # a read-only sensor plus a helper and a script to feed it.
+    AsekoSensorEntityDescription(
+        key="last_manual_backwash",
+        translation_key="last_manual_backwash",
+        device_class=SensorDeviceClass.TIMESTAMP,
+        icon="mdi:hand-back-right-outline",
+        value_fn=lambda device: device.last_manual_backwash,
+        supported_fn=_has_backwash,
     ),
     AsekoSensorEntityDescription(
-        key="next_backwash",
-        translation_key="next_backwash",
+        # Renamed from "next_backwash" — see MIGRATED_UNIQUE_ID_SUFFIXES.
+        key="next_scheduled_backwash",
+        translation_key="next_scheduled_backwash",
         device_class=SensorDeviceClass.TIMESTAMP,
         icon="mdi:clock-alert-outline",
-        value_fn=lambda device: device.next_backwash,
+        value_fn=lambda device: device.next_scheduled_backwash,
+        supported_fn=_has_backwash,
+        # No source attribute: this is always projected from
+        # last_scheduled_backwash, so that sensor's source is this one's too.
     ),
 ]
+
+# Sensor keys that were renamed after release.  The unique_id is
+# f"{serial_number}{key}", so renaming a key orphans the registry entry: the
+# old entity goes unavailable forever and a fresh one appears beside it under a
+# new entity_id, losing its history.  async_migrate_unique_ids rewrites them at
+# setup instead.  Old suffix → new suffix; entries are matched on the suffix
+# because the serial number prefix varies per device.
+MIGRATED_UNIQUE_ID_SUFFIXES: dict[str, str] = {
+    # v1.7.x → next: renamed for symmetry with last_scheduled_backwash, and
+    # because the value only ever projects the *scheduled* cycle.
+    "next_backwash": "next_scheduled_backwash",
+}
 
 # ---------- Connection status sensor ----------
 
@@ -657,6 +725,51 @@ def async_remove_retired_entities(
         registry.async_remove(entry.entity_id)
 
 
+@callback
+def async_migrate_unique_ids(
+    hass: HomeAssistant, config_entry: AsekoLocalConfigEntry
+) -> None:
+    """Rewrite registry unique_ids for sensor keys that have been renamed.
+
+    Runs before the entities are added, so each renamed sensor keeps its
+    entity_id, its history and any automation pointing at it.
+
+    Nothing happens when there is no old entry, so this is a no-op on fresh
+    installs and on every setup after the first.
+    """
+    registry = er.async_get(hass)
+    existing = {
+        entry.unique_id
+        for entry in er.async_entries_for_config_entry(registry, config_entry.entry_id)
+    }
+
+    for entry in er.async_entries_for_config_entry(registry, config_entry.entry_id):
+        if entry.domain != "sensor":
+            continue
+        for old_suffix, new_suffix in MIGRATED_UNIQUE_ID_SUFFIXES.items():
+            if not entry.unique_id.endswith(old_suffix):
+                continue
+            new_unique_id = entry.unique_id[: -len(old_suffix)] + new_suffix
+            if new_unique_id in existing:
+                # Both ids present — the new entity was already created (e.g. a
+                # partially completed earlier migration).  Renaming onto it
+                # would raise, so leave the stale one for the user to delete.
+                _LOGGER.debug(
+                    ">>> [sensor] Skipping unique_id migration %s → %s: target exists",
+                    entry.unique_id,
+                    new_unique_id,
+                )
+                break
+            _LOGGER.info(
+                "Migrating Aseko sensor unique_id %s → %s",
+                entry.unique_id,
+                new_unique_id,
+            )
+            registry.async_update_entity(entry.entity_id, new_unique_id=new_unique_id)
+            existing.add(new_unique_id)
+            break
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     config_entry: AsekoLocalConfigEntry,
@@ -665,6 +778,7 @@ async def async_setup_entry(
     """Set up the Aseko device sensors."""
 
     async_remove_retired_entities(hass, config_entry)
+    async_migrate_unique_ids(hass, config_entry)
 
     coordinator = config_entry.runtime_data.coordinator
     devices = coordinator.get_devices() or []
@@ -717,7 +831,17 @@ def _build_sensor_entities(
                 val,
             )
 
-            if val is None:
+            # Without a supported_fn, a value of None means "device does not
+            # report this".  With one, the device decides presence and the
+            # sensor may legitimately start out unknown.
+            if description.supported_fn is not None:
+                if not description.supported_fn(device):
+                    _LOGGER.debug(
+                        "   - Skipped unsupported sensor: %s",
+                        key,
+                    )
+                    continue
+            elif val is None:
                 _LOGGER.debug(
                     "   - Skipped non-available sensor: %s (value=None)",
                     key,

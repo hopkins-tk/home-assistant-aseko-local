@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime, time, timedelta
+from datetime import datetime, time
 import homeassistant.util
 from typing import Type, TypeVar
 
@@ -559,12 +559,14 @@ class AsekoDecoder:
         None for NET — it is the user's responsibility to interpret "no entity
         at all" as "device does not have a backwash output".
 
-        Live confirmation: not yet captured in a frame while a backwash cycle
-        is actually running.  A "no flow to probes" condition (byte[13] bit
-        0x04) was independently confirmed to be associated with byte[28] == 0
-        (and not byte[29] bit 0x01) — see Issue #100, DomSchCoding capture.
-        The bit-0x01 mapping is the same one JS-DE-Tech uses and DomSchCoding
-        identified as a candidate in Issue #100 §"Open: Dynamic State Bytes".
+        Live confirmation (SALT, 2026-08-11): a diagnostics capture spanning a
+        manually started backwash shows byte[29] going 0x48 → 0x49 → 0x48, with
+        the bit set from 13:26:43 to 13:28:09 and clear again at 13:28:29.  The
+        observed 86–106 s relay window matches the unit's configured
+        backwash_duration of 100 s (byte[71] = 0x0a), and no other actuator bit
+        moved during it.  A "no flow to probes" condition (byte[13] bit 0x04)
+        was independently confirmed to be associated with byte[28] == 0 (and
+        not byte[29] bit 0x01) — see Issue #100, DomSchCoding capture.
         """
         if unit.device_type == AsekoDeviceType.NET:
             # NET has no backwash valve — leave the field as None so the
@@ -572,63 +574,6 @@ class AsekoDecoder:
             return
 
         unit.backwash_active = bool(data[29] & 0x01)
-
-    @staticmethod
-    def _fill_backwash_schedule(unit: AsekoDevice) -> None:
-        """Compute estimated last/next backwash datetimes from the schedule config.
-
-        Algorithm:
-          last_backwash = most recent occurrence of backwash_time at or before
-                          the frame timestamp (i.e. today's or yesterday's slot).
-          next_backwash = last_backwash + backwash_every_n_days days.
-
-        Caveat (last_backwash): This is a schedule-based *estimate*.  The actual
-        backwash phase is unknown from the device because it does not transmit
-        when the last backwash physically ran.
-
-        The coordinator (``coordinator.py``) overrides ``last_backwash`` with
-        the value from ``BackwashTracker`` (a persistent store of the last
-        observed ≥60 s relay-on window) once a real backwash has been seen.
-        So:
-            * Before the first observed backwash: the value here is shown
-              (i.e. the latest scheduled slot in the past).
-            * After the first observed backwash: the tracker's value wins
-              (and persists across HA restarts).
-
-        See ``backwash_tracker.py`` for the live-tracking implementation.
-        """
-        # Defensive: the schedule fields are already gated on BACKWASH_TYPES in
-        # decode(), but we re-check the device type here so this method stays
-        # safe even if it is ever called from a code path that didn't pre-filter.
-        if unit.device_type is None or unit.device_type not in BACKWASH_TYPES:
-            return
-        if (
-            unit.backwash_every_n_days is None
-            or unit.backwash_time is None
-            or unit.timestamp is None
-        ):
-            return
-
-        # `0` means "schedule disabled" per the device config / README.
-        # In that case the schedule-derived sensors stay None so the user
-        # does not see bogus last/next datetimes that all collapse to
-        # the same value.
-        if unit.backwash_every_n_days <= 0:
-            return
-
-        tz = unit.timestamp.tzinfo
-        today_at_backwash = datetime.combine(
-            unit.timestamp.date(), unit.backwash_time
-        ).replace(tzinfo=tz)
-
-        # If the scheduled time is still in the future today, use yesterday's slot.
-        if today_at_backwash > unit.timestamp:
-            last = today_at_backwash - timedelta(days=1)
-        else:
-            last = today_at_backwash
-
-        unit.last_backwash = last
-        unit.next_backwash = last + timedelta(days=unit.backwash_every_n_days)
 
     @staticmethod
     def _fill_alarm_data(unit: AsekoDevice, data: bytes) -> None:
@@ -984,6 +929,11 @@ class AsekoDecoder:
         AsekoDecoder._fill_vsp_pump(device, data)
         AsekoDecoder._fill_ph_minus_concentration(device, data)
         AsekoDecoder._fill_backwash_active(device, data)
-        AsekoDecoder._fill_backwash_schedule(device)
+        # The backwash history fields are deliberately NOT derived from the
+        # schedule here: the frame carries the *configuration* (bytes 68-71),
+        # never the history, so the schedule alone cannot say whether a cycle
+        # actually ran.  The coordinator fills those fields from
+        # BackwashTracker once a real relay window has been observed; until
+        # then they stay None and the sensors read "unknown".
 
         return device

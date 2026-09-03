@@ -133,6 +133,15 @@ def test_decode_home() -> None:
     assert device.backwash_every_n_days == 3
     assert device.backwash_time == time(2, 30)
     assert device.backwash_duration == 20
+    # The frame carries the backwash *configuration* only; it never says when a
+    # cycle last ran.  The decoder must therefore leave the history unknown
+    # instead of deriving it from the schedule — the coordinator fills these in
+    # from BackwashTracker once a real relay window has been observed.
+    assert device.last_backwash is None
+    assert device.last_scheduled_backwash is None
+    assert device.last_manual_backwash is None
+    assert device.last_backwash_trigger is None
+    assert device.next_scheduled_backwash is None
     # HOME has 4 independent pump ports — byte[37] routing does not apply.
     # byte[54] = required_floc, byte[72] = required_algicide (same layout as OXY).
     # Base bytes: data[54]=5, data[72]=0 (default zero).
@@ -419,7 +428,7 @@ def test_decode_net() -> None:
     assert device.backwash_time is None
     assert device.backwash_duration is None
     assert device.last_backwash is None
-    assert device.next_backwash is None
+    assert device.next_scheduled_backwash is None
     assert device.backwash_active is None
     # NET has no filling valve, so the water_level group is empty too.
     assert device.water_level is None
@@ -514,7 +523,7 @@ def test_decode_net_no_backwash_with_garbage_bytes() -> None:
     assert device.backwash_time is None
     assert device.backwash_duration is None
     assert device.last_backwash is None
-    assert device.next_backwash is None
+    assert device.next_scheduled_backwash is None
     assert device.backwash_active is None
     assert device.water_level is None
     assert device.water_level_low_alarm is None

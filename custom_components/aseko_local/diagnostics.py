@@ -236,6 +236,15 @@ def _parse_v8_frame(raw: bytes) -> dict[str, Any] | None:
     }
 
 
+def _str_or_none(value: Any) -> str | None:
+    """Render an optional value as a string, keeping None as None.
+
+    ``str(None)`` would produce the literal "None", which reads in a dump like
+    a value rather than like "never observed".
+    """
+    return None if value is None else str(value)
+
+
 async def async_get_config_entry_diagnostics(
     hass: HomeAssistant,
     config_entry: AsekoLocalConfigEntry,
@@ -283,6 +292,21 @@ async def async_get_config_entry_diagnostics(
             "flowrate_ph_plus_ml_min": device.flowrate_ph_plus,
             "flowrate_algicide_ml_min": device.flowrate_algicide,
             "flowrate_floc_ml_min": device.flowrate_floc,
+            # Backwash: the live relay bit plus the observed history the
+            # BackwashTracker has built from it.  Without these a dump only
+            # carries the schedule config (bytes 68-71) and the raw byte[29],
+            # so answering "did a backwash run?" meant decoding bit 0x01 by
+            # hand across a series of dumps.  None = not yet observed.
+            "backwash_active": device.backwash_active,
+            "last_backwash": _str_or_none(device.last_backwash),
+            "last_scheduled_backwash": _str_or_none(device.last_scheduled_backwash),
+            "last_manual_backwash": _str_or_none(device.last_manual_backwash),
+            "last_backwash_trigger": (
+                device.last_backwash_trigger.value
+                if device.last_backwash_trigger
+                else None
+            ),
+            "next_scheduled_backwash": _str_or_none(device.next_scheduled_backwash),
         }
 
         # --- Consumption counters ---
