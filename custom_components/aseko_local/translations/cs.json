@@ -35,6 +35,11 @@
     }
   },
   "entity": {
+    "datetime": {
+      "last_scheduled_backwash": {
+        "name": "Poslední plánované zpětné proplachování"
+      }
+    },
     "binary_sensor": {
       "electrolyzer_active": {
         "name": "Elektrolyzér aktivní"
@@ -44,6 +49,15 @@
       },
       "heating_active": {
         "name": "Topení aktivní"
+      },
+      "heating_control_enabled": {
+        "name": "Ovládání topení"
+      },
+      "antifreeze_enabled": {
+        "name": "Ochrana proti zamrznutí"
+      },
+      "vsp_pump_running": {
+        "name": "Čerpadlo s proměnnými otáčkami"
       },
       "cl_pump_running": {
         "name": "Čerpadlo chloru běží"
@@ -69,9 +83,6 @@
       "water_filling_active": {
         "name": "Plnění vody aktivní"
       },
-      "filtration_nonstop24": {
-        "name": "Filtrace nonstop 24h"
-      },
       "alarm_ph_too_many_doses": {
         "name": "Příliš mnoho dávek pH"
       },
@@ -86,10 +97,13 @@
       },
       "backwash_active": {
         "name": "Zpětné proplachování aktivní"
+      },
+      "service_menu": {
+        "name": "Servisní menu"
       }
     },
     "sensor": {
-      "filtration_1_start": {
+"filtration_1_start": {
         "name": "Filtrace 1 začátek"
       },
       "filtration_1_stop": {
@@ -118,6 +132,9 @@
       },
       "delay_after_dose": {
         "name": "Prodleva po dávce"
+      },
+      "ph_minus_concentration": {
+        "name": "Koncentrace pH-"
       },
       "air_temperature": {
         "name": "Teplota vzduchu"
@@ -224,8 +241,11 @@
       "last_backwash": {
         "name": "Poslední zpětné proplachování"
       },
-      "next_backwash": {
-        "name": "Príští zpětné proplachování"
+      "last_manual_backwash": {
+        "name": "Poslední ruční zpětné proplachování"
+      },
+      "next_scheduled_backwash": {
+        "name": "Příští plánované zpětné proplachování (odhad)"
       },
       "backwash_every_n_days": {
         "name": "Interval zpětného proplachování"
@@ -286,6 +306,14 @@
       },
       "oxy_total_consumed": {
         "name": "Spotřeba OXY Pure (celkem)"
+      },
+      "filtration_schedule": {
+        "name": "Rozvrh filtrace",
+        "state": {
+          "nonstop_24h": "Nonstop 24 h",
+          "timer_period_1": "Časové období 1",
+          "timer_period_1_and_2": "Časová období 1 a 2"
+        }
       }
     },
     "number": {

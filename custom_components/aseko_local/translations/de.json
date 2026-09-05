@@ -35,6 +35,11 @@
     }
   },
   "entity": {
+    "datetime": {
+      "last_scheduled_backwash": {
+        "name": "Letzte geplante Rückspülung"
+      }
+    },
     "binary_sensor": {
       "electrolyzer_active": {
         "name": "Elektrolyseur aktiv"
@@ -44,6 +49,15 @@
       },
       "heating_active": {
         "name": "Heizung aktiv"
+      },
+      "heating_control_enabled": {
+        "name": "Heizungssteuerung"
+      },
+      "antifreeze_enabled": {
+        "name": "Frostschutz"
+      },
+      "vsp_pump_running": {
+        "name": "Drehzahlregelpumpe"
       },
       "cl_pump_running": {
         "name": "Chlorpumpe läuft"
@@ -69,9 +83,6 @@
       "water_filling_active": {
         "name": "Wasserauffüllung aktiv"
       },
-      "filtration_nonstop24": {
-        "name": "Filtration Nonstop 24h"
-      },
       "alarm_ph_too_many_doses": {
         "name": "pH-Alarm: zu viele Dosierungen"
       },
@@ -86,6 +97,9 @@
       },
       "backwash_active": {
         "name": "Rückspülung aktiv"
+      },
+      "service_menu": {
+        "name": "Servicemenü"
       }
     },
     "sensor": {
@@ -118,6 +132,9 @@
       },
       "delay_after_dose": {
         "name": "Verzögerung nach Dosierung"
+      },
+      "ph_minus_concentration": {
+        "name": "pH- Konzentration"
       },
       "air_temperature": {
         "name": "Lufttemperatur"
@@ -224,8 +241,11 @@
       "last_backwash": {
         "name": "Letzte Rückspülung"
       },
-      "next_backwash": {
-        "name": "Nächste Rückspülung"
+      "last_manual_backwash": {
+        "name": "Letzte manuelle Rückspülung"
+      },
+      "next_scheduled_backwash": {
+        "name": "Nächste geplante Rückspülung (geschätzt)"
       },
       "backwash_every_n_days": {
         "name": "Rückspülintervall"
@@ -286,6 +306,14 @@
       },
       "oxy_total_consumed": {
         "name": "OXY Pure verbraucht (gesamt)"
+      },
+      "filtration_schedule": {
+        "name": "Filtrationsplan",
+        "state": {
+          "nonstop_24h": "24 h durchgehend",
+          "timer_period_1": "Zeitperiode 1",
+          "timer_period_1_and_2": "Zeitperioden 1 & 2"
+        }
       }
     },
     "number": {

@@ -91,6 +91,8 @@ This is different from SALT where `byte[20]` = salinity and `byte[21]` = electro
 | `[4]` | Unit type + probe flags | `0x09` typical |
 | `[5]` | Sub-frame type `0x01` | |
 | `[6:12]` | Timestamp | **Always `0xFF` on NET** — decoder falls back to `now()` |
+| `[12]` | Dosing-warning bitmask | Usually `0x00` on NET — see [`home_device_analysis.md`](home_device_analysis.md) §"Dosing warnings & alarms" |
+| `[13]` | Alarm bitmask | `0x04` = no flow to probes (confirmed on NET); see § above |
 | `[14:16]` | pH = value / 100 | |
 | `[16:18]` | CLF = value / 100 (mg/L) | |
 | `[20:22]` | cl_free_mv (mV, signed) | NET-specific; SALT uses `[20]` for salinity |
@@ -199,4 +201,4 @@ AsekoDeviceType.NET: AsekoActuatorMasks(
 | NET-in-DOSE-mode decoded as HOME? | ⚠️ Known bug — filed as separate issue, out of v1.4.0 scope |
 | byte[29] other bits on NET? | ⏳ Only `0x01` and `0x02` confirmed — no further pump outputs known |
 | ph_plus pump on NET? | ⏳ NET hardware may not have pH+ pump — not confirmed |
-| byte[37] = `0xFF` always on NET? | ✅ Confirmed — `0xFF` (UNSPECIFIED) in all captured frames → `filtration_nonstop24 = None` |
+| byte[37] = `0xFF` always on NET? | ✅ Confirmed — `0xFF` (UNSPECIFIED) in all captured frames.  NET is not in `FILTRATION_TYPES` anyway, so neither `filtration_schedule` nor `service_menu_open` is decoded for it |

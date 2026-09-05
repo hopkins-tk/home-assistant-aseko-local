@@ -35,6 +35,11 @@
         }
     },
     "entity": {
+        "datetime": {
+            "last_scheduled_backwash": {
+                "name": "Dernier contre-lavage programmé"
+            }
+        },
         "binary_sensor": {
             "electrolyzer_active": {
                 "name": "Électrolyseur actif"
@@ -44,6 +49,15 @@
             },
             "heating_active": {
                 "name": "Chauffage actif"
+            },
+            "heating_control_enabled": {
+                "name": "Contrôle du chauffage"
+            },
+            "antifreeze_enabled": {
+                "name": "Antigel"
+            },
+            "vsp_pump_running": {
+                "name": "Pompe à vitesse variable"
             },
             "cl_pump_running": {
                 "name": "Pompe à chlore en marche"
@@ -69,9 +83,6 @@
             "water_filling_active": {
                 "name": "Remplissage d'eau actif"
             },
-            "filtration_nonstop24": {
-                "name": "Filtration nonstop 24h"
-            },
             "alarm_ph_too_many_doses": {
                 "name": "Alarme pH : trop de doses"
             },
@@ -86,6 +97,9 @@
             },
             "backwash_active": {
                 "name": "Contre-lavage actif"
+            },
+            "service_menu": {
+                "name": "Menu de service"
             }
         },
         "sensor": {
@@ -118,6 +132,9 @@
             },
             "delay_after_dose": {
                 "name": "Délai après dosage"
+            },
+            "ph_minus_concentration": {
+                "name": "Concentration pH-"
             },
             "air_temperature": {
                 "name": "Température de l'air"
@@ -224,8 +241,11 @@
             "last_backwash": {
                 "name": "Dernière contre-lavage"
             },
-            "next_backwash": {
-                "name": "Prochain contre-lavage"
+            "last_manual_backwash": {
+                "name": "Dernier contre-lavage manuel"
+            },
+            "next_scheduled_backwash": {
+                "name": "Prochain contre-lavage programmé (estimé)"
             },
             "backwash_every_n_days": {
                 "name": "Intervalle de contre-lavage"
@@ -286,6 +306,14 @@
             },
             "oxy_total_consumed": {
                 "name": "OXY Pure consommé (total)"
+            },
+            "filtration_schedule": {
+                "name": "Programme de filtration",
+                "state": {
+                    "nonstop_24h": "24 h en continu",
+                    "timer_period_1": "Plage horaire 1",
+                    "timer_period_1_and_2": "Plages horaires 1 et 2"
+                }
             }
         },
         "number": {

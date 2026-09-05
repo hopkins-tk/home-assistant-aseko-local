@@ -49,17 +49,54 @@ convention, named `PROBE_X_MISSING` in the code).
 | `[4]` | Unit type + probe flags | `0x0E` or `0x0D` |
 | `[5]` | Sub-frame type `0x01` | |
 | `[6:12]` | Timestamp (year−2000, month, day, hour, min, sec) | Device clock |
+| `[12]` | Dosing-warning bitmask | Usually `0x00` on SALT — see [`home_device_analysis.md`](home_device_analysis.md) §"Dosing warnings & alarms" |
+| `[13]` | Alarm bitmask | `0x04` = no flow to probes; see § above |
 | `[14:16]` | pH = value / 100 | |
 | `[16:18]` | CLF or REDOX (probe-dependent) | CLF: `/100` mg/L; REDOX: `×1` mV |
 | `[18:20]` | REDOX (if CLF also present on PROFI-style) | Not applicable on basic SALT |
 | `[20]` | Salinity = value / 10 | SALT-specific |
 | `[21]` | Electrolyzer power (% or raw) | `0` when electrolyzer not running |
+| `[23:25]` | Air temperature = signed value / 10 | °C — see §Air temperature |
 | `[25:27]` | Water temperature = value / 10 | °C |
 | `[28]` | Water flow to probes | `0xAA` = flowing |
 | `[29]` | Actuator bitmask | **See §byte[29]** |
 | `[37]` | Third-pump routing (algicide vs. flocculant) | **See §byte[37]** |
 
 ---
+
+## Air temperature — byte `[23:25]`
+
+Bytes 23-24 hold the air (ambient) temperature as a 16-bit big-endian two's
+complement value, `value / 10` = °C — the same encoding as the water
+temperature that follows it in bytes 25-26. The field was previously listed as
+"unknown".
+
+**Evidence** — two diagnostics dumps from serial 110194590 (ASIN AQUA Salt,
+type byte `0x0d`), both matching the readings shown on the unit:
+
+| Captured | Bytes 23-24 | Air | Bytes 25-26 | Water |
+|---|---|---|---|---|
+| 2026-08-11 10:33 | `0x0168` = 360 | 36.0 °C | `0x0128` = 296 | 29.6 °C |
+| 2026-08-17 18:50 | `0x0134` = 308 | 30.8 °C | `0x0122` = 290 | 29.0 °C |
+
+Both fields move independently, and each raw air value occurs exactly once in
+its 120-byte frame, so the offset is unambiguous. Byte 22 stayed `0x18` in both
+samples, so this is a plain 16-bit field and not the low half of a 24-bit one.
+
+**Signedness.** Read unsigned, frames from units without an air probe decode to
+6513.6 °C (`0xFE70`) and 6502.8 °C (`0xFDC4`); as two's complement the same
+bytes read -40.0 °C and -57.2 °C, i.e. an open-circuit temperature input. The
+decoder therefore reads the field signed and discards anything outside
+-30.0 … 60.0 °C, which filters both sentinels. A genuine sub-zero reading has
+not been captured yet, so the cold-weather encoding remains unverified.
+
+`0xFFFF` is rejected up front as the protocol-wide "unspecified" marker — read
+signed it would otherwise pass the window as -0.1 °C.
+
+**Scope.** Only SALT is enabled (`AIR_TEMPERATURE_TYPES`). Frames from other
+types carry values in these bytes that do not read as an ambient temperature
+(e.g. `0x0C3C` = 313.2 °C on a NET unit), so they stay excluded until a dump
+from that type is checked against its display.
 
 ## byte[29] – Actuator Bitmask
 
@@ -115,6 +152,25 @@ type differently in byte[37].
 firmware versions. See [byte37_algicide_floc_analysis.md](../temp/byte37_algicide_floc_analysis.md) for
 full XOR analysis.
 
+**Note on Period 2 schedule bytes (Issue #133)**: On SALT, the controller keeps
+sending the last-configured `start2`/`stop2` times in bytes 60-63 even after
+the user disables Period 2 in the controller UI.  Pre-fix, the decoder
+gated these fields on `byte[37] & 0x80` and returned `None` for any frame
+where the algicide-routing bit was clear — which caused already-registered
+entities to flip to "unknown" when the user toggled Period 2 on/off
+(Home Assistant protects the entity registry, so the entity stays but
+the value is read as `None`).  Post-fix, bytes 60-63 are read
+unconditionally for any device in `FILTRATION_TYPES` (SALT included), and
+the mode and schedule are decoded from the `byte[37]` bits (see
+§byte[37] – filtration mode and schedule below).  Behaviour was originally verified on SALT by
+diffing two frames
+captured in PR #122 (algicide mode toggle, `0xb3` ↔ `0x33`); the
+corresponding behaviour for HOME was confirmed in Issue #133 with
+@dtpugh's four diagnostic files (see
+[`home_device_analysis.md`](home_device_analysis.md) §"Note on Period 2
+schedule bytes (Issue #133)").  NET is excluded because it has no
+filtration output.
+
 ### byte[37] also contains other fields
 
 `byte[37]` is a packed multi-field byte — it is **not** a pure single-bit flag:
@@ -125,8 +181,101 @@ full XOR analysis.
 | Algicide 11 → Flocculant 11 (type change) | `0x84` | bit 7 + bit 2 |
 | Algicide 10 → Flocculant 11 (both change) | `0x80` | bit 7 only |
 
-Bit 2 (`0x04`) appears related to dosage encoding. The full semantics of all bits are not
-confirmed.
+Bit 2 (`0x04`) was read here as dosage encoding.  **That reading is
+superseded**: `0x04` marks the unit's settings menu, captured directly on an ASIN
+AQUA Salt across six byte[37] values and both directions of every transition
+(see §byte[37] – filtration mode and schedule below).  The XOR above came
+from two frames diffed in PR #122; the dosage change and a mode change most
+likely coincided in that pair.  The remaining bits are unconfirmed.
+
+### byte[37] – filtration mode and schedule
+
+`byte[37]` carries **two independent facts** about filtration, and the decoder
+keeps them apart because neither can stand in for the other:
+
+| Bits | Meaning | Field |
+|---|---|---|
+| `0x10` / `0x20` | which schedule is configured | `filtration_schedule` |
+| `0x04` | the unit's settings menu is open | `service_menu_open` |
+
+Every combination below was captured on an ASIN AQUA Salt with the mode shown
+on the unit itself known, in both directions of each transition:
+
+| `byte[37]` | `service_menu_open` | `filtration_schedule` |
+|---|---|---|
+| `0xC3` | `False` | `NONSTOP_24H` |
+| `0xD3` | `False` | `TIMER_PERIOD_1` |
+| `0xF3` | `False` | `TIMER_PERIOD_1_AND_2` |
+| `0xC7` | `True` | `NONSTOP_24H` |
+| `0xD7` | `True` | `TIMER_PERIOD_1` |
+| `0xF7` | `True` | `TIMER_PERIOD_1_AND_2` |
+
+These are the same mode bits HOME firmware B uses; the constant `0xC0` in the
+high nibble is SALT's own configuration (`0x80` = algicide routing).
+
+**Bit `0x40` does not select the firmware variant here.** SALT sets it in every
+frame, so routing on it sent SALT into the HOME firmware-A branch, where it
+matched none of the exact values and came out with no mode at all.  The
+firmware-A branch — and the schedule-derived fallback behind it — are therefore
+HOME-only.  On SALT the fallback could not help anyway: the filtration times in
+bytes 56-63 are reported unchanged in every mode, so deriving the mode from
+them would return one constant answer whatever the unit is doing.
+
+**What the bit actually marks.** `0x04` appears the moment the settings menu
+is opened on the unit — the menu holding every Aseko setting, and the place
+filtration and backwash can be started by hand from.  It is set **before**
+anything is touched: three captures labelled "switched to manual mode, did
+nothing" carry it.  So on its own the bit says a person is standing at the
+unit, and nothing about what they did.
+
+**The unit goes quiet while the menu is open.** Opening it produces exactly
+one more frame — the one carrying `0x04` — and then transmission stops until
+the user leaves.  Three diagnostics taken during one such session all
+contained the same frame, with `online` going false between them.  Two
+consequences:
+
+* `service_menu_open` going True is typically the last thing reported before
+  the device goes offline, and it stays True until the user comes back out.
+  This is correct — it is the last thing the unit actually said.
+* What the user *does* in there is not observable.  The pump state in that
+  final frame is the state on the way in, not the result.  The unit will not
+  let you leave until filtration is back in the state it was in before, so
+  the value Home Assistant is holding is right again by the time frames
+  resume.
+
+Note this is **not** evidence that the schedule is suspended while the menu
+is open: in the 2026-08-11 capture the pump kept running throughout, and the
+configured period 1 covered that time of day anyway.
+
+The exception is a by-hand **backwash**: there the unit keeps transmitting
+throughout, with `0x04` set from ~30 s before the valve opens until ~20 s
+after it closes.  A cycle running while somebody is at the menu the button
+lives on is manual by observation, and `backwash_tracker` uses it as such
+rather than inferring from the clock — see `_service_menu_open`.
+
+Confirmed a second time on 2026-08-28, in six diagnostics taken across one
+by-hand cycle (SALT, `backwash_every_n_days = 15`, `backwash_time = 08:30`,
+`backwash_duration = 100 s`):
+
+| Frame time | `byte[29]` | Backwash | `byte[37]` | Menu |
+|---|---|---|---|---|
+| 17:30:40 | `0x48` | – | `0xd3` | – |
+| 17:31:02 | `0x48` | – | `0xd7` | **open** |
+| 17:32:10 | `0x49` | **on** | `0xd7` | **open** |
+| 17:32:20 | `0x49` | **on** | `0xd7` | **open** |
+| 17:32:40 | `0x48` | – | `0xd3` | – |
+
+The menu bit is up at least 68 s before the valve is first seen open and is
+down again in the first frame that shows it shut, so it brackets the cycle on
+both sides — which is why `backwash_tracker` latches it across the window
+instead of reading it when the window closes.  The unit stayed `online` and
+`filtration_pump_running` throughout, and `filtration_schedule` reads
+`timer_period_1` in every frame: `0xd7` and `0xd3` differ only in `0x04`.
+
+Note what this capture does *not* settle: at 17:32 it is nowhere near the
+configured 08:30, so the time-only rule would have called it manual anyway.
+It confirms that the signal is present and correctly bracketed, not that it
+overrides a wrong answer — that case is still the 2026-08-11 capture's.
 
 ---
 
@@ -140,8 +289,8 @@ confirmed.
 | `[55]` | Required water temperature (°C) | |
 | `[56:58]` | Filtration start1 | HH:MM |
 | `[58:60]` | Filtration stop1 | HH:MM |
-| `[60:62]` | Filtration start2 | HH:MM |
-| `[62:64]` | Filtration stop2 | HH:MM |
+| `[60:62]` | Filtration start2 | HH:MM | Always populated — see Issue #133 |
+| `[62:64]` | Filtration stop2 | HH:MM | Always populated — see Issue #133 |
 | `[68]` | Backwash every N days | `0` = disabled |
 | `[69:71]` | Backwash time | HH:MM |
 | `[71]` | Backwash duration | ×10 seconds |

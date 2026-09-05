@@ -1,16 +1,16 @@
 """Data model for Aseko pool devices.
 
-This module defines the **protocol-agnostic target schema** (`AsekoDevice`)
-that the entity layer (sensors, binary sensors, buttons, …) consumes. It
+This module defines the **protocol-agnostic target schema** (``AsekoDevice``)
+that the entity layer (sensors, binary sensors, buttons, …) consumes.  It
 also defines the device-type enum, the probe-type enum, the electrolyser
 direction enum, and the filtration-mode enum.
 
-Decoder-specific byte-level knowledge (v7 `byte[29]` masks, v8 `fncs:`
-capability codes, byte[37] routing constants, etc.) lives in
-`aseko_v7_helpers.py` and `aseko_v8_helpers.py` next to the corresponding
-decoder. The v7 constants `AsekoActuatorMasks`, `ACTUATOR_MASKS`, and
-`AsekoThirdPumpSlot` are re-exported from `aseko_v7_helpers` at the bottom
-of this file for backwards compatibility with existing import sites.
+Decoder-specific byte-level knowledge (v7 ``byte[29]`` masks, v8 ``fncs:``
+capability codes, ``byte[37]`` routing constants, etc.) lives in
+``aseko_v7_helpers.py`` and ``aseko_v8_helpers.py`` next to the corresponding
+decoder.  The v7 constants ``AsekoActuatorMasks``, ``ACTUATOR_MASKS``, and
+``AsekoThirdPumpSlot`` are re-exported at the bottom of this file for
+backwards compatibility with existing import sites.
 """
 
 from dataclasses import dataclass, field, fields
@@ -28,7 +28,6 @@ class AsekoDeviceType(Enum):
     OXY = "ASIN AQUA Oxygen"
     PROFI = "ASIN AQUA Profi"
     SALT = "ASIN AQUA Salt"
-    SALT_NET = "ASIN AQUA Salt NET"
 
 
 class AsekoProbeType(Enum):
@@ -48,6 +47,69 @@ class AsekoElectrolyzerDirection(Enum):
     LEFT = "left"
     RIGHT = "right"
     WAITING = "waiting"
+
+
+class AsekoBackwashTrigger(Enum):
+    """What started the most recently observed backwash cycle.
+
+    MANUAL — the unit's settings menu was open while the valve was, so a
+        person was standing at the menu the backwash button lives on.
+        Observed, not inferred.
+    SCHEDULED — the menu was shut and the cycle started within the tolerance
+        window around the configured ``backwash_time`` on a device whose
+        backwash schedule is enabled, so the unit ran it on its own.
+    UNKNOWN — neither, on a device that reports the menu.  The valve was seen
+        to open, which is a fact, but the unit would have said if somebody had
+        been at it and it did not, so nothing explains the cycle.
+
+    The device does not transmit *why* the valve opened.  Only the menu bit is
+    direct evidence; the schedule match is a comparison against the clock.  On
+    a device that does not report the menu there is no third option worth
+    having — leftovers there are MANUAL by elimination, as they always were,
+    because the alternative is a ``last_manual_backwash`` that is never filled.
+    See ``BackwashTracker._classify``.
+    """
+
+    SCHEDULED = "scheduled"
+    MANUAL = "manual"
+    UNKNOWN = "unknown"
+
+
+class AsekoBackwashSource(Enum):
+    """Where ``last_scheduled_backwash`` came from.
+
+    OBSERVED — the integration watched the backwash valve run a full cycle.
+    MANUAL — the user entered it via ``aseko_local.set_last_scheduled_backwash``,
+        to seed the schedule phase instead of waiting for the next real cycle.
+
+    Last write wins, and the timestamps themselves are never compared.  A
+    manual entry replaces whatever is stored, because whoever types a date in
+    has a reason to.  A scheduled cycle detected afterwards replaces that in
+    turn, because the guess it stood in for has now actually been seen.
+
+    ``next_scheduled_backwash`` carries no source of its own — it is always
+    projected from ``last_scheduled_backwash``, so its provenance is that
+    sensor's and repeating it would only be one more thing to keep in sync.
+    """
+
+    OBSERVED = "observed"
+    MANUAL = "manual"
+
+
+class AsekoFiltrationSchedule(Enum):
+    """The filtration schedule the unit is configured for (Issue #133).
+
+    byte[37] bits 0x10 / 0x20.  What the unit runs when nobody is at it —
+    see `AsekoDevice.service_menu_open`, which is decoded from the same
+    byte but says nothing about filtration.
+
+    Enum values map to the translation keys under
+    entity.sensor.filtration_schedule.state.
+    """
+
+    NONSTOP_24H = "nonstop_24h"
+    TIMER_PERIOD_1 = "timer_period_1"
+    TIMER_PERIOD_1_AND_2 = "timer_period_1_and_2"
 
 
 class AsekoFiltrationMode(Enum):
@@ -81,16 +143,16 @@ INSTALLED_PUMPS: frozenset[str] = frozenset(
 # Re-exports for backwards compatibility
 # ---------------------------------------------------------------------------
 #
-# `AsekoActuatorMasks`, `ACTUATOR_MASKS`, and `AsekoThirdPumpSlot` are
-# **v7-decoder specific** (byte[29] bit masks, byte[37] routing
-# constants). They used to live in this module, but they belong in
-# `aseko_v7_helpers.py` next to the v7 decoder. We re-export them here
-# so existing import sites (`aseko_decoder.py`, `button.py`,
-# `sensor.py`, …) keep working without a global rename. New code
-# should import them from `aseko_v7_helpers` directly.
+# ``AsekoActuatorMasks``, ``ACTUATOR_MASKS``, and ``AsekoThirdPumpSlot`` are
+# **v7-decoder specific** (byte[29] bit masks, byte[37] routing constants).
+# They used to live in this module, but they belong in ``aseko_v7_helpers.py``
+# next to the v7 decoder.  We re-export them here so existing import sites
+# (``aseko_decoder.py``, ``button.py``, ``sensor.py``, …) keep working without
+# a global rename.  New code should import them from ``aseko_v7_helpers`` directly.
 from .aseko_v7_helpers import (  # noqa: E402, F401
     ACTUATOR_MASKS,
     AsekoActuatorMasks,
+    AsekoByte37Masks,
     AsekoThirdPumpSlot,
 )
 
@@ -101,28 +163,6 @@ class AsekoDevice:
 
     device_type: AsekoDeviceType | None = None  # byte 4-7?
     configuration: set[AsekoProbeType] = field(default_factory=set)
-
-    # Subset of INSTALLED_PUMPS that the decoder determined to be physically
-    # present on this device.
-    #
-    # **v7:** populated by the v7 decoder from `ACTUATOR_MASKS[<device_type>]`
-    # (mask-based for CL and pH−, flowrate-based for algicide/floc/oxy, with
-    # byte[37] routing for SALT's shared third-pump slot). Matches the
-    # historic v7 entity-layer logic in `PUMP_MASK_FIELD` / `PUMP_RUNNING_ATTR`
-    # so existing v7 test expectations (e.g. CL consumption entities on
-    # PROFI / NET even when `data[99] = 0xFF`) keep working.
-    #
-    # **v8:** populated by the v8 decoder from
-    # `aseko_v8_helpers.installed_pumps_from_fncs(fncs[2], fncs[6], …)` —
-    # the v8 wire format has no `byte[29]` actuator bitmask, so presence
-    # is derived from the `fncs:` section (SALT NET, NET v8) and a
-    # small per-(fncs[2], fncs[6]) pump-presence table.
-    #
-    # Consumed by the entity layer (sensor.py, button.py) to decide
-    # whether to register consumption / refill-reset entities. The
-    # consumption tracker (consumption_tracker.py) keys its counters
-    # on these same `pump_key` strings.
-    installed_pumps: frozenset[str] = field(default_factory=frozenset)
 
     serial_number: int | None = None  # byte 0 - 4
     timestamp: datetime | None = None  # byte 6 - 11
@@ -140,6 +180,10 @@ class AsekoDevice:
     water_flow_to_probes: bool | None = None  # byte 28 == aah
     filtration_pump_running: bool | None = None  # byte 29 (3-rd bit)
     heating_active: bool | None = None  # byte 29 (2-nd bit, 0x04)
+    heating_control_enabled: bool | None = None  # byte 37 bit 3 (0x08) on HOME
+    antifreeze_enabled: bool | None = None  # byte 37 bit 7 (0x80) on HOME
+    vsp_pump_running: bool | None = None  # byte 22 bit 3 (0x08) on HOME
+    ph_minus_concentration: int | None = None  # byte 112 (%) on HOME (Issue #139)
     cl_pump_running: bool | None = None  # byte 29 (6-th bit)
     ph_minus_pump_running: bool | None = None  # byte 29 (7-th bit)
     ph_plus_pump_running: bool | None = (
@@ -152,6 +196,13 @@ class AsekoDevice:
     oxy_pump_running: bool | None = (
         None  # byte 29 bit unconfirmed – OXY Pure device only
     )
+
+    # Subset of INSTALLED_PUMPS that the decoder determined to be physically
+    # present on this unit.  Populated from the protocol-specific capability
+    # tables (v7 ACTUATOR_MASKS / byte[37] routing, v8 fncs[2] capability
+    # gate).  None when the decoder cannot tell, so the entity layer can
+    # suppress phantom "off" sensors for pumps that are not physically there.
+    installed_pumps: frozenset[str] = field(default_factory=frozenset)
 
     # NEW: flow rates (bytes 95, 97, 99, 101)
     flowrate_chlor: int | None = None
@@ -174,13 +225,8 @@ class AsekoDevice:
     )
 
     # algicide/flocculant based on byte 37: bit 0x80 set = algicide, 0 = flocculant, 0xFF = undefined
-    required_algicide: int | None = None  # byte 54 (v7 SALT) / areqs[24] (v8 SALT_NET)
+    required_algicide: int | None = None  # byte 54
     required_floc: int | None = None  # byte 54
-
-    # Filtration hours per day (best guess) — reqs[7] on v8 SALT NET
-    # (NET v8 also reports it at the same position, but typically 24 h).
-    # Unconfirmed by user. See docs/device analyzes/salt_net_v8_device_analysis.md §8.
-    filtration_hours_per_day: int | None = None
 
     required_water_temperature: int | None = None  # byte 55
 
@@ -203,9 +249,9 @@ class AsekoDevice:
     backwash_active: bool | None = None
 
     pool_volume: int | None = None  # byte 92 & 93
-    max_filling_time: int | None = None  # byte 94
+    max_filling_time: int | None = None  # bytes 76-77, seconds
 
-    air_temperature: float | None = None
+    air_temperature: float | None = None  # byte 23 & 24 (signed, ÷10 = °C)
 
     # Water level
     water_level: int | None = None  # byte [27] (cm, real-time)
@@ -217,9 +263,24 @@ class AsekoDevice:
     # Water filling active — byte [29] bit 0x02
     water_filling_active: bool | None = None
 
-    # Filtration mode — byte [37]
-    # True = nonstop 24 h (0x43), False = timer (0x53), None = transitional/unknown
-    filtration_nonstop24: bool | None = None
+    # The filtration schedule the unit is configured for — byte [37]
+    # bits 0x10 / 0x20, which the manual override (bit 0x04) does not
+    # touch.  A unit can be in manual mode *and* configured for nonstop,
+    # and both are worth showing, so the two are kept apart.
+    filtration_schedule: AsekoFiltrationSchedule | None = None
+
+    # Somebody has the unit's settings menu open — byte [37] bit 0x04.
+    #
+    # Not a filtration state, despite living in the same byte: it says a
+    # person is standing at the unit, and nothing about what they are doing.
+    # The menu is where filtration and backwash can be started by hand, but
+    # the unit stops transmitting while it is open, so whether anything was
+    # touched — and what — is not observable at all.  It may well override
+    # filtration; there is no way to see that from here.
+    #
+    # Only the bit-flag firmware encodes it.  Left None on firmware A, where
+    # bit 0x04 belongs to the transitional edit states, and on NET.
+    service_menu_open: bool | None = None
 
     # Filtration mode — 4-state enum (Issue #133).
     # Set for every device type in FILTRATION_TYPES = {SALT, HOME, OXY, PROFI,
@@ -253,31 +314,78 @@ class AsekoDevice:
     # Unconfirmed by user. See docs/device analyzes/salt_net_v8_device_analysis.md §8.
     filtration_hours_per_day: int | None = None
 
-    alarm_ph_too_many_doses: bool | None = (
-        None  # v7 byte [13] bit 0x01 or byte [12] bit 0x40
-    )
-    alarm_orp_too_many_doses: bool | None = (
-        None  # v7 byte [13] bit 0x02 or byte [12] bit 0x20 | v8 ins[12] bit 0x80 (Issue #151)
-    )
-    alarm_no_flow_to_probes: bool | None = (
-        None  # v7 byte [13] bit 0x04 | v8 ins[12] bit 0x100
-    )
+    # Alarm/error bitmasks — bytes [12] (HOME dosing warnings) and [13]
+    # byte [12] 0x20 = chlorine/disinfection dosing warning (HOME ✅, issue #134)
+    # byte [12] 0x40 = pH dosing warning (HOME ✅, issue #134)
+    # byte [13] 0x01 = disinfection/ORP dose fault (Issue #151, HOME serial 110175608;
+    #                  config48 frame byte[13]=0x01 during "Maximum disinfection dose
+    #                  exceeded" — same fault as v8 ins[12] bit 0x80)
+    # byte [13] 0x02 = pH dose fault (inferred, symmetric to 0x01 — no direct capture yet)
+    # byte [13] 0x04 = no flow to probes (confirmed)
+    # byte [13] 0x08 = rapid pH change (error_codes.md, unconfirmed by capture)
+    alarm_ph_too_many_doses: bool | None = None  # byte [13] 0x02 | byte [12] 0x40
+    alarm_orp_too_many_doses: bool | None = None  # byte [13] 0x01 | byte [12] 0x20
+    alarm_no_flow_to_probes: bool | None = None  # byte [13] bit 0x04 (confirmed)
     alarm_rapid_ph_change: bool | None = (
-        None  # v7 byte [13] bit 0x08 (error_codes.md, unconfirmed by capture)
+        None  # byte [13] bit 0x08 (error_codes.md, unconfirmed by capture)
     )
 
     delay_after_dose: int | None = None  # byte 107 & 108 ? (seconds)
     delay_after_startup: int | None = None  # byte 74 & 75 (seconds)
 
-    # Computed backwash schedule (derived from backwash_time + backwash_every_n_days + timestamp).
-    # last_backwash = most recent daily occurrence of backwash_time at or before
-    #                  the frame timestamp.  After the first detected backwash
-    #                  cycle, the BackwashTracker in coordinator.py overrides
-    #                  this with a real observed timestamp (persistent across
-    #                  restarts).  See custom_components/aseko_local/backwash_tracker.py.
-    # next_backwash = last_backwash + backwash_every_n_days days.
+    # Backwash history — filled by the coordinator from BackwashTracker
+    # (persistent across restarts) and None until a real cycle has been seen.
+    # The device never transmits its backwash history, so there is nothing to
+    # derive these from before that: the schedule alone cannot tell us whether
+    # a cycle actually ran, so guessing from it would show a confident
+    # timestamp for something that may never have happened.
+    # See custom_components/aseko_local/backwash_tracker.py.
+    #
+    # These differ in how much they can be trusted:
+    #
+    # OBSERVED — the integration watched the backwash valve stay open for a
+    # full cycle, so this happened:
+    #   last_backwash           = most recent cycle, whatever started it.
+    #   last_manual_backwash    = most recent cycle the unit's settings menu
+    #                             was open for.  Somebody was standing at the
+    #                             menu the backwash button lives on, so on
+    #                             SALT this is observed.  Elsewhere the bit is
+    #                             not trusted and the field falls back to
+    #                             "did not match the schedule", which is a
+    #                             guess — see BackwashTracker._classify.
+    #
+    # DERIVED — matched against the configured schedule, which is a comparison
+    # against a clock (see BackwashTracker._classify for how it can be wrong):
+    #   last_scheduled_backwash = most recent cycle that ran at the configured
+    #                             time with the menu shut.
+    #   next_scheduled_backwash = last_scheduled_backwash projected forward by
+    #                             backwash_every_n_days, so it inherits any
+    #                             error in that match.  None while no scheduled
+    #                             cycle is known: a manual backwash does not
+    #                             reveal the schedule phase, and an unscheduled
+    #                             one cannot be predicted.
+    #
+    # On SALT a cycle that is neither is left as UNKNOWN and updates only
+    # last_backwash: not matching the schedule says the unit's own timer does
+    # not explain the cycle, which is not the same as knowing a person started
+    # it, and the unit would have reported the menu if one had.  Other device
+    # types cannot report that, so there UNKNOWN never appears.
+    #   last_backwash_trigger   = which of the three the latest cycle was.  No
+    #                             entity — it is nearly redundant with
+    #                             comparing the timestamps above — but it is
+    #                             surfaced in diagnostics so a misclassified
+    #                             or unattributed cycle is visible in a dump.
+    #
+    # last_scheduled_backwash_source says whether that timestamp was observed
+    # or entered by hand, and is exposed as a "source" state attribute so a
+    # seeded value is never mistaken for a measured one.  next_scheduled_backwash
+    # needs no equivalent: it is always projected from that same timestamp.
     last_backwash: datetime | None = None
-    next_backwash: datetime | None = None
+    last_scheduled_backwash: datetime | None = None
+    last_scheduled_backwash_source: AsekoBackwashSource | None = None
+    last_manual_backwash: datetime | None = None
+    last_backwash_trigger: AsekoBackwashTrigger | None = None
+    next_scheduled_backwash: datetime | None = None
 
     # Server-side receive timestamp – set by the coordinator on every incoming frame.
     # Independent of the device clock (which can be wrong or missing on some models).

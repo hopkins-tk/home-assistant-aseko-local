@@ -2,19 +2,30 @@ import pytest
 from unittest.mock import MagicMock
 
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.helpers import entity_registry as er
 
 from custom_components.aseko_local.binary_sensor import (
+    async_remove_retired_entities,
     async_setup_entry as binary_async_setup_entry,
+    BINARY_SENSORS,
     AsekoLocalBinarySensorEntity,
 )
 from custom_components.aseko_local.sensor import (
+    RETIRED_UNIQUE_ID_SUFFIXES as RETIRED_SENSOR_IDS,
+    async_migrate_unique_ids,
+    async_remove_retired_entities as async_remove_retired_sensors,
     async_setup_entry,
     AsekoLocalSensorEntity,
     AsekoConsumptionSensorEntity,
+    SENSORS,
 )
 from custom_components.aseko_local.aseko_decoder import AsekoDecoder
 
-from custom_components.aseko_local.const import UNIT_TYPE_PROFI, WATER_FLOW_TO_PROBES
+from custom_components.aseko_local.const import (
+    DOMAIN,
+    UNIT_TYPE_PROFI,
+    WATER_FLOW_TO_PROBES,
+)
 from custom_components.aseko_local.aseko_data import AsekoDeviceType
 
 
@@ -57,9 +68,8 @@ def _make_salt_redox_bytes() -> bytearray:
     data[71] = 2  # backwash_duration (20)
     data[74:76] = (120).to_bytes(2, "big")  # delay_after_startup
     data[92:94] = (5000).to_bytes(2, "big")  # pool_volume
-    data[94:96] = (60).to_bytes(
-        2, "big"
-    )  # max_filling_time (byte 95 = 60 = flowrate_ph_minus)
+    data[76:78] = (3600).to_bytes(2, "big")  # max_filling_time, raw 3600
+    data[94:96] = (60).to_bytes(2, "big")  # byte 95 = flowrate_ph_minus = 60
     data[97] = 255  # flowrate_ph_plus: 0xFF = not present
     data[99] = 255  # flowrate_chlor: 0xFF = SALT has no chlorine pump
     data[101] = 255  # flowrate_floc: 0xFF = SALT has no flocculant pump
@@ -105,9 +115,8 @@ def _make_salt_clf_bytes() -> bytearray:
     data[71] = 2  # backwash_duration (20)
     data[74:76] = (120).to_bytes(2, "big")  # delay_after_startup
     data[92:94] = (5000).to_bytes(2, "big")  # pool_volume
-    data[94:96] = (60).to_bytes(
-        2, "big"
-    )  # max_filling_time (byte 95 = 60 = flowrate_ph_minus)
+    data[76:78] = (3600).to_bytes(2, "big")  # max_filling_time, raw 3600
+    data[94:96] = (60).to_bytes(2, "big")  # byte 95 = flowrate_ph_minus = 60
     data[97] = 20  # flowrate_ph_plus
     data[99] = 255  # flowrate_chlor: 0xFF = SALT has no chlorine pump
     data[101] = 255  # flowrate_floc: 0xFF = SALT has no flocculant pump
@@ -156,7 +165,8 @@ def _make_net_clf_bytes() -> bytearray:
     data[71] = 255  # backwash_duration / HEX: 0xff
     data[74:76] = (65535).to_bytes(2, "big")  # delay_after_startup / HEX: 0xffff
     data[92:94] = (1).to_bytes(2, "big")  # pool_volume / HEX: 0x0001
-    data[94:96] = (60).to_bytes(2, "big")  # max_filling_time / HEX: 0x003c
+    data[76:78] = (3600).to_bytes(2, "big")  # max_filling_time, raw 3600
+    data[94:96] = (60).to_bytes(2, "big")  # byte 95 = flowrate / HEX: 0x003c
     data[95] = 60  # flowrate_chlor / HEX: 0x3c
     data[97] = 255  # flowrate_ph_plus / HEX: 0xff
     data[99] = 60  # flowrate_ph_minus / HEX: 0x3c
@@ -204,7 +214,8 @@ def _make_profi_clf_redox_bytes() -> bytearray:
     data[74:76] = (120).to_bytes(2, "big")  # delay_after_startup
     data[92:94] = (5000).to_bytes(2, "big")  # pool_volume
     data[95] = 10  # flowrate_chlor
-    data[94:96] = (60).to_bytes(2, "big")  # max_filling_time
+    data[76:78] = (3600).to_bytes(2, "big")  # max_filling_time, raw 3600
+    data[94:96] = (60).to_bytes(2, "big")  # byte 95 = flowrate_ph_minus
     data[97] = 20  # flowrate_ph_plus
     data[99] = 255  # flowrate_ph_minus (not measured)
     data[101] = 60  # flowrate_floc (PROFI has flocculant pump configured)
@@ -232,6 +243,10 @@ async def test_async_setup_salt_redox(hass) -> None:
 
     # Create a MagicMock for ConfigEntry with runtime_data attribute
     dummy_entry = MagicMock(spec=ConfigEntry)
+    # entry_id is an instance attribute, so spec= does not provide it, but
+    # async_setup_entry needs it to clean up retired entities and to run the
+    # unique_id migration pass.
+    dummy_entry.entry_id = "test_entry_id"
     dummy_entry.runtime_data = type(
         "RuntimeData", (), {"coordinator": DummyCoordinator()}
     )
@@ -270,10 +285,34 @@ async def test_async_setup_salt_redox(hass) -> None:
     # (water_flow, electrolyzer_active, filtration, ph_minus)
     # + 2 consumption (ph_minus canister + total) + 1 connection_status
     # + 3 new backwash config sensors (every_n_days, time, duration)
-    # + 2 new backwash schedule sensors (last_backwash, next_backwash)
+    # + 3 backwash history sensors (last_backwash, last_manual_backwash,
+    #   next_scheduled_backwash) — created for every device with a backwash
+    #   valve even though they read "unknown" until a cycle is seen.
+    #   last_scheduled_backwash is a datetime entity, not a sensor, so it is
+    #   not in this platform's count.
     # + 1 new backwash_active binary sensor
     # + 1 new heating_active binary sensor
-    assert len(added_entities) == 38
+    # byte[37] reshuffle, net zero:
+    #   -1 filtration_nonstop24 binary sensor (the schedule sensor covers it)
+    #   -1 filtration_mode sensor (it conflated the schedule with bit 0x04)
+    #   +1 filtration_schedule sensor  — what the unit runs unattended
+    #   +1 service_menu binary sensor  — bit 0x04, a device state, not a
+    #      filtration one
+    assert len(added_entities) == 41
+    # Nothing has been observed yet, so the history is unknown rather than
+    # guessed from the schedule.
+    backwash_history = {
+        e.entity_description.key: e.native_value
+        for e in added_entities
+        if getattr(e.entity_description, "key", None)
+        in {
+            "last_backwash",
+            "last_manual_backwash",
+            "next_scheduled_backwash",
+        }
+    }
+    assert len(backwash_history) == 3
+    assert all(value is None for value in backwash_history.values())
     assert any(
         getattr(e.entity_description, "key", None) != "water_flow_to_probes"
         for e in added_entities
@@ -335,6 +374,10 @@ async def test_async_setup_salt_clf(hass) -> None:
 
     # Create a MagicMock for ConfigEntry with runtime_data attribute
     dummy_entry = MagicMock(spec=ConfigEntry)
+    # entry_id is an instance attribute, so spec= does not provide it, but
+    # async_setup_entry needs it to clean up retired entities and to run the
+    # unique_id migration pass.
+    dummy_entry.entry_id = "test_entry_id"
     dummy_entry.runtime_data = type(
         "RuntimeData", (), {"coordinator": DummyCoordinator()}
     )
@@ -374,10 +417,18 @@ async def test_async_setup_salt_clf(hass) -> None:
     # (water_flow, electrolyzer_active, filtration, ph_minus)
     # + 2 consumption (ph_minus canister + total) + 1 connection_status
     # + 3 new backwash config sensors (every_n_days, time, duration)
-    # + 2 new backwash schedule sensors (last_backwash, next_backwash)
+    # + 4 backwash history sensors (last_backwash, last_scheduled_backwash,
+    #   last_manual_backwash, next_scheduled_backwash; last_scheduled_backwash
+    #   is a datetime entity, counted by that platform instead)
     # + 1 new backwash_active binary sensor
     # + 1 new heating_active binary sensor
-    assert len(added_entities) == 39
+    # byte[37] reshuffle, net zero:
+    #   -1 filtration_nonstop24 binary sensor (the schedule sensor covers it)
+    #   -1 filtration_mode sensor (it conflated the schedule with bit 0x04)
+    #   +1 filtration_schedule sensor  — what the unit runs unattended
+    #   +1 service_menu binary sensor  — bit 0x04, a device state, not a
+    #      filtration one
+    assert len(added_entities) == 42
     assert any(
         getattr(e.entity_description, "key", None) != "water_flow_to_probes"
         for e in added_entities
@@ -432,6 +483,10 @@ async def test_async_setup_net_clf(hass) -> None:
 
     # Create a MagicMock for ConfigEntry with runtime_data attribute
     dummy_entry = MagicMock(spec=ConfigEntry)
+    # entry_id is an instance attribute, so spec= does not provide it, but
+    # async_setup_entry needs it to clean up retired entities and to run the
+    # unique_id migration pass.
+    dummy_entry.entry_id = "test_entry_id"
     dummy_entry.runtime_data = type(
         "RuntimeData", (), {"coordinator": DummyCoordinator()}
     )
@@ -467,17 +522,20 @@ async def test_async_setup_net_clf(hass) -> None:
         for e in added_entities
     )
     # 8 sensors + 3 new (pool_volume, delay_after_startup, delay_after_dose; filtration None)
-    # + 3 binary (water_flow, cl_pump, ph_minus_pump – NET has no filtration output)
+    # + 3 binary (water_flow, cl_pump, ph_minus_pump – NET has no filtration output,
+    #   so it never had the retired filtration_nonstop24 sensor either)
     # + 4 consumption (ph_minus canister + total, cl canister + total) + 1 connection_status
     # note: required_algicide/required_floc are absent because byte[37]=0xFF (undefined)
     # note: filtration sensors skipped because start/stop times are None in NET test data
     # + 1 heating_active binary sensor
     # Issue #129: NET has no backwash valve and no filling valve, so the
     # backwash / water_level / max_filling_time groups are *all* suppressed.
-    # The 5 backwash config + schedule sensors that the old code created
-    # (every_n_days, time, duration, last_backwash, next_backwash) plus
+    # The backwash config + history sensors that the old code created
+    # (every_n_days, time, duration, last_backwash, next_scheduled_backwash) plus
     # max_filling_time are no longer created for NET, even when the frame
-    # carries non-0xFF data in those byte slots.
+    # carries non-0xFF data in those byte slots.  The history sensors are
+    # gated on the device having a backwash valve, not on their own value,
+    # so this stays true now that they start out unknown.
     assert len(added_entities) == 23
     assert not any(
         getattr(e.entity_description, "key", None) == "backwash_every_n_days"
@@ -496,7 +554,15 @@ async def test_async_setup_net_clf(hass) -> None:
         for e in added_entities
     )
     assert not any(
-        getattr(e.entity_description, "key", None) == "next_backwash"
+        getattr(e.entity_description, "key", None) == "next_scheduled_backwash"
+        for e in added_entities
+    )
+    assert not any(
+        getattr(e.entity_description, "key", None) == "last_manual_backwash"
+        for e in added_entities
+    )
+    assert not any(
+        getattr(e.entity_description, "key", None) == "last_scheduled_backwash"
         for e in added_entities
     )
     assert not any(
@@ -553,6 +619,10 @@ async def test_async_setup_profi_clf_redox(hass) -> None:
 
     # Create a MagicMock for ConfigEntry with runtime_data attribute
     dummy_entry = MagicMock(spec=ConfigEntry)
+    # entry_id is an instance attribute, so spec= does not provide it, but
+    # async_setup_entry needs it to clean up retired entities and to run the
+    # unique_id migration pass.
+    dummy_entry.entry_id = "test_entry_id"
     dummy_entry.runtime_data = type(
         "RuntimeData", (), {"coordinator": DummyCoordinator()}
     )
@@ -593,14 +663,17 @@ async def test_async_setup_profi_clf_redox(hass) -> None:
     # + 4 alarm binary sensors (ph_too_many_doses, orp_too_many_doses,
     #   no_flow_to_probes, rapid_ph_change)
     # + 3 new backwash config sensors (every_n_days, time, duration)
-    # + 2 new backwash schedule sensors (last_backwash, next_backwash)
-    # + 1 max_filling_time sensor (data[94:96])
+    # + 4 backwash history sensors (last_backwash, last_scheduled_backwash,
+    #   last_manual_backwash, next_scheduled_backwash; last_scheduled_backwash
+    #   is a datetime entity, counted by that platform instead)
+    # + 1 max_filling_time sensor (data[76:78])
     #
     # Regular sensors (16): free_chlorine, required_free_chlorine,
     #   free_chlorine_mv, ph, required_ph, rx, water_temp, required_water_temp,
     #   flowrate_ph_minus, flowrate_floc,
     #   backwash_every_n_days, backwash_time, backwash_duration,
-    #   last_backwash, next_backwash
+    #   last_backwash, last_scheduled_backwash, last_manual_backwash,
+    #   next_scheduled_backwash
     # Binary sensors (6): water_flow_to_probes, pump_running, cl_pump_running,
     #   ph_minus_pump_running, floc_pump_running, water_filling_active
     # Heating-related (1 binary): heating_active
@@ -620,7 +693,16 @@ async def test_async_setup_profi_clf_redox(hass) -> None:
     # but no documented filling input), so max_filling_time is suppressed even
     # though bytes 94-95 carry a real value. -1 entity compared to the PR #120
     # baseline.
-    assert len(added_entities) == 41
+    #
+    # byte[37] reshuffle, net zero:
+    #   -1 filtration_nonstop24 binary sensor (the schedule sensor covers it)
+    #   -1 filtration_mode sensor (it conflated the schedule with bit 0x04)
+    #   +1 filtration_schedule sensor  — what the unit runs unattended
+    #   +1 service_menu binary sensor  — bit 0x04, a device state, not a
+    #      filtration one
+    # + 1 last_manual_backwash sensor; last_scheduled_backwash is a datetime
+    #   entity, counted by that platform rather than here
+    assert len(added_entities) == 44
     assert any(
         getattr(e.entity_description, "key", None) == "free_chlorine"
         for e in added_entities
@@ -658,3 +740,256 @@ async def test_async_setup_profi_clf_redox(hass) -> None:
         getattr(e.entity_description, "key", None) == "max_filling_time"
         for e in added_entities
     )
+
+
+# ── retired entities ────────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_retired_nonstop24_entity_is_removed(hass, mock_config_entry) -> None:
+    """The dropped filtration_nonstop24 sensor is deleted from the registry.
+
+    Removing the entity description alone would leave the registry entry
+    behind, and the entity would sit in the UI as unavailable forever with
+    no sign that it is never coming back.
+    """
+    registry = er.async_get(hass)
+    retired = registry.async_get_or_create(
+        "binary_sensor",
+        DOMAIN,
+        "1234filtration_nonstop24",
+        config_entry=mock_config_entry,
+        suggested_object_id="aseko_filtration_nonstop_24h",
+    )
+
+    async_remove_retired_entities(hass, mock_config_entry)
+
+    assert registry.async_get(retired.entity_id) is None
+
+
+@pytest.mark.asyncio
+async def test_retired_removal_leaves_other_entities_alone(
+    hass, mock_config_entry
+) -> None:
+    """Only the retired key is touched — and only in its own domain."""
+    registry = er.async_get(hass)
+    keep_binary = registry.async_get_or_create(
+        "binary_sensor",
+        DOMAIN,
+        "1234filtration_pump_running",
+        config_entry=mock_config_entry,
+    )
+    keep_sensor = registry.async_get_or_create(
+        "sensor",
+        DOMAIN,
+        "1234filtration_schedule",
+        config_entry=mock_config_entry,
+    )
+
+    async_remove_retired_entities(hass, mock_config_entry)
+
+    assert registry.async_get(keep_binary.entity_id) is not None
+    assert registry.async_get(keep_sensor.entity_id) is not None
+
+
+@pytest.mark.asyncio
+async def test_retired_removal_is_idempotent(hass, mock_config_entry) -> None:
+    """A second run has nothing left to do and must not raise."""
+    registry = er.async_get(hass)
+    registry.async_get_or_create(
+        "binary_sensor",
+        DOMAIN,
+        "1234filtration_nonstop24",
+        config_entry=mock_config_entry,
+    )
+
+    async_remove_retired_entities(hass, mock_config_entry)
+    async_remove_retired_entities(hass, mock_config_entry)
+
+    assert not [
+        entry
+        for entry in er.async_entries_for_config_entry(
+            registry, mock_config_entry.entry_id
+        )
+        if entry.unique_id.endswith("filtration_nonstop24")
+    ]
+
+
+# ── filtration schedule, and the settings-menu flag beside it ───────────────
+
+
+def _decode_salt(byte37: int):
+    """Decode a SALT frame carrying the given byte[37]."""
+    data = _make_salt_redox_bytes()
+    data[37] = byte37
+    return AsekoDecoder.decode(bytes(data))
+
+
+@pytest.mark.parametrize(
+    ("byte37", "expected_schedule", "expected_menu"),
+    [
+        (0xC3, "nonstop_24h", False),
+        (0xD3, "timer_period_1", False),
+        (0xF3, "timer_period_1_and_2", False),
+        (0xC7, "nonstop_24h", True),
+        (0xD7, "timer_period_1", True),
+        (0xF7, "timer_period_1_and_2", True),
+    ],
+)
+def test_schedule_and_service_menu_are_independent(
+    byte37: int, expected_schedule: str, expected_menu: bool
+) -> None:
+    """byte[37] holds two unrelated things, reported by two entities.
+
+    The schedule is what the unit runs when nobody is at it.  The service
+    menu says somebody is — and nothing more, because the unit stops
+    transmitting while it is open.  Neither can stand in for the other.
+    """
+    schedule = next(d for d in SENSORS if d.key == "filtration_schedule")
+    menu = next(d for d in BINARY_SENSORS if d.key == "service_menu")
+    device = _decode_salt(byte37)
+
+    assert schedule.value_fn(device) == expected_schedule
+    assert menu.value_fn(device) is expected_menu
+
+
+def test_no_filtration_mode_sensor_remains() -> None:
+    """The conflated sensor is gone, and its registry entry with it.
+
+    It reported a schedule *or* the menu flag, never both, so it could not
+    answer either question reliably.
+    """
+    assert not any(d.key == "filtration_mode" for d in SENSORS)
+    assert "filtration_mode" in RETIRED_SENSOR_IDS
+
+
+def test_schedule_and_service_menu_absent_without_filtration() -> None:
+    """NET has no filtration output, so neither entity is created for it."""
+    schedule = next(d for d in SENSORS if d.key == "filtration_schedule")
+    menu = next(d for d in BINARY_SENSORS if d.key == "service_menu")
+    device = AsekoDecoder.decode(bytes(_make_net_clf_bytes()))
+
+    assert device.device_type == AsekoDeviceType.NET
+    # A None value is what keeps an entity from being built for a device.
+    assert schedule.value_fn(device) is None
+    assert menu.value_fn(device) is None
+
+
+@pytest.mark.asyncio
+async def test_retired_filtration_mode_sensor_is_removed(
+    hass, mock_config_entry
+) -> None:
+    """The dropped filtration_mode sensor is deleted from the registry.
+
+    It shipped, so it exists in users' registries.  Dropping the
+    description alone would leave it in the UI as unavailable forever.
+    """
+    registry = er.async_get(hass)
+    retired = registry.async_get_or_create(
+        "sensor",
+        DOMAIN,
+        "1234filtration_mode",
+        config_entry=mock_config_entry,
+        suggested_object_id="aseko_filtration_mode",
+    )
+    kept = registry.async_get_or_create(
+        "sensor",
+        DOMAIN,
+        "1234filtration_schedule",
+        config_entry=mock_config_entry,
+    )
+
+    async_remove_retired_sensors(hass, mock_config_entry)
+    async_remove_retired_sensors(hass, mock_config_entry)
+
+    assert registry.async_get(retired.entity_id) is None
+    assert registry.async_get(kept.entity_id) is not None
+
+
+# ── unique_id migration ─────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_migrate_next_backwash_unique_id(hass, mock_config_entry) -> None:
+    """The renamed next_backwash sensor keeps its entity_id and history.
+
+    Renaming a sensor key changes the unique_id, which would otherwise orphan
+    the existing registry entry: the old entity would go permanently
+    unavailable and a second one would appear beside it.
+    """
+    registry = er.async_get(hass)
+    old = registry.async_get_or_create(
+        "sensor",
+        DOMAIN,
+        "1234next_backwash",
+        config_entry=mock_config_entry,
+        suggested_object_id="aseko_next_backwash",
+    )
+
+    async_migrate_unique_ids(hass, mock_config_entry)
+
+    migrated = registry.async_get(old.entity_id)
+    assert migrated is not None
+    assert migrated.unique_id == "1234next_scheduled_backwash"
+    # Same registry entry, so the entity_id — and everything keyed on it — survives.
+    assert migrated.entity_id == old.entity_id
+
+
+@pytest.mark.asyncio
+async def test_migrate_unique_ids_is_idempotent(hass, mock_config_entry) -> None:
+    """Running the migration again leaves the already-migrated entry alone."""
+    registry = er.async_get(hass)
+    entry = registry.async_get_or_create(
+        "sensor",
+        DOMAIN,
+        "1234next_scheduled_backwash",
+        config_entry=mock_config_entry,
+    )
+
+    async_migrate_unique_ids(hass, mock_config_entry)
+    async_migrate_unique_ids(hass, mock_config_entry)
+
+    assert (
+        registry.async_get(entry.entity_id).unique_id == "1234next_scheduled_backwash"
+    )
+
+
+@pytest.mark.asyncio
+async def test_migrate_unique_ids_skips_when_target_exists(
+    hass, mock_config_entry
+) -> None:
+    """A stale old entry is left in place rather than colliding with the new one.
+
+    async_update_entity would raise if the target unique_id is already taken,
+    which would break setup for the whole config entry.
+    """
+    registry = er.async_get(hass)
+    old = registry.async_get_or_create(
+        "sensor", DOMAIN, "1234next_backwash", config_entry=mock_config_entry
+    )
+    new = registry.async_get_or_create(
+        "sensor",
+        DOMAIN,
+        "1234next_scheduled_backwash",
+        config_entry=mock_config_entry,
+    )
+
+    async_migrate_unique_ids(hass, mock_config_entry)
+
+    assert registry.async_get(old.entity_id).unique_id == "1234next_backwash"
+    assert registry.async_get(new.entity_id).unique_id == "1234next_scheduled_backwash"
+
+
+@pytest.mark.asyncio
+async def test_migrate_unique_ids_leaves_other_sensors_untouched(
+    hass, mock_config_entry
+) -> None:
+    """Only the renamed keys are rewritten."""
+    registry = er.async_get(hass)
+    entry = registry.async_get_or_create(
+        "sensor", DOMAIN, "1234last_backwash", config_entry=mock_config_entry
+    )
+
+    async_migrate_unique_ids(hass, mock_config_entry)
+
+    assert registry.async_get(entry.entity_id).unique_id == "1234last_backwash"

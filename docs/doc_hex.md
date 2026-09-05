@@ -20,8 +20,7 @@ salinity                   | 20         | Aqua Salt only
 electrolyzer_power         | 21         | Aqua Salt only
 cl_free mV                 | 20:21      | Aqua Net if clf probe, others?
 **unknown**                | 22
-**unknown**                | 23
-**unknown**                | 24
+air_temperature            | 23:24      | signed, /10 = °C; confirmed on Aqua Salt only. 0xFE70 (-40.0) / 0xFDC4 (-57.2) = no air probe
 water_temperature          | 25:26
 **unknown**                | 27
 water_flow_probe           | 28

@@ -1,3 +1,60 @@
+set_last_scheduled_backwash:
+  name: Set last scheduled backwash
+  description: >
+    Records when the unit last ran its scheduled backwash, so the "next
+    scheduled backwash" projection can start without waiting a whole interval
+    for the first cycle the integration observes itself. The device never
+    transmits its backwash history, so this has to be entered by hand.
+
+    The value is marked as manually entered (source: manual) on the
+    "last scheduled backwash" sensor. The last write wins: a date entered here
+    always applies, whatever was stored before, and a scheduled cycle detected
+    afterwards replaces it in turn.
+  fields:
+    timestamp:
+      name: Last scheduled backwash
+      description: >
+        When the scheduled backwash last ran. Must be in the past.
+      required: true
+      example: "2026-08-01 12:30:00"
+      selector:
+        datetime:
+    serial_number:
+      name: Serial number
+      description: >
+        Which device to set. Leave empty to set it on every Aseko device that
+        has a backwash valve.
+      required: false
+      example: 110071590
+      selector:
+        number:
+          mode: box
+          min: 0
+          step: 1
+
+clear_last_scheduled_backwash:
+  name: Clear last scheduled backwash
+  description: >
+    Forgets the last scheduled backwash, returning it to unknown. The undo for
+    a mistyped date entered with set_last_scheduled_backwash.
+
+    If the integration has an older backwash on record and no manual cycle has
+    been observed, clearing this also re-derives the scheduled/manual split
+    from that record on the next frame.
+  fields:
+    serial_number:
+      name: Serial number
+      description: >
+        Which device to clear. Leave empty to clear it on every Aseko device
+        that has a backwash valve.
+      required: false
+      example: 110071590
+      selector:
+        number:
+          mode: box
+          min: 0
+          step: 1
+
 reset_consumption:
   name: Reset consumption
   description: >

@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime, time, timedelta
+from datetime import datetime, time
 import homeassistant.util
 from typing import Type, TypeVar
 
@@ -8,11 +8,13 @@ from .aseko_data import (
     AsekoDevice,
     AsekoDeviceType,
     AsekoElectrolyzerDirection,
+    AsekoFiltrationSchedule,
     AsekoProbeType,
 )
 from .aseko_v7_helpers import (
     ACTUATOR_MASKS,
     AsekoActuatorMasks,
+    AsekoByte37Masks,
     AsekoThirdPumpSlot,
 )
 from .const import (
@@ -48,18 +50,6 @@ FILTRATION_TYPES = frozenset(
     }
 )
 
-# Device types verified to encode the second-filtration-period enable flag in
-# byte 37 bit 0x20: SALT (on/off frame diff), HOME and OXY (maintainer feedback,
-# PR #122). For any other type the second period is reported as before, because
-# its enable mechanism is unverified — never assume this bit for a new type.
-FILTRATION_PERIOD2_FLAG_TYPES = frozenset(
-    {
-        AsekoDeviceType.SALT,
-        AsekoDeviceType.HOME,
-        AsekoDeviceType.OXY,
-    }
-)
-
 # Device types that have a backwash valve/output and therefore expose a
 # backwash schedule (bytes 68-71) plus a backwash-active bit (byte 29 bit 0x01).
 # NET (Aqua NET) is a measurement + dosing unit only — it has neither a filter
@@ -78,7 +68,7 @@ BACKWASH_TYPES = frozenset(
 
 # Device types that have a water-level probe + filling-valve output and
 # therefore expose the water_level live value plus the four threshold setpoints
-# (bytes 27, 102-105) and the max_filling_time (bytes 94-95).
+# (bytes 27, 102-105) and the max_filling_time (bytes 76-77).
 # NET (Aqua NET) and PROFI do not have a filling valve → skip the whole group.
 # Mirrors the existing _fill_home_water_level_data() NET early-return.
 WATER_LEVEL_TYPES = frozenset(
@@ -88,6 +78,24 @@ WATER_LEVEL_TYPES = frozenset(
         AsekoDeviceType.OXY,
     }
 )
+
+# Device types verified to report the air (ambient) temperature in bytes 23-24.
+# Confirmed on an ASIN AQUA Salt only (see _air_temperature); every other type
+# is excluded until a dump from that type is checked against the unit display,
+# so an unverified type can never surface a wrong air-temperature sensor.
+AIR_TEMPERATURE_TYPES = frozenset(
+    {
+        AsekoDeviceType.SALT,
+    }
+)
+
+# Plausibility window for the air temperature (°C). Units without an air probe
+# report an open-circuit value in bytes 23-24 (0xFE70 = -40.0 °C and
+# 0xFDC4 = -57.2 °C were both observed), and unrelated data lands there on
+# types that do not carry the field at all. Anything outside this window is
+# treated as "not measured" and reported as None.
+AIR_TEMPERATURE_MIN = -30.0
+AIR_TEMPERATURE_MAX = 60.0
 
 
 class AsekoDecoder:
@@ -243,12 +251,25 @@ class AsekoDecoder:
 
     @staticmethod
     def _max_filling_time_from_bytes(data: bytes) -> int | None:
-        """Decode max_filling_time (bytes 94-95) as a 2-byte big-endian minute value.
+        """Decode max_filling_time (bytes 76-77) as 2-byte big-endian seconds.
+
+        Returned in seconds, exactly as the unit transmits it, matching
+        the neighbouring delay_after_startup (bytes 74-75) and
+        delay_after_dose (bytes 106-107).  The sensor declares seconds
+        too, so Home Assistant can convert for display per entity.
+
+        Verified on an ASIN AQUA Salt unit, firmware v7, by changing the
+        setting in the Aseko Live app and re-reading the frame:
+            0x0708 = 1800  -> app showed 30 min
+            0x0B04 = 2820  -> app showed 47 min
+
+        Bytes 94-95 were the previous guess and are wrong: byte 95 is
+        flowrate_ph_minus (ml/min).
 
         Returns None for the 0xFFFF sentinel (device does not implement the
         feature) so that downstream consumers see ``None`` instead of ``65535``.
         Issue #129: a bare ``int.from_bytes(...)`` would otherwise turn
-        unspecified frame data into a bogus 65535-minute value on NET/PROFI.
+        unspecified frame data into a bogus value on NET/PROFI.
         """
         value = int.from_bytes(data, "big")
         if value == 0xFFFF:
@@ -458,23 +479,74 @@ class AsekoDecoder:
 
     @staticmethod
     def _fill_heating_demand(unit: AsekoDevice, data: bytes) -> None:
-        """Decode the heating demand relay state from byte[29] bit 0x04.
+        """Decode heating-related fields from byte[29] and byte[37].
 
         byte[29] bit 0x04 = heating demand relay (JS-DE-Tech "relay_byte"
         bit 2).  Set whenever the pool controller is requesting heat from
         the configured heater source (heat pump, electric heater, etc.).
-
         Available on HOME, SALT, OXY.  NET does not have a heating output,
         so the field stays None for NET (and no binary sensor is
         registered).
 
-        The bit-0x04 mapping is the same one JS-DE-Tech uses and was
-        independently listed by the prior Node-RED decoder.
+        byte[37] bit 3 (0x08) = heating control master enable (HOME only,
+        Issue #135).  Diagnostics from serial 110175608 (ASIN AQUA Home,
+        byte 4 = 0x03, firmware A high nibble 0x4) show bit 3 set when
+        heating control is ON (0x49) and clear when OFF (0x41).
+
+        byte[37] bit 7 (0x80) = antifreeze master enable (HOME only,
+        Issue #136).  On the same device, 0x81 → antifreeze ON, 0x41 →
+        antifreeze OFF.  When enabled, byte[55] shows the antifreeze
+        temperature threshold (4°C) instead of the normal heating setpoint.
         """
         if unit.device_type == AsekoDeviceType.NET:
-            # NET has no heating output.
             return
         unit.heating_active = bool(data[29] & 0x04)
+
+        # byte[37] bit 3 = heating control master enable (HOME only).
+        # Gated on HOME so SALT / OXY / NET / PROFI behaviour is unchanged.
+        if unit.device_type == AsekoDeviceType.HOME and data[37] != UNSPECIFIED_VALUE:
+            unit.heating_control_enabled = bool(
+                data[37] & AsekoByte37Masks.HOME_FWA_HEATING_ENABLED
+            )
+
+        # byte[37] bit 7 = antifreeze master enable (HOME only, Issue #136).
+        # Confirmed on serial 110175608 (ASIN AQUA Home REDOX, byte 4 = 0x03):
+        #   0x81 → antifreeze ON, 0x41 → antifreeze OFF.
+        if unit.device_type == AsekoDeviceType.HOME and data[37] != UNSPECIFIED_VALUE:
+            unit.antifreeze_enabled = bool(
+                data[37] & AsekoByte37Masks.HOME_FWA_ANTIFREEZE_ENABLED
+            )
+
+    @staticmethod
+    def _fill_vsp_pump(unit: AsekoDevice, data: bytes) -> None:
+        """Decode the variable-speed filtration pump running state.
+
+        byte[22] bit 3 (0x08) = variable-speed pump ON/OFF.
+        Confirmed on serial 110175608 (ASIN AQUA Home REDOX, byte 4 = 0x03):
+        0x83 → pump OFF, 0x8b → pump ON (any brand).
+
+        Decoded for HOME, SALT, OXY, PROFI. NET not supported.
+        """
+        if unit.device_type == AsekoDeviceType.NET:
+            return
+        if data[22] == UNSPECIFIED_VALUE:
+            return
+        unit.vsp_pump_running = bool(data[22] & 0x08)
+
+    @staticmethod
+    def _fill_ph_minus_concentration(unit: AsekoDevice, data: bytes) -> None:
+        """Decode the pH- acid concentration percentage.
+
+        byte[112] = concentration in percent (e.g. 5 → 5%, 10 → 10%).
+        Confirmed on serial 110175608 (ASIN AQUA Home REDOX, Issue #139).
+
+        Decoded for HOME, SALT, OXY, PROFI. NET not supported.
+        """
+        if unit.device_type == AsekoDeviceType.NET:
+            return
+        if data[112] == UNSPECIFIED_VALUE:
+            return
+        unit.ph_minus_concentration = data[112]
 
     @staticmethod
     def _fill_backwash_active(unit: AsekoDevice, data: bytes) -> None:
@@ -487,12 +559,14 @@ class AsekoDecoder:
         None for NET — it is the user's responsibility to interpret "no entity
         at all" as "device does not have a backwash output".
 
-        Live confirmation: not yet captured in a frame while a backwash cycle
-        is actually running.  A "no flow to probes" condition (byte[13] bit
-        0x04) was independently confirmed to be associated with byte[28] == 0
-        (and not byte[29] bit 0x01) — see Issue #100, DomSchCoding capture.
-        The bit-0x01 mapping is the same one JS-DE-Tech uses and DomSchCoding
-        identified as a candidate in Issue #100 §"Open: Dynamic State Bytes".
+        Live confirmation (SALT, 2026-08-11): a diagnostics capture spanning a
+        manually started backwash shows byte[29] going 0x48 → 0x49 → 0x48, with
+        the bit set from 13:26:43 to 13:28:09 and clear again at 13:28:29.  The
+        observed 86–106 s relay window matches the unit's configured
+        backwash_duration of 100 s (byte[71] = 0x0a), and no other actuator bit
+        moved during it.  A "no flow to probes" condition (byte[13] bit 0x04)
+        was independently confirmed to be associated with byte[28] == 0 (and
+        not byte[29] bit 0x01) — see Issue #100, DomSchCoding capture.
         """
         if unit.device_type == AsekoDeviceType.NET:
             # NET has no backwash valve — leave the field as None so the
@@ -502,96 +576,219 @@ class AsekoDecoder:
         unit.backwash_active = bool(data[29] & 0x01)
 
     @staticmethod
-    def _fill_backwash_schedule(unit: AsekoDevice) -> None:
-        """Compute estimated last/next backwash datetimes from the schedule config.
-
-        Algorithm:
-          last_backwash = most recent occurrence of backwash_time at or before
-                          the frame timestamp (i.e. today's or yesterday's slot).
-          next_backwash = last_backwash + backwash_every_n_days days.
-
-        Caveat (last_backwash): This is a schedule-based *estimate*.  The actual
-        backwash phase is unknown from the device because it does not transmit
-        when the last backwash physically ran.
-
-        The coordinator (``coordinator.py``) overrides ``last_backwash`` with
-        the value from ``BackwashTracker`` (a persistent store of the last
-        observed ≥60 s relay-on window) once a real backwash has been seen.
-        So:
-            * Before the first observed backwash: the value here is shown
-              (i.e. the latest scheduled slot in the past).
-            * After the first observed backwash: the tracker's value wins
-              (and persists across HA restarts).
-
-        See ``backwash_tracker.py`` for the live-tracking implementation.
-        """
-        # Defensive: the schedule fields are already gated on BACKWASH_TYPES in
-        # decode(), but we re-check the device type here so this method stays
-        # safe even if it is ever called from a code path that didn't pre-filter.
-        if unit.device_type is None or unit.device_type not in BACKWASH_TYPES:
-            return
-        if (
-            unit.backwash_every_n_days is None
-            or unit.backwash_time is None
-            or unit.timestamp is None
-        ):
-            return
-
-        # `0` means "schedule disabled" per the device config / README.
-        # In that case the schedule-derived sensors stay None so the user
-        # does not see bogus last/next datetimes that all collapse to
-        # the same value.
-        if unit.backwash_every_n_days <= 0:
-            return
-
-        tz = unit.timestamp.tzinfo
-        today_at_backwash = datetime.combine(
-            unit.timestamp.date(), unit.backwash_time
-        ).replace(tzinfo=tz)
-
-        # If the scheduled time is still in the future today, use yesterday's slot.
-        if today_at_backwash > unit.timestamp:
-            last = today_at_backwash - timedelta(days=1)
-        else:
-            last = today_at_backwash
-
-        unit.last_backwash = last
-        unit.next_backwash = last + timedelta(days=unit.backwash_every_n_days)
-
-    @staticmethod
     def _fill_alarm_data(unit: AsekoDevice, data: bytes) -> None:
-        """Decode alarm bitmask (byte [13]) for all device types.
+        """Decode alarm bitmasks (bytes [12] and [13]) for all device types.
 
         byte [13] bitmask (multiple bits can be set simultaneously):
-          0x01 = pH alarm: too many doses, no value change   (error_codes.md)
-          0x02 = ORP alarm: 30 doses, no value change        (error_codes.md)
+          0x01 = ORP / disinfection (chlorine) dose fault: max dose exceeded
+                 (Issue #151, HOME serial 110175608: config48 frame byte[13]=0x01
+                  while the controller showed "Maximum disinfection dose exceeded";
+                  same fault as v8 ins[12] bit 0x80)
+          0x02 = pH dose fault: too many doses, no value change
+                 (inferred — symmetric to 0x01; dtpugh expected 0x02 for a pH
+                  fault, but his pH fault was captured via byte [12] 0x40)
           0x04 = no flow to probes                           (DomSchCoding ✅, NET frame ✅)
           0x08 = rapid pH change, stops regulation ~2 h      (error_codes.md, unconfirmed)
 
-        byte [12] is NOT an error byte — confirmed 0x00 on NET device while
-        byte [13] = 0x04 (active no-flow error) and byte [28] = 0x00.
+        byte [12] dosing-warning bitmask (HOME ✅, issues #134 / #151 before/after
+        captures, serial 110175608):
+          0x20 = disinfection / chlorine dosing warning
+                 (Pool Live: MAXIMUM_DISINFECTION_DOSE_EXCEEDED)
+          0x40 = pH dosing warning
+                 (Pool Live: TOO_MANY_PH_DOSING_ATTEMPTS_WITHOUT_CHANGE)
+
+        Note on byte [13] 0x01 vs byte [12] 0x20: both encode the disinfection
+        dosing fault.  Issue #134 (2026-07-05) showed it in byte [12] 0x20,
+        Issue #151 (2026-08-06) in byte [13] 0x01 — likely a firmware change on
+        the Home.  The decoder ORs both paths so either encoding is detected.
+
+        On NET, byte [12] is typically 0x00 while no-flow lives in byte [13]
+        (byte [13] = 0x04). HOME dosing lockouts set byte [12] and leave
+        byte [13] at 0x00, so both bytes must be consulted.
         """
-        unit.alarm_ph_too_many_doses = bool(data[13] & 0x01)
-        unit.alarm_orp_too_many_doses = bool(data[13] & 0x02)
+        unit.alarm_ph_too_many_doses = bool(data[13] & 0x02) or bool(data[12] & 0x40)
+        unit.alarm_orp_too_many_doses = bool(data[13] & 0x01) or bool(data[12] & 0x20)
         unit.alarm_no_flow_to_probes = bool(data[13] & 0x04)
         unit.alarm_rapid_ph_change = bool(data[13] & 0x08)
 
     @staticmethod
-    def _fill_filtration_mode(unit: AsekoDevice, data: bytes) -> None:
-        """Decode filtration mode (byte [37]) for all device types.
+    def _fill_filtration_schedule(unit: AsekoDevice, data: bytes) -> None:
+        """Decode byte[37] into `filtration_schedule` and `service_menu_open`.
 
-        byte [37]:
-          0x43 = nonstop 24 h active   (confirmed: HOME ✅)
-          0x53 = timer mode active     (confirmed: HOME ✅, issue #110 ✅)
-          0x47 / 0x57 = transitional edit state → leave as None
-          other values → None (SALT uses 0xb7/0xb3/0x37/0x13 for pump routing;
-                               OXY uses 0x03; NET = 0xFF always → all give None)
+        Runs for every device type in FILTRATION_TYPES = {SALT, HOME, OXY, PROFI}.
+        NET is excluded — it has no filtration output (see Issue #66).
+
+        Every device type in FILTRATION_TYPES encodes the full 4-state mode in
+        byte[37] with two firmware variants (Issue #133):
+
+          Old encoding (home_device_analysis.md, serial 110128063, byte 4 = 0x02):
+            high nibble 0x4 / 0x5
+            0x43 = nonstop 24h
+            0x53 = timer (P1 or P1&P2, indistinguishable)
+            0x47 / 0x57 = transitional edit state — leave as None
+
+          New encoding (Issue #133, serial 110169464, byte 4 = 0x03):
+            high nibble 0x0 / 0x1 / 0x3
+            0x01 = nonstop 24h
+            0x11 = P1 only
+            0x31 = P1 & P2
+            0x15 = P1, settings menu open   → service_menu_open True
+            0x35 = P1 & P2, settings menu open → service_menu_open True
+
+        Bit 0x04 is not a filtration state at all: it says somebody has the
+        unit's settings menu open.  It is decoded into `service_menu_open`,
+        separately from `filtration_schedule`, which keeps reporting what
+        the unit runs when nobody is at it.
+
+        SALT uses the same mode bits as the new encoding above; its high
+        nibble carries its own flags (0x80 = algicide routing) and bit 0x40 is
+        set in every frame.  Confirmed on an ASIN AQUA Salt, in both directions
+        of every transition:
+            0xC3 = nonstop 24h
+            0xD3 = P1 only
+            0xF3 = P1 & P2
+            0xD7 / 0xF7 = the above plus the settings menu being open
+                          → service_menu_open True (bit 0x04 set)
+
+        Because bit 0x40 is set in every SALT frame, the firmware-A branch is
+        taken for HOME only; every other device type reads the bit flags.
+
+        On SALT, bit 0x04 marks the unit's settings menu being open — the
+        menu filtration and backwash can be started by hand from.  It
+        appears on entering, before anything is touched, and the unit stops
+        transmitting until the user leaves, so the frame carrying it is the
+        last one for the duration.  It therefore shows up as a brief flip to
+        service_menu_open going True, followed by the device going offline.
+        It says only that somebody is there — not what they did, and not
+        what happened to filtration while they were.
+
+        That is why the HOME firmware-B pump-off override in
+        `_fill_pump_states` stays gated on HOME: there Issue #133 documents
+        the bit as a standing override that forces the pump *off*, while on
+        SALT the user may equally have switched it on.
+
         """
-        if data[37] == 0x43:
-            unit.filtration_nonstop24 = True
-        elif data[37] == 0x53:
-            unit.filtration_nonstop24 = False
-        # all other values (including 0xFF, 0x03, 0x37, 0xb7 …) → leave as None
+        if unit.device_type is None or unit.device_type not in FILTRATION_TYPES:
+            return
+
+        # The two independent halves of byte[37]: which schedule is configured,
+        # and whether the user has taken the pump over by hand.  Folding them
+        # into one value would drop the schedule exactly when somebody being
+        # at the unit makes it interesting, so they stay apart all the way to
+        # the entities.
+        schedule: AsekoFiltrationSchedule | None = None
+        menu: bool | None = None
+        b = data[37]
+
+        # Firmware A (high nibble 0x4/0x5, serial 110128063, byte 4 = 0x02) uses
+        # exact byte values and encodes no manual state.  Firmware B (high nibble
+        # 0x0/0x1/0x3, serial 110169464, byte 4 = 0x03) uses bit flags:
+        #   bit 2 (0x04) = manual override active
+        #   bit 4 (0x10) = period 1 enabled
+        #   bit 5 (0x20) = period 2 enabled
+        #
+        # Firmware A is a HOME encoding, and bit 0x40 only discriminates it
+        # there.  On the other FILTRATION_TYPES that bit is part of an unrelated
+        # configuration value — SALT sets it in every frame — so routing them by
+        # it sent them into a branch of HOME-specific exact values they can
+        # never match.
+        is_home = unit.device_type == AsekoDeviceType.HOME
+
+        if b != UNSPECIFIED_VALUE:
+            if is_home and b & 0x40:
+                # Firmware A: high nibble 0x4/0x5.
+                if b == 0x43:
+                    schedule = AsekoFiltrationSchedule.NONSTOP_24H
+                elif b == 0x53:
+                    schedule = AsekoFiltrationSchedule.TIMER_PERIOD_1_AND_2
+                # 0x47 / 0x57 → transitional edit state, leave as None.
+            else:
+                # Firmware B.  0x20 without 0x10 has never been seen — period 2
+                # is only offered on top of period 1 — and leaves the schedule
+                # unset rather than guessed.
+                if (b & 0x30) == 0x00:
+                    schedule = AsekoFiltrationSchedule.NONSTOP_24H
+                elif (b & 0x30) == 0x10:
+                    schedule = AsekoFiltrationSchedule.TIMER_PERIOD_1
+                elif (b & 0x30) == 0x30:
+                    schedule = AsekoFiltrationSchedule.TIMER_PERIOD_1_AND_2
+
+                menu = bool(b & AsekoByte37Masks.HOME_FWB_MANUAL_OVERRIDE)
+
+        # Fallback for unrecognised firmware A values (Issue #135):
+        # serial 110175608 (byte 4=0x03 REDOX HOME) has values 0x45/0x49/0x41
+        # that don't match the known CLF HOME patterns (0x43/0x53/0x47/0x57).
+        # Transitional edit states (0x47, 0x57) have bit 1 set — keep them as
+        # None.  All other unrecognised firmware A values fall back to the
+        # schedule bytes.
+        #
+        # HOME-only, like the branch it backs up.  It reads the filtration
+        # times, and those are reported unchanged in every mode on SALT —
+        # identical across nonstop, P1, P1&P2 and manual — so for a SALT it
+        # could only ever return one constant answer.
+        if (
+            schedule is None
+            and is_home
+            and b & 0x40
+            and not b & AsekoByte37Masks.HOME_FWA_TRANSITIONAL_MASK
+        ):
+            p1_set = data[56] != UNSPECIFIED_VALUE and data[57] != UNSPECIFIED_VALUE
+            p2_set = data[60] != UNSPECIFIED_VALUE and data[61] != UNSPECIFIED_VALUE
+            if not p1_set:
+                schedule = AsekoFiltrationSchedule.NONSTOP_24H
+            elif p2_set or bool(b & FILTRATION_PERIOD2_ENABLED_MASK):
+                schedule = AsekoFiltrationSchedule.TIMER_PERIOD_1_AND_2
+            else:
+                schedule = AsekoFiltrationSchedule.TIMER_PERIOD_1
+
+        if schedule is None and menu is None:
+            # Nothing readable in this frame — say so rather than guess.
+            return
+
+        unit.filtration_schedule = schedule
+        unit.service_menu_open = menu
+
+    @staticmethod
+    def _air_temperature(data: bytes) -> float | None:
+        """Decode the air (ambient) temperature from bytes 23-24.
+
+        16-bit big-endian, two's complement, value / 10 = °C - the same
+        encoding as water_temperature, which sits directly after it in bytes
+        25-26.  The field was previously unmapped ("unknown" in the annotated
+        diagnostics table).
+
+        Confirmed on an ASIN AQUA Salt (serial 110194590) against two
+        diagnostics dumps, both matching the values shown on the unit:
+
+          2026-08-11 10:33 -> 0x0168 = 36.0 °C air | 0x0128 = 29.6 °C water
+          2026-08-17 18:50 -> 0x0134 = 30.8 °C air | 0x0122 = 29.0 °C water
+
+        Both fields change independently, and each raw air value occurs exactly
+        once in the 120-byte frame, so the offset is unambiguous.  Byte 22
+        stayed 0x18 in both samples, so this is a plain 16-bit field, not the
+        low half of a 24-bit one.
+
+        Signedness: read as unsigned, frames from units without an air probe
+        decode to 6513.6 °C (0xFE70) and 6502.8 °C (0xFDC4); as two's
+        complement the same bytes read -40.0 °C and -57.2 °C, i.e. an
+        open-circuit temperature input.  That is why the field is decoded
+        signed.  A genuine sub-zero reading has still not been captured, so the
+        exact cold-weather encoding remains unverified - the plausibility
+        window below keeps both sentinels out either way.
+
+        0xFFFF is the protocol-wide "unspecified" marker and is rejected before
+        the window, since as a signed value it would read a plausible -0.1 °C.
+        """
+
+        raw = data[23:25]
+        if all(byte == UNSPECIFIED_VALUE for byte in raw):
+            return None
+
+        value = int.from_bytes(raw, "big", signed=True) / 10
+        if not AIR_TEMPERATURE_MIN <= value <= AIR_TEMPERATURE_MAX:
+            return None
+
+        return value
 
     @staticmethod
     def _fill_consumable_data(unit: AsekoDevice, data: bytes) -> None:
@@ -621,6 +818,23 @@ class AsekoDecoder:
 
         if masks.oxy and unit.flowrate_oxy is not None:
             unit.oxy_pump_running = bool(data[29] & masks.oxy)
+
+        # Issue #133: on HOME v7 firmware B, byte[29] bit 3 stays set even
+        # when the user has manually switched the pump off on the unit
+        # (the override state lives in byte[37], not byte[29]). Trust the
+        # explicit byte[37] bit 0x04 flag instead of the schedule-driven bit.
+        # Gated on HOME so SALT / OXY / NET / PROFI behaviour is unchanged.
+        if (
+            unit.device_type == AsekoDeviceType.HOME
+            and unit.service_menu_open is True
+            and unit.filtration_pump_running is True
+        ):
+            _LOGGER.debug(
+                "Manual OFF override active (byte[37] bit 0x04) — "
+                "forcing filtration_pump_running to False (byte[29]=0x%02x)",
+                data[29],
+            )
+            unit.filtration_pump_running = False
 
     @staticmethod
     def _fill_installed_pumps(unit: AsekoDevice, data: bytes) -> None:
@@ -724,33 +938,45 @@ class AsekoDecoder:
 
         # Filtration schedule, by device type (PR #122):
         #  - NET / unknown types have no filtration → no schedule reported.
-        #  - The second period can be switched off on the unit while it keeps
-        #    reporting the last-configured start2/stop2 times (bytes 60-63);
-        #    byte 37 bit 0x20 is the enable flag on the verified types.
+        #  - Period 1 + Period 2 share the same byte range 56-63 on every
+        #    FILTRATION_TYPES device.  The device keeps sending the last
+        #    configured start2/stop2 times even when Period 2 is disabled
+        #    (Issue #133 — verified on serial 110169464, firmware B: bytes
+        #    60-63 are stable across P1 only / P1&P2 / 24h / bit 0x04 set
+        #    modes).  Reading them unconditionally is therefore safe; the
+        #    *_time helpers normalise 0xFF bytes to None and the lazy-
+        #    creation guard in sensor.py skips the entity when no value is
+        #    available.
         has_filtration = unit_type in FILTRATION_TYPES
-        filtration2_enabled = has_filtration and (
-            bool(data[37] & FILTRATION_PERIOD2_ENABLED_MASK)
-            if unit_type in FILTRATION_PERIOD2_FLAG_TYPES
-            else True
-        )
         # Issue #129: gate backwash schedule + active bit on device type so
         # measurement-only units (NET) do not surface phantom backwash entities
         # from non-0xFF frame data.
         has_backwash = unit_type in BACKWASH_TYPES
         has_water_level = unit_type in WATER_LEVEL_TYPES
+        has_air_temperature = unit_type in AIR_TEMPERATURE_TYPES
 
         device = AsekoDevice(
             serial_number=int.from_bytes(data[0:4], "big"),
             device_type=unit_type,
             configuration=probes,
             timestamp=ts,
+            air_temperature=(
+                AsekoDecoder._air_temperature(data) if has_air_temperature else None
+            ),
             water_temperature=int.from_bytes(data[25:27], "big") / 10,
             water_flow_to_probes=(data[28] == WATER_FLOW_TO_PROBES),
             required_water_temperature=AsekoDecoder._normalize_value(data[55], int),
             start1=AsekoDecoder._time(data[56:58]) if has_filtration else None,
             stop1=AsekoDecoder._time(data[58:60]) if has_filtration else None,
-            start2=AsekoDecoder._time(data[60:62]) if filtration2_enabled else None,
-            stop2=AsekoDecoder._time(data[62:64]) if filtration2_enabled else None,
+            # Issue #133: always read bytes 60-63 for start2/stop2 when the
+            # device has a filtration output.  The device keeps reporting the
+            # last-configured Period 2 times even after the user disables
+            # Period 2 on the controller — verified on dtpugh's serial
+            # 110169464 (firmware B).  For device types without a filtration
+            # output (NET / unknown) we still return None so the entity is
+            # not registered at all (lazy-creation in sensor.py).
+            start2=AsekoDecoder._time(data[60:62]) if has_filtration else None,
+            stop2=AsekoDecoder._time(data[62:64]) if has_filtration else None,
             backwash_every_n_days=(
                 AsekoDecoder._normalize_value(data[68], int) if has_backwash else None
             ),
@@ -761,19 +987,15 @@ class AsekoDecoder:
                 else None
             ),
             pool_volume=int.from_bytes(data[92:94], "big"),
-            # max_filling_time is stored in minutes (verified against Aseko Live
-            # app for serial 110071590: raw bytes 94:95 = 0x003c = 60, app shows
-            # 60 min). The earlier "× 30 seconds" interpretation was wrong.
-            # See water_level_backwash_analysis.md and home_device_analysis.md
-            # (Bug 1, the 30 s hypothesis from DomSchCoding #100 was rejected by
-            # the live app screenshot).
+            # max_filling_time is transmitted in seconds at bytes 76-77 and
+            # reported in seconds — see _max_filling_time_from_bytes.
             #
-            # Gated on WATER_LEVEL_TYPES: NET (Aqua NET) and PROFI have no filling
-            # valve, so bytes 94-95 either carry unrelated data or are 0xFFFF.
-            # A bare int.from_bytes(..., "big") would otherwise turn 0xFFFF into
-            # 65535 — fix that by normalising to None on 0xFFFF as well.
+            # Gated on WATER_LEVEL_TYPES: NET (Aqua NET) and PROFI have no
+            # filling valve, so the bytes either carry unrelated data or are
+            # 0xFFFF.  A bare int.from_bytes(..., "big") would otherwise turn
+            # 0xFFFF into 65535 — normalised to None in the helper.
             max_filling_time=(
-                AsekoDecoder._max_filling_time_from_bytes(data[94:96])
+                AsekoDecoder._max_filling_time_from_bytes(data[76:78])
                 if has_water_level
                 else None
             ),
@@ -789,13 +1011,23 @@ class AsekoDecoder:
         # Flowrate must be decoded before consumable data: pump presence for
         # algicide/flocculant is determined by whether the flowrate byte is set (≠ 0xFF).
         AsekoDecoder._fill_flowrate_data(device, data)
+        # Filtration mode must be decoded before consumable data (Issue #133):
+        # the byte[37] bit 0x04 state short-circuits
+        # `filtration_pump_running` in `_fill_consumable_data`.
+        AsekoDecoder._fill_filtration_schedule(device, data)
         AsekoDecoder._fill_consumable_data(device, data)
         AsekoDecoder._fill_installed_pumps(device, data)
         AsekoDecoder._fill_home_water_level_data(device, data)
         AsekoDecoder._fill_alarm_data(device, data)
-        AsekoDecoder._fill_filtration_mode(device, data)
         AsekoDecoder._fill_heating_demand(device, data)
+        AsekoDecoder._fill_vsp_pump(device, data)
+        AsekoDecoder._fill_ph_minus_concentration(device, data)
         AsekoDecoder._fill_backwash_active(device, data)
-        AsekoDecoder._fill_backwash_schedule(device)
+        # The backwash history fields are deliberately NOT derived from the
+        # schedule here: the frame carries the *configuration* (bytes 68-71),
+        # never the history, so the schedule alone cannot say whether a cycle
+        # actually ran.  The coordinator fills those fields from
+        # BackwashTracker once a real relay window has been observed; until
+        # then they stay None and the sensors read "unknown".
 
         return device

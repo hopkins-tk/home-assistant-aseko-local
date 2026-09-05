@@ -39,8 +39,8 @@ _BYTE_LABELS: dict[int, str] = {
     9: "hour",
     10: "minute",
     11: "second",
-    12: "unknown",
-    13: "unknown",
+    12: "dosing_warning bitmask (0x20=Cl/disinfectant, 0x40=pH) ← HOME",
+    13: "alarm bitmask (0x01=Cl/ORP doses, 0x02=pH doses, 0x04=no flow, 0x08=rapid pH)",
     14: "ph_value[hi]",
     15: "ph_value[lo]  (÷100 = pH)",
     16: "clf_or_redox[hi]",
@@ -50,8 +50,8 @@ _BYTE_LABELS: dict[int, str] = {
     20: "salinity (SALT) / cl_free_mv[hi] (NET)",
     21: "electrolyzer_power (SALT) / cl_free_mv[lo] (NET)",
     22: "unknown",
-    23: "unknown",
-    24: "unknown",
+    23: "air_temperature[hi]",
+    24: "air_temperature[lo]  (signed, ÷10 = °C; SALT confirmed)",
     25: "water_temperature[hi]",
     26: "water_temperature[lo]  (÷10 = °C)",
     27: "unknown",
@@ -83,10 +83,12 @@ _BYTE_LABELS: dict[int, str] = {
     71: "backwash_duration (×10 s)",
     74: "delay_after_startup[hi]",
     75: "delay_after_startup[lo]",
+    76: "max_filling_time[hi] (seconds)",
+    77: "max_filling_time[lo] (seconds)",
     92: "pool_volume[hi]",
     93: "pool_volume[lo]",
-    94: "max_filling_time[hi]",
-    95: "max_filling_time[lo] / flowrate_ph_minus (ml/min)",
+    94: "unknown",
+    95: "flowrate_ph_minus (ml/min)",
     96: "unknown",
     97: "flowrate_ph_plus (ml/min) – byte position uncertain",
     98: "unknown",
@@ -248,6 +250,15 @@ def _parse_v8_frame(raw: bytes) -> dict[str, Any] | None:
     }
 
 
+def _str_or_none(value: Any) -> str | None:
+    """Render an optional value as a string, keeping None as None.
+
+    ``str(None)`` would produce the literal "None", which reads in a dump like
+    a value rather than like "never observed".
+    """
+    return None if value is None else str(value)
+
+
 async def async_get_config_entry_diagnostics(
     hass: HomeAssistant,
     config_entry: AsekoLocalConfigEntry,
@@ -269,6 +280,7 @@ async def async_get_config_entry_diagnostics(
             "configuration": [p.value for p in (device.configuration or [])],
             "online": device.online(),
             "timestamp": str(device.timestamp),
+            "air_temperature": device.air_temperature,
             "water_temperature": device.water_temperature,
             "ph": device.ph,
             "cl_free": device.cl_free,
@@ -294,6 +306,21 @@ async def async_get_config_entry_diagnostics(
             "flowrate_ph_plus_ml_min": device.flowrate_ph_plus,
             "flowrate_algicide_ml_min": device.flowrate_algicide,
             "flowrate_floc_ml_min": device.flowrate_floc,
+            # Backwash: the live relay bit plus the observed history the
+            # BackwashTracker has built from it.  Without these a dump only
+            # carries the schedule config (bytes 68-71) and the raw byte[29],
+            # so answering "did a backwash run?" meant decoding bit 0x01 by
+            # hand across a series of dumps.  None = not yet observed.
+            "backwash_active": device.backwash_active,
+            "last_backwash": _str_or_none(device.last_backwash),
+            "last_scheduled_backwash": _str_or_none(device.last_scheduled_backwash),
+            "last_manual_backwash": _str_or_none(device.last_manual_backwash),
+            "last_backwash_trigger": (
+                device.last_backwash_trigger.value
+                if device.last_backwash_trigger
+                else None
+            ),
+            "next_scheduled_backwash": _str_or_none(device.next_scheduled_backwash),
         }
 
         # --- Consumption counters ---

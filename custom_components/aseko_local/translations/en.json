@@ -35,6 +35,11 @@
     }
   },
   "entity": {
+    "datetime": {
+      "last_scheduled_backwash": {
+        "name": "Last scheduled backwash"
+      }
+    },
     "binary_sensor": {
       "electrolyzer_active": {
         "name": "Electrolyzer active"
@@ -44,6 +49,15 @@
       },
       "heating_active": {
         "name": "Heating active"
+      },
+      "heating_control_enabled": {
+        "name": "Heating control"
+      },
+      "antifreeze_enabled": {
+        "name": "Antifreeze"
+      },
+      "vsp_pump_running": {
+        "name": "Variable speed pump"
       },
       "cl_pump_running": {
         "name": "Chlorine pump running"
@@ -69,9 +83,6 @@
       "water_filling_active": {
         "name": "Water filling active"
       },
-      "filtration_nonstop24": {
-        "name": "Filtration nonstop 24h"
-      },
       "alarm_ph_too_many_doses": {
         "name": "Too many doses of pH"
       },
@@ -86,10 +97,13 @@
       },
       "backwash_active": {
         "name": "Backwash active"
+      },
+      "service_menu": {
+        "name": "Service menu"
       }
     },
     "sensor": {
-      "filtration_1_start": {
+"filtration_1_start": {
         "name": "Filtration 1 start"
       },
       "filtration_1_stop": {
@@ -118,6 +132,9 @@
       },
       "delay_after_dose": {
         "name": "Delay after dose"
+      },
+      "ph_minus_concentration": {
+        "name": "pH- concentration"
       },
       "air_temperature": {
         "name": "Air temperature"
@@ -224,8 +241,11 @@
       "last_backwash": {
         "name": "Last backwash"
       },
-      "next_backwash": {
-        "name": "Next backwash"
+      "last_manual_backwash": {
+        "name": "Last manual backwash"
+      },
+      "next_scheduled_backwash": {
+        "name": "Next scheduled backwash (estimated)"
       },
       "backwash_every_n_days": {
         "name": "Backwash interval"
@@ -286,6 +306,14 @@
       },
       "oxy_total_consumed": {
         "name": "OXY Pure consumed (total)"
+      },
+      "filtration_schedule": {
+        "name": "Filtration schedule",
+        "state": {
+          "nonstop_24h": "24h nonstop",
+          "timer_period_1": "Time period 1",
+          "timer_period_1_and_2": "Time periods 1 & 2"
+        }
       }
     },
     "number": {
