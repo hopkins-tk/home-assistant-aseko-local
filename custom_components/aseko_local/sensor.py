@@ -27,7 +27,6 @@ from homeassistant.helpers.typing import StateType
 
 from . import AsekoLocalConfigEntry
 from .aseko_data import (
-    ACTUATOR_MASKS,
     AsekoDevice,
     AsekoElectrolyzerDirection,
 )
@@ -62,34 +61,12 @@ class AsekoSensorEntityDescription(SensorEntityDescription):
 class AsekoConsumptionSensorEntityDescription(SensorEntityDescription):
     """Describes a chemical consumption sensor entity (value from Tracker)."""
 
-    pump_key: str = ""  # one of PUMP_KEYS in consumption_tracker
+    pump_key: str = ""  # one of INSTALLED_PUMPS in aseko_data.py
     counter: str = ""  # "total" or "canister"
 
 
 # ---------- Consumption sensors ----------
 
-# Maps pump_key to the corresponding field name in AsekoActuatorMasks.
-# None means the pump is not yet mapped (e.g. pH+) and sensors are skipped.
-PUMP_MASK_FIELD: dict[str, str | None] = {
-    "cl": "cl",
-    "ph_minus": "ph_minus",
-    "ph_plus": None,  # byte position unknown — disabled until confirmed
-    "algicide": "algicide",
-    "floc": "flocculant",
-    "oxy": "oxy",  # byte position unconfirmed — enabled once mask is set in ACTUATOR_MASKS
-}
-
-# Maps pump_key to the corresponding *_pump_running attribute on AsekoDevice.
-# Used as secondary filter: if the decoder left the attribute as None, the pump
-# is not present on this specific device (e.g. algicide vs flocculant share bit 0x20).
-PUMP_RUNNING_ATTR: dict[str, str] = {
-    "cl": "cl_pump_running",
-    "ph_minus": "ph_minus_pump_running",
-    "ph_plus": "ph_plus_pump_running",
-    "algicide": "algicide_pump_running",
-    "floc": "floc_pump_running",
-    "oxy": "oxy_pump_running",
-}
 
 CONSUMPTION_SENSORS: list[AsekoConsumptionSensorEntityDescription] = [
     AsekoConsumptionSensorEntityDescription(
@@ -855,18 +832,9 @@ def _build_sensor_entities(
                 entity.unique_id,
             )
 
-        device_masks = (
-            ACTUATOR_MASKS.get(device.device_type) if device.device_type else None
-        )
         for description in CONSUMPTION_SENSORS:
-            mask_field = PUMP_MASK_FIELD[description.pump_key]
-            if mask_field is None:
-                continue  # pump not yet mapped (e.g. ph_plus)
-            if device_masks is None or getattr(device_masks, mask_field, 0) == 0:
-                continue  # pump not present on this device type
-            running_attr = PUMP_RUNNING_ATTR.get(description.pump_key)
-            if running_attr and getattr(device, running_attr, None) is None:
-                continue  # decoder determined pump absent (e.g. algicide vs floc share bit 0x20)
+            if description.pump_key not in device.installed_pumps:
+                continue
             entity = AsekoConsumptionSensorEntity(device, coordinator, description)
             entities.append(entity)
             _LOGGER.debug(

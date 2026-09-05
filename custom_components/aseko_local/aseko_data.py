@@ -28,6 +28,7 @@ class AsekoDeviceType(Enum):
     OXY = "ASIN AQUA Oxygen"
     PROFI = "ASIN AQUA Profi"
     SALT = "ASIN AQUA Salt"
+    SALT_NET = "ASIN AQUA Salt NET"
 
 
 class AsekoProbeType(Enum):
@@ -112,6 +113,33 @@ class AsekoFiltrationSchedule(Enum):
     TIMER_PERIOD_1_AND_2 = "timer_period_1_and_2"
 
 
+class AsekoFiltrationMode(Enum):
+    """Enumeration of the 4 filtration schedule states.
+
+    Surfaced by the new `filtration_mode` sensor (Issue #133) and used
+    internally to override `filtration_pump_running` when the user has
+    manually switched the pump off on a HOME v7 device (firmware B).
+
+    Enum values map directly to the translation keys in
+    translations/{en,de,cs,fr}.json under entity.sensor.filtration_mode.state.
+    """
+
+    NONSTOP_24H = "nonstop_24h"
+    TIMER_PERIOD_1 = "timer_period_1"
+    TIMER_PERIOD_1_AND_2 = "timer_period_1_and_2"
+    OFF_MANUAL = "off_manual"
+
+
+# Canonical list of dosing-pump types that any Aseko device may carry.
+# Single source of truth: the consumption tracker (consumption_tracker.py)
+# and the sensor-registration code (sensor.py) both import this. The
+# `AsekoDevice.installed_pumps` field is a subset of this set, populated
+# by the decoder based on what the device actually has installed.
+INSTALLED_PUMPS: frozenset[str] = frozenset(
+    {"cl", "ph_minus", "ph_plus", "algicide", "floc", "oxy"}
+)
+
+
 # ---------------------------------------------------------------------------
 # Re-exports for backwards compatibility
 # ---------------------------------------------------------------------------
@@ -169,6 +197,13 @@ class AsekoDevice:
     oxy_pump_running: bool | None = (
         None  # byte 29 bit unconfirmed – OXY Pure device only
     )
+
+    # Subset of INSTALLED_PUMPS that the decoder determined to be physically
+    # present on this unit.  Populated from the protocol-specific capability
+    # tables (v7 ACTUATOR_MASKS / byte[37] routing, v8 fncs[2] capability
+    # gate).  None when the decoder cannot tell, so the entity layer can
+    # suppress phantom "off" sensors for pumps that are not physically there.
+    installed_pumps: frozenset[str] = field(default_factory=frozenset)
 
     # NEW: flow rates (bytes 95, 97, 99, 101)
     flowrate_chlor: int | None = None
@@ -247,6 +282,38 @@ class AsekoDevice:
     # Only the bit-flag firmware encodes it.  Left None on firmware A, where
     # bit 0x04 belongs to the transitional edit states, and on NET.
     service_menu_open: bool | None = None
+
+    # Filtration mode — 4-state enum (Issue #133).
+    # Set for every device type in FILTRATION_TYPES = {SALT, HOME, OXY, PROFI,
+    # SALT_NET}. NET is excluded — no filtration output (see Issue #66).
+    #
+    # HOME v7 devices encode the 4-state mode directly in byte[37] with two
+    # firmware variants:
+    #   Firmware A (serial 110128063, byte 4 = 0x02): high nibble 0x4 / 0x5
+    #     0x43 → NONSTOP_24H
+    #     0x53 → TIMER_PERIOD_1_AND_2 (cannot distinguish P1 vs P1&P2)
+    #     0x47 / 0x57 → leave as None (transitional edit state)
+    #   Firmware B (serial 110169464, byte 4 = 0x03): high nibble 0x0 / 0x1 / 0x3
+    #     0x01 → NONSTOP_24H
+    #     0x11 → TIMER_PERIOD_1
+    #     0x31 → TIMER_PERIOD_1_AND_2
+    #     0x35 → OFF_MANUAL
+    #
+    # SALT / OXY / PROFI do not put a filtration mode flag in byte[37]
+    # (SALT: algicide/flocculant routing + dosage encoding; OXY: pump-
+    # presence bitmap; PROFI: no live frame captured). For those types
+    # the mode is derived from the schedule bytes 56-63 and the period-2
+    # enable bit (byte 37 bit 0x20, already covered by FILTRATION_PERIOD2_FLAG_TYPES).
+    # SALT_NET (v8) has no equivalent byte[37] mode flag; the decoder
+    # derives the mode from the schedule bytes and the period-2 enable
+    # bit. This guarantees that a single `filtration_mode` sensor shows
+    # the same 4 states on every filtration-capable device.
+    filtration_mode: AsekoFiltrationMode | None = None
+
+    # Filtration hours per day (best guess) — reqs[7] on v8 SALT NET
+    # (NET v8 also reports it at the same position, but typically 24 h).
+    # Unconfirmed by user. See docs/device analyzes/salt_net_v8_device_analysis.md §8.
+    filtration_hours_per_day: int | None = None
 
     # Alarm/error bitmasks — bytes [12] (HOME dosing warnings) and [13]
     # byte [12] 0x20 = chlorine/disinfection dosing warning (HOME ✅, issue #134)

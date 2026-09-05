@@ -107,6 +107,7 @@ _BYTE_LABELS: dict[int, str] = {
 _V8_INS_LABELS: dict[int, str] = {
     0: "water_temperature_raw (÷10 = °C)",
     8: "water_flow_to_probes (1=flowing)",
+    12: "no_flow_alarm (bit 0x100 = active; SALT NET only)",
     13: "unknown",
     14: "unknown",
     15: "unknown",
@@ -122,19 +123,25 @@ _V8_AINS_LABELS: dict[int, str] = {
     3: "unknown",
     6: "redox (mV; -500=absent)",
     7: "unknown (tracks redox)",
+    8: "salinity × 10 (SALT/SALT NET; ÷10 = g/L)",
+    9: "electrolyzer_power (g/h; matches app display)",
+    10: "unknown (NOT electrolyzer power — ains[9] is the correct field)",
 }
 
 _V8_OUTS_LABELS: dict[int, str] = {
-    2: "filtration_pump_running (1=on)",
+    2: "filtration_pump_running (any non-zero = on; NET=1, SALT NET=2)",
     8: "ph_minus_pump_running (1=dosing)",
+    9: "cl_pump_running (1=dosing)",
+    11: "pump2_running (algicide or flocculant; 1=dosing)",
+    14: "electrolyzer_direction (2=RIGHT, 3=LEFT, 0=OFF)",
 }
 
 _V8_AREQS_LABELS: dict[int, str] = {
     0: "required_pH × 10 (÷10 = pH)",
     1: "required_redox / 10 (×10 = mV)",
     2: "unknown",
-    3: "unknown",
-    4: "unknown",
+    3: "pump2_dose_flocculant (SALT NET fncs[6]=18; ml/h)",
+    4: "pump2_dose_algicide (SALT NET fncs[6]=10; ml/m³/day)",
     5: "unknown",
     6: "unknown",
     10: "unknown",
@@ -146,11 +153,17 @@ _V8_AREQS_LABELS: dict[int, str] = {
     18: "delay_after_dose (min)",
     19: "unknown",
     21: "unknown",
-    25: "unknown",
+    25: "unknown (constant 3 on mirovra's SALT NET; NOT algicide dose)",
 }
 
 _V8_REQS_LABELS: dict[int, str] = {
-    7: "filtration_hours_per_day (unconfirmed)",
+    5: "unknown (always 8 on SALT NET, 0 on NET)",
+    7: "filtration_hours_per_day (unconfirmed; SALT NET=20, NET=24)",
+}
+
+_V8_FLAGS_LABELS: dict[int, str] = {
+    0: "constant 2 (NET and SALT NET)",
+    3: "no_flow_alarm (1 = active) / flocculant_configured (1 = floc, 0 = alg) — ambiguous",
 }
 
 _SECTION_RE = re.compile(r"(\w+):\s*(.*?)(?=\s+\w+:|$)", re.DOTALL)
@@ -213,6 +226,7 @@ def _parse_v8_frame(raw: bytes) -> dict[str, Any] | None:
         "outs": _V8_OUTS_LABELS,
         "areqs": _V8_AREQS_LABELS,
         "reqs": _V8_REQS_LABELS,
+        "flags": _V8_FLAGS_LABELS,
     }
     for match in _SECTION_RE.finditer(body):
         name = match.group(1)

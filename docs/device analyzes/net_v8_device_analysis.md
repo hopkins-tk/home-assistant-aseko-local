@@ -33,6 +33,17 @@ Unlike fw v7 (120-byte binary), fw v8 sends a human-readable text frame over TCP
 - Observed size: ~463 bytes
 - Sentinel value: `-500` = probe absent or measurement unavailable → decoded as `None`
 
+**Unit-convention note (v7 vs v8):** The v7 firmware reports
+`delay_after_startup` and `delay_after_dose` in **seconds** (bytes
+74:75 / 106:107, e.g. `120` = 2 min). The v8 firmware reports the
+same fields in **minutes** (`areqs[17]` / `areqs[18]`, e.g. `2` = 2
+min). The v8 decoder multiplies by 60 so that `AsekoDevice.delay_*`
+is always in **seconds** and the existing `UnitOfTime.SECONDS`
+sensor in [`sensor.py`](../../custom_components/aseko_local/sensor.py)
+stays numerically stable for v7 users. A 2-min delay reads as `120 s`
+on both v7 and v8; a 5-min delay reads as `300 s`. See
+[salt_net_v8_device_analysis.md §7](../device%20analyzes/salt_net_v8_device_analysis.md) for the SALT-NET confirmation.
+
 ### Reference frames used for analysis
 
 **Sep 16, 2025, 22:27 CEST** (from Issue #49 comment):
@@ -130,8 +141,8 @@ Difference = 0.07 pH — likely the app shows a calibrated/averaged value, or th
 | `areqs[12]` | 36 | 36 | ? | unknown | ❓ |
 | `areqs[14]` | 45 | 45 | m³ | `pool_volume` | ✅ app shows 45 m³ |
 | `areqs[16]` | 255 | 255 | = 0xFF | unknown — always `UNSPECIFIED` | ❓ |
-| `areqs[17]` | 2 | 2 | minutes | `delay_after_startup` | ✅ app shows 2 min |
-| `areqs[18]` | 2 | 2 | minutes | `delay_after_dose` | ✅ app shows 2 min |
+| `areqs[17]` | 2 | 2 | minutes (× 60 → s) | `delay_after_startup` | ✅ app shows 2 min |
+| `areqs[18]` | 2 | 2 | minutes (× 60 → s) | `delay_after_dose` | ✅ app shows 2 min |
 | `areqs[19]` | 10 | 10 | ? | unknown | ❓ |
 | `areqs[21]` | 15 | 15 | ? | unknown | ❓ |
 
