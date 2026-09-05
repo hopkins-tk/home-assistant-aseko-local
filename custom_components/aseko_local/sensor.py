@@ -27,7 +27,6 @@ from homeassistant.helpers.typing import StateType
 
 from . import AsekoLocalConfigEntry
 from .aseko_data import (
-    ACTUATOR_MASKS,
     AsekoDevice,
     AsekoElectrolyzerDirection,
 )
@@ -532,21 +531,6 @@ SENSORS: list[AsekoSensorEntityDescription] = [
         icon="mdi:clock-end",
         value_fn=lambda device: (
             device.stop2.strftime("%H:%M") if device.stop2 is not None else None
-        ),
-    ),
-    AsekoSensorEntityDescription(
-        key="filtration_mode",
-        translation_key="filtration_mode",
-        icon="mdi:pump",
-        device_class=SensorDeviceClass.ENUM,
-        options=[
-            "nonstop_24h",
-            "timer_period_1",
-            "timer_period_1_and_2",
-            "off_manual",
-        ],
-        value_fn=lambda device: (
-            device.filtration_mode.value if device.filtration_mode is not None else None
         ),
     ),
     AsekoSensorEntityDescription(

@@ -28,6 +28,7 @@ class AsekoDeviceType(Enum):
     OXY = "ASIN AQUA Oxygen"
     PROFI = "ASIN AQUA Profi"
     SALT = "ASIN AQUA Salt"
+    SALT_NET = "ASIN AQUA Salt NET"
 
 
 class AsekoProbeType(Enum):

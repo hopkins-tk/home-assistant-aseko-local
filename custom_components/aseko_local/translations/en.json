@@ -115,15 +115,6 @@
       "filtration_2_stop": {
         "name": "Filtration 2 stop"
       },
-      "filtration_mode": {
-        "name": "Filtration mode",
-        "state": {
-          "nonstop_24h": "24h nonstop",
-          "timer_period_1": "Time period 1",
-          "timer_period_1_and_2": "Time periods 1 & 2",
-          "off_manual": "Off (manual)"
-        }
-      },
       "pool_volume": {
         "name": "Pool volume"
       },
