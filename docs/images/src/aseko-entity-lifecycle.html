@@ -1,0 +1,104 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<!--
+  Source of docs/images/aseko-entity-lifecycle.png.  Render with a headless browser:
+  chrome --headless=new --hide-scrollbars --force-device-scale-factor=1.25
+         --window-size=1500,460 --screenshot=aseko-entity-lifecycle.png aseko-entity-lifecycle.html
+-->
+<style>
+  :root { --teal: #1b8a8f; --teal-bg: #e3f2f3; --ink: #1d2327; --muted: #5f6b73; --line: #26323a; --warm: #b95a1c; --warm-bg: #fbeee4; --grey-bg: #f1f3f4; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #fff; font-family: "Segoe UI", Roboto, Arial, sans-serif; color: var(--ink); }
+  #canvas { position: relative; width: 1500px; height: 460px; }
+  .box { position: absolute; border: 2px solid var(--line); border-radius: 6px; background: #fff; padding: 10px 14px; text-align: center; }
+  .q { border-color: var(--teal); background: var(--teal-bg); }
+  .end { background: var(--grey-bg); }
+  .end.warm { border-color: var(--warm); background: var(--warm-bg); }
+  .box h3 { margin: 0 0 4px; font-size: 17px; font-weight: 600; }
+  .muted { color: var(--muted); font-size: 13.5px; line-height: 1.4; }
+  code { font-family: Consolas, "Cascadia Mono", monospace; font-size: 13.5px; }
+  svg { position: absolute; inset: 0; overflow: visible; }
+  .lbl { position: absolute; font-size: 14px; font-weight: 600; color: var(--teal); }
+</style>
+</head>
+<body>
+<div id="canvas">
+  <svg id="arrows" width="1500" height="460"></svg>
+
+  <div id="frame" class="box" style="left:20px; top:40px; width:170px;">
+    <h3>a frame arrives</h3>
+    <div class="muted">decoded by its profile</div>
+  </div>
+
+  <div id="q1" class="box q" style="left:250px; top:40px; width:220px;">
+    <h3>model has the value?</h3>
+    <div class="muted">field in <code>possible_features</code></div>
+  </div>
+  <div id="none" class="box end" style="left:250px; top:230px; width:220px;">
+    <h3>no entity</h3>
+    <div class="muted">v7 NET has no filtration, SALT no chlorine pump</div>
+  </div>
+
+  <div id="q2" class="box q" style="left:530px; top:40px; width:230px;">
+    <h3>unit has shown it?</h3>
+    <div class="muted">seen, or enabled before</div>
+  </div>
+  <div id="disabled" class="box end" style="left:530px; top:230px; width:230px;">
+    <h3>entity disabled</h3>
+    <div class="muted">created off; enabled automatically when the value first arrives, and stays enabled</div>
+  </div>
+
+  <div id="q3" class="box q" style="left:820px; top:40px; width:210px;">
+    <h3>in the last frame?</h3>
+    <div class="muted">in <code>present_features</code></div>
+  </div>
+  <div id="unavailable" class="box end warm" style="left:820px; top:230px; width:210px;">
+    <h3>unavailable</h3>
+    <div class="muted">accessory gone, port routed elsewhere, setting off — <code>not_present_now</code></div>
+  </div>
+
+  <div id="q4" class="box q" style="left:1090px; top:40px; width:170px;">
+    <h3>value readable?</h3>
+    <div class="muted">not <code>None</code></div>
+  </div>
+  <div id="unknown" class="box end" style="left:1090px; top:230px; width:170px;">
+    <h3>unknown</h3>
+    <div class="muted"><code>0xFF</code> at start-up, unreadable v8 value</div>
+  </div>
+  <div id="value" class="box" style="left:1320px; top:40px; width:160px; border-color:#1b8a8f;">
+    <h3>value</h3>
+    <div class="muted">the normal case</div>
+  </div>
+</div>
+<script>
+const svg = document.getElementById("arrows");
+svg.innerHTML = `<defs><marker id="m" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#26323a"/></marker></defs>`;
+const b = (id) => { const e = document.getElementById(id); return { l: e.offsetLeft, t: e.offsetTop, r: e.offsetLeft + e.offsetWidth, b: e.offsetTop + e.offsetHeight, cx: e.offsetLeft + e.offsetWidth / 2, cy: e.offsetTop + e.offsetHeight / 2 }; };
+function arrow(pts, label, lx, ly) {
+  const p = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  p.setAttribute("d", "M" + pts.map((x) => x.join(",")).join(" L"));
+  p.setAttribute("fill", "none"); p.setAttribute("stroke", "#26323a"); p.setAttribute("stroke-width", "2");
+  p.setAttribute("marker-end", "url(#m)");
+  svg.appendChild(p);
+  if (label) {
+    const d = document.createElement("div"); d.className = "lbl"; d.textContent = label;
+    d.style.left = lx + "px"; d.style.top = ly + "px";
+    document.getElementById("canvas").appendChild(d);
+  }
+}
+const f = b("frame"), q1 = b("q1"), q2 = b("q2"), q3 = b("q3"), q4 = b("q4");
+const n = b("none"), d = b("disabled"), u = b("unavailable"), k = b("unknown"), v = b("value");
+arrow([[f.r, q1.cy], [q1.l - 2, q1.cy]]);
+arrow([[q1.r, q1.cy], [q2.l - 2, q1.cy]], "yes", q1.r + 14, q1.cy - 24);
+arrow([[q2.r, q2.cy], [q3.l - 2, q2.cy]], "yes", q2.r + 14, q2.cy - 24);
+arrow([[q3.r, q3.cy], [q4.l - 2, q3.cy]], "yes", q3.r + 14, q3.cy - 24);
+arrow([[q1.cx, q1.b], [q1.cx, n.t - 2]], "no", q1.cx + 10, (q1.b + n.t) / 2 - 10);
+arrow([[q2.cx, q2.b], [q2.cx, d.t - 2]], "no", q2.cx + 10, (q2.b + d.t) / 2 - 10);
+arrow([[q3.cx, q3.b], [q3.cx, u.t - 2]], "no", q3.cx + 10, (q3.b + u.t) / 2 - 10);
+arrow([[q4.cx, q4.b], [q4.cx, k.t - 2]], "no", q4.cx + 10, (q4.b + k.t) / 2 - 10);
+arrow([[q4.r, q4.cy], [v.l - 2, q4.cy]], "yes", q4.r + 14, q4.cy - 24);
+</script>
+</body>
+</html>

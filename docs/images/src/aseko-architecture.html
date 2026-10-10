@@ -1,0 +1,151 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<!--
+  Source of docs/images/aseko-architecture.png.  Render with a headless browser:
+  chrome --headless=new --hide-scrollbars --force-device-scale-factor=1.25
+         --window-size=1640,1120 --screenshot=aseko-architecture.png aseko-architecture.html
+-->
+<style>
+  :root { --teal: #1b8a8f; --teal-bg: #e3f2f3; --ink: #1d2327; --muted: #5f6b73; --line: #26323a; --warm: #b95a1c; --warm-bg: #fbeee4; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #fff; font-family: "Segoe UI", Roboto, Arial, sans-serif; color: var(--ink); }
+  #canvas { position: relative; width: 1640px; height: 1120px; }
+  .box { position: absolute; border: 2px solid var(--line); border-radius: 6px; background: #fff; padding: 12px 16px; }
+  .box.teal { border-color: var(--teal); background: var(--teal-bg); }
+  .box.warm { border-color: var(--warm); background: var(--warm-bg); }
+  .box h3 { margin: 0 0 8px; font-size: 19px; font-weight: 600; }
+  .box.center h3, .box.center { text-align: center; }
+  code, .mono { font-family: Consolas, "Cascadia Mono", monospace; font-size: 14.5px; }
+  .mono div { line-height: 1.55; }
+  .muted { color: var(--muted); font-size: 14px; line-height: 1.45; }
+  .accent { color: var(--teal); font-weight: 600; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 4px 0; }
+  .chips span.p { width: 26px; font-size: 15px; }
+  .chip { border: 1.5px solid var(--line); border-radius: 4px; padding: 2px 9px; font-family: Consolas, monospace; font-size: 14px; background: #fff; }
+  .chip.dim { border-style: dashed; color: var(--muted); }
+  .sep { border-top: 1.5px solid var(--teal); margin: 10px -16px 8px; }
+  .file { border: 1.5px solid var(--line); border-radius: 4px; background: #f4f8f8; padding: 7px 10px; margin-top: 8px; }
+  svg { position: absolute; inset: 0; overflow: visible; }
+  .lbl { position: absolute; font-size: 14px; color: var(--muted); }
+  .lbl.t { color: var(--teal); font-weight: 600; }
+</style>
+</head>
+<body>
+<div id="canvas">
+  <svg id="arrows" width="1640" height="1120"></svg>
+
+  <div id="unit" class="box center" style="left:20px; top:420px; width:175px;">
+    <h3>Aseko unit</h3>
+    <div class="mono"><div>v7: 120 B binary</div><div>v8: {v1 …} text</div></div>
+  </div>
+
+  <div id="server" class="box center" style="left:240px; top:405px; width:240px;">
+    <h3>AsekoDeviceServer</h3>
+    <div class="mono"><div>_sync_frame()</div></div>
+    <div class="muted">one server per host:port<br>fragments → partial frame<br>never aligned → rejected</div>
+  </div>
+
+  <div id="parse" class="box" style="left:530px; top:405px; width:290px;">
+    <h3>parse_frame(raw)</h3>
+    <div class="mono"><div>v7 → bytes[120]</div><div>v8 → sections + header type</div></div>
+    <div class="muted">unreadable v8 value → None,<br>reported as a frame problem</div>
+  </div>
+
+  <div id="detect" class="box teal" style="left:530px; top:95px; width:290px;">
+    <h3>detect_profile(frame)</h3>
+    <div class="mono">
+      <div>v7: byte[4] → model</div>
+      <div>v8: 8xx NET · 1xx SALT</div>
+      <div>unmapped → unknown profile</div>
+    </div>
+    <div class="muted">every frame, never locked in</div>
+  </div>
+
+  <div id="profiles" class="box teal" style="left:880px; top:40px; width:460px;">
+    <h3>profiles/ — one module per model</h3>
+    <div class="chips"><span class="p">v7</span><span class="chip">HOME</span><span class="chip">SALT</span><span class="chip">OXY</span><span class="chip">NET</span><span class="chip">PROFI</span><span class="chip dim">unknown</span></div>
+    <div class="chips"><span class="p">v8</span><span class="chip">NET</span><span class="chip">SALT</span><span class="chip dim">unknown</span></div>
+    <div class="sep"></div>
+    <div class="mono">
+      <div>Profile = features  (what the model has)</div>
+      <div>&nbsp;+ overrides {feature → reading}</div>
+      <div>&nbsp;+ evidence, flags   (read-only)</div>
+    </div>
+  </div>
+
+  <div id="engine" class="box teal" style="left:880px; top:410px; width:460px;">
+    <h3>engine.decode(frame, profile)</h3>
+    <div class="mono">
+      <div>for feature, read in profile.plan:</div>
+      <div>&nbsp;&nbsp;value | None | NOT_PRESENT</div>
+    </div>
+    <div class="muted">plan sorted by depends_on · knows no bytes, no models</div>
+  </div>
+
+  <div id="features" class="box" style="left:880px; top:660px; width:460px;">
+    <h3>features/ — one file per value (71)</h3>
+    <div class="file mono"><div>ph.py</div><div class="muted">decode_v7 · decode_v8</div></div>
+    <div class="file mono"><div>filtration_relay.py</div><div class="muted">decode_v7 · decode_v8</div></div>
+    <div class="file mono"><div>algaecide_flow_rate.py</div><div class="muted">decode_v7 · decode_v7_routed_by_byte37 (SALT) · decode_v7_not_located (HOME)</div></div>
+  </div>
+
+  <div id="device" class="box center" style="left:1390px; top:395px; width:230px;">
+    <h3>AsekoDevice</h3>
+    <div class="mono"><div>profile</div><div>possible_features</div><div>present_features</div><div>flags, frame_problems</div><div>values…</div></div>
+  </div>
+
+  <div id="entities" class="box center" style="left:1390px; top:660px; width:230px;">
+    <h3>coordinator → entities</h3>
+    <div class="muted">features seen since start<br>entity per possible feature:<br>disabled until shown,<br>unavailable when absent<br>trackers read flags</div>
+  </div>
+
+  <div id="recording" class="box warm" style="left:530px; top:760px; width:290px;">
+    <h3>recording/</h3>
+    <div class="muted">frame log — off until turned on in the card<br>markers after the next frame · photos<br>test cases card · zip export</div>
+  </div>
+</div>
+<script>
+const svgNS = "http://www.w3.org/2000/svg";
+const svg = document.getElementById("arrows");
+svg.innerHTML = `<defs>
+  <marker id="m-ink" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#26323a"/></marker>
+  <marker id="m-teal" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#1b8a8f"/></marker>
+  <marker id="m-warm" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#b95a1c"/></marker></defs>`;
+const box = (id) => { const e = document.getElementById(id); return { l: e.offsetLeft, t: e.offsetTop, r: e.offsetLeft + e.offsetWidth, b: e.offsetTop + e.offsetHeight, cx: e.offsetLeft + e.offsetWidth / 2, cy: e.offsetTop + e.offsetHeight / 2 }; };
+const colors = { ink: "#26323a", teal: "#1b8a8f", warm: "#b95a1c" };
+function arrow(points, kind, label, lx, ly) {
+  const path = document.createElementNS(svgNS, "path");
+  path.setAttribute("d", "M" + points.map((p) => p.join(",")).join(" L"));
+  path.setAttribute("fill", "none");
+  path.setAttribute("stroke", colors[kind]);
+  path.setAttribute("stroke-width", "2");
+  if (kind === "warm") path.setAttribute("stroke-dasharray", "6 5");
+  path.setAttribute("marker-end", `url(#m-${kind})`);
+  svg.appendChild(path);
+  if (label) {
+    const d = document.createElement("div");
+    d.className = "lbl" + (kind === "teal" ? " t" : "");
+    if (kind === "warm") d.style.color = colors.warm;
+    d.textContent = label;
+    d.style.left = lx + "px"; d.style.top = ly + "px";
+    document.getElementById("canvas").appendChild(d);
+  }
+}
+const u = box("unit"), s = box("server"), p = box("parse"), dt = box("detect"), pr = box("profiles"),
+      en = box("engine"), f = box("features"), dv = box("device"), ent = box("entities"), rc = box("recording");
+const y = en.cy;
+arrow([[u.r, y], [s.l - 2, y]], "ink", "TCP", u.r + 8, y - 24);
+arrow([[s.r, y], [p.l - 2, y]], "ink", "raw", s.r + 10, y - 24);
+arrow([[p.r, y], [en.l - 2, y]], "ink", "frame", p.r + 10, y - 24);
+arrow([[p.cx, p.t], [p.cx, dt.b + 2]], "ink", "frame", p.cx + 10, (p.t + dt.b) / 2 - 10);
+arrow([[dt.r, dt.cy], [pr.l - 2, dt.cy]], "teal", "lookup", dt.r + 6, dt.cy - 24);
+arrow([[en.cx, pr.b], [en.cx, en.t - 2]], "teal", "profile", en.cx + 10, (pr.b + en.t) / 2 - 10);
+arrow([[en.cx, f.t], [en.cx, en.b + 2]], "teal", "reading chosen by the profile", en.cx + 10, (en.b + f.t) / 2 - 10);
+arrow([[en.r, y], [dv.l - 2, y]], "ink");
+arrow([[dv.cx, dv.b], [dv.cx, ent.t - 2]], "ink", "coordinator", dv.cx + 10, (dv.b + ent.t) / 2 - 10);
+arrow([[s.cx, s.b], [s.cx, rc.cy], [rc.l - 2, rc.cy]], "warm", "every frame", s.cx + 10, rc.cy - 24);
+</script>
+</body>
+</html>

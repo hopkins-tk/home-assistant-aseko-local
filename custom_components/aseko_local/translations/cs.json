@@ -6,7 +6,8 @@
     },
     "error": {
       "cannot_connect": "Připojení se nezdařilo",
-      "unknown": "Neočekávaná chyba"
+      "unknown": "Neočekávaná chyba",
+      "invalid_port": "Zadejte číslo portu od 1 do 65535"
     },
     "step": {
       "user": {
@@ -14,12 +15,18 @@
           "host": "Poslouchat na adrese",
           "port": "Poslouchat na portu"
         },
-        "description": "Zadejte číslo portu. IP adresa může obvykle zůstat 0.0.0.0"
+        "description": "Zadejte číslo portu. IP adresa může obvykle zůstat 0.0.0.0",
+        "data_description": {
+          "port": "47524 pro firmware 7.x a starší, 51050 pro firmware 8.x — nebo napište port nastavený v jednotce"
+        }
       },
       "reconfigure": {
         "data": {
           "host": "Poslouchat na adrese",
           "port": "Poslouchat na portu"
+        },
+        "data_description": {
+          "port": "47524 pro firmware 7.x a starší, 51050 pro firmware 8.x — nebo napište port nastavený v jednotce"
         }
       }
     }
@@ -29,7 +36,8 @@
       "options_init": {
         "data": {
           "forwarder_enabled": "Povolit přeposílání",
-          "forwarder_host": "Cílová adresa"
+          "forwarder_host": "Cílová adresa",
+          "clock_alert_minutes": "Upozornit, když se hodiny jednotky liší o (minuty)"
         }
       }
     }
@@ -41,25 +49,31 @@
       }
     },
     "binary_sensor": {
-      "electrolyzer_active": {
+      "electrolysis_running": {
         "name": "Elektrolyzér aktivní"
       },
-      "filtration_pump_running": {
+      "filtration_running": {
         "name": "Filtrační čerpadlo běží"
       },
-      "heating_active": {
+      "filtration_relay": {
+        "name": "Relé filtrace"
+      },
+      "heating_running": {
         "name": "Topení aktivní"
       },
       "heating_control_enabled": {
         "name": "Ovládání topení"
       },
-      "antifreeze_enabled": {
+      "heating_linked_to_filtration": {
+        "name": "Ohřev navázaný na filtraci"
+      },
+      "freeze_protection_enabled": {
         "name": "Ochrana proti zamrznutí"
       },
-      "vsp_pump_running": {
+      "variable_speed_pump_enabled": {
         "name": "Čerpadlo s proměnnými otáčkami"
       },
-      "cl_pump_running": {
+      "chlorine_pump_running": {
         "name": "Čerpadlo chloru běží"
       },
       "ph_minus_pump_running": {
@@ -68,25 +82,28 @@
       "ph_plus_pump_running": {
         "name": "Čerpadlo pH+ běží"
       },
-      "algicide_pump_running": {
+      "algaecide_pump_running": {
         "name": "Čerpadlo algicidu běží"
       },
-      "floc_pump_running": {
+      "algaecide_pump_running_or_aco": {
+        "name": "Čerpadlo algicidu / ACO běží"
+      },
+      "flocculant_pump_running": {
         "name": "Čerpadlo flokulantu běží"
       },
-      "oxy_pump_running": {
+      "oxygen_pump_running": {
         "name": "Čerpadlo OXY Pure běží"
       },
       "water_flow_to_probes": {
         "name": "Průtok vody k sondám"
       },
-      "water_filling_active": {
+      "refilling": {
         "name": "Plnění vody aktivní"
       },
-      "alarm_ph_too_many_doses": {
+      "alarm_ph_dosing_ineffective": {
         "name": "Příliš mnoho dávek pH"
       },
-      "alarm_orp_too_many_doses": {
+      "alarm_max_disinfection_dose": {
         "name": "Příliš mnoho dávek dezinfekce"
       },
       "alarm_no_flow_to_probes": {
@@ -95,48 +112,74 @@
       "alarm_rapid_ph_change": {
         "name": "Příliš rychlá změna pH"
       },
-      "backwash_active": {
+      "backwash_running": {
         "name": "Zpětné proplachování aktivní"
       },
       "service_menu": {
         "name": "Servisní menu"
+      },
+      "water_level_sensor_enabled": {
+        "name": "Hladinoměr"
+      },
+      "flow_detection_enabled": {
+        "name": "Detekce průtoku"
+      },
+      "backwash_schedule_enabled": {
+        "name": "Plán proplachu"
+      },
+      "heating_allowed": {
+        "name": "Ohřev povolen"
+      },
+      "heating_condition_met": {
+        "name": "Podmínka ohřevu splněna"
+      },
+      "clock_out_of_sync": {
+        "name": "Hodiny nesynchronizované"
       }
     },
     "sensor": {
-"filtration_1_start": {
+      "filtration_period_1_start": {
         "name": "Filtrace 1 začátek"
       },
-      "filtration_1_stop": {
+      "filtration_period_1_end": {
         "name": "Filtrace 1 konec"
       },
-      "filtration_2_start": {
+      "filtration_period_2_start": {
         "name": "Filtrace 2 začátek"
       },
-      "filtration_2_stop": {
+      "filtration_period_2_end": {
         "name": "Filtrace 2 konec"
+      },
+      "filtration_schedule": {
+        "name": "Rozvrh filtrace",
+        "state": {
+          "nonstop_24h": "Nonstop 24 h",
+          "timer_period_1": "Časové období 1",
+          "timer_period_1_and_2": "Časová období 1 a 2"
+        }
       },
       "pool_volume": {
         "name": "Objem bazénu"
       },
-      "delay_after_startup": {
+      "startup_delay": {
         "name": "Prodleva po startu"
       },
-      "delay_after_dose": {
+      "dosing_delay": {
         "name": "Prodleva po dávce"
       },
       "ph_minus_concentration": {
         "name": "Koncentrace pH-"
       },
-      "max_ph_doses": {
-        "name": "Max. počet dávek pH"
-      },
       "air_temperature": {
         "name": "Teplota vzduchu"
       },
-      "electrolyzer_power": {
+      "chlorine_production": {
         "name": "Výkon elektrolyzéru"
       },
-      "electrolyzer_direction": {
+      "chlorine_production_measured": {
+        "name": "Výkon elektrolyzéru (měřený)"
+      },
+      "electrode_polarity": {
         "name": "Směr elektrolyzéru",
         "state": {
           "left": "Levá",
@@ -153,16 +196,16 @@
       "redox": {
         "name": "Redox potenciál"
       },
-      "required_free_chlorine": {
+      "free_chlorine_target": {
         "name": "Požadovaný volný chlor"
       },
-      "required_ph": {
+      "ph_target": {
         "name": "Požadovaná hodnota pH"
       },
-      "required_redox": {
+      "redox_target": {
         "name": "Požadovaný redox potenciál"
       },
-      "required_water_temperature": {
+      "water_temperature_target": {
         "name": "Požadovaná teplota vody"
       },
       "water_level": {
@@ -171,31 +214,38 @@
       "water_level_low_alarm": {
         "name": "Hladina vody — dolní alarm"
       },
-      "water_level_filling_on": {
+      "water_level_refill_start": {
         "name": "Prah zapnutí plnění"
       },
-      "water_level_filling_off": {
+      "water_level_refill_stop": {
         "name": "Prah vypnutí plnění"
       },
       "water_level_high_alarm": {
         "name": "Hladina vody — horní alarm"
       },
-      "max_filling_time": {
+      "max_refill_time": {
         "name": "Maximální doba plnění"
       },
-      "required_algicide": {
+      "max_ph_doses": {
+        "name": "Max. počet dávek pH"
+      },
+      "algaecide_dose_target": {
         "name": "Požadovaná dávka algicidu",
         "unit_of_measurement": "ml/m³/den"
       },
-      "required_oxy_dose": {
+      "algaecide_dose_target_or_aco": {
+        "name": "Požadovaná dávka algicidu / ACO",
+        "unit_of_measurement": "ml/m³/den"
+      },
+      "oxygen_dose_target": {
         "name": "Požadovaná dávka OXY Pure",
         "unit_of_measurement": "ml/m³/den"
       },
-      "required_cl_dose": {
+      "chlorine_dose_target": {
         "name": "Požadovaná dávka chloru",
         "unit_of_measurement": "ml/m³/h"
       },
-      "required_floc": {
+      "flocculant_dose_target": {
         "name": "Požadovaná dávka flokulantu"
       },
       "salinity": {
@@ -204,29 +254,30 @@
       "water_temperature": {
         "name": "Teplota vody"
       },
-      "flowrate_chlor": {
+      "chlorine_flow_rate": {
         "name": "Průtok chloru"
       },
-      "flowrate_ph_minus": {
+      "ph_minus_flow_rate": {
         "name": "Průtok pH-"
       },
-      "flowrate_ph_plus": {
+      "ph_plus_flow_rate": {
         "name": "Průtok pH+"
       },
-      "flowrate_algicide": {
+      "algaecide_flow_rate": {
         "name": "Průtok algicidu"
       },
-      "flowrate_floc": {
+      "flocculant_flow_rate": {
         "name": "Průtok flokulantu"
       },
-      "flowrate_oxy": {
+      "oxygen_flow_rate": {
         "name": "Průtok OXY Pure"
       },
       "connection_status": {
         "name": "Stav připojení",
         "state": {
           "online": "Online",
-          "offline": "Offline"
+          "offline": "Offline",
+          "service_menu": "Otevřené servisní menu"
         }
       },
       "last_seen": {
@@ -241,10 +292,10 @@
       "next_scheduled_backwash": {
         "name": "Příští plánované zpětné proplachování (odhad)"
       },
-      "backwash_every_n_days": {
+      "backwash_interval": {
         "name": "Interval zpětného proplachování"
       },
-      "backwash_time": {
+      "backwash_start_time": {
         "name": "Čas začátku zpětného proplachování"
       },
       "backwash_duration": {
@@ -280,8 +331,14 @@
       "algicide_consumed": {
         "name": "Spotřeba algicidu (od doplnění)"
       },
+      "algicide_consumed_or_aco": {
+        "name": "Spotřeba algicidu / ACO (od doplnění)"
+      },
       "algicide_total_consumed": {
         "name": "Spotřeba algicidu (celkem)"
+      },
+      "algicide_total_consumed_or_aco": {
+        "name": "Spotřeba algicidu / ACO (celkem)"
       },
       "algicide_remaining": {
         "name": "Zbývající algicid"
@@ -301,13 +358,25 @@
       "oxy_total_consumed": {
         "name": "Spotřeba OXY Pure (celkem)"
       },
-      "filtration_schedule": {
-        "name": "Rozvrh filtrace",
+      "heating_condition": {
+        "name": "Podmínka ohřevu",
         "state": {
-          "nonstop_24h": "Nonstop 24 h",
-          "timer_period_1": "Časové období 1",
-          "timer_period_1_and_2": "Časová období 1 a 2"
+          "always": "Vždy",
+          "time_window": "Časové okno",
+          "outside_temperature_above": "Venkovní teplota nad",
+          "outside_temperature_below": "Venkovní teplota pod"
         }
+      },
+      "variable_speed_pump_type": {
+        "name": "Typ čerpadla s proměnnými otáčkami",
+        "state": {
+          "speck_uwe": "Speck / Uwe",
+          "pentair_dab": "Pentair / Dab",
+          "hayward": "Hayward"
+        }
+      },
+      "clock_offset": {
+        "name": "Odchylka hodin"
       }
     },
     "number": {
@@ -340,11 +409,22 @@
       "algicide_refill_reset": {
         "name": "Doplnění algicidu"
       },
+      "algicide_refill_reset_or_aco": {
+        "name": "Doplnění algicidu / ACO"
+      },
       "floc_refill_reset": {
         "name": "Doplnění flokulantu"
       },
       "oxy_refill_reset": {
         "name": "Doplnění OXY Pure"
+      }
+    }
+  },
+  "selector": {
+    "port": {
+      "options": {
+        "47524": "47524 — firmware 7.x a starší",
+        "51050": "51050 — firmware 8.x"
       }
     }
   }

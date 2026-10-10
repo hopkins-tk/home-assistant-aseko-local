@@ -17,15 +17,15 @@ import logging
 from datetime import datetime
 
 from homeassistant.components.datetime import DateTimeEntity, DateTimeEntityDescription
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.const import Platform
+from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
-from homeassistant.util import dt as dt_util
 
 from . import AsekoLocalConfigEntry
-from .aseko_data import AsekoDevice
 from .coordinator import AsekoLocalDataUpdateCoordinator
-from .entity import AsekoLocalEntity
+from .entity import AsekoLocalEntity, async_setup_platform_entities
+from .models import AsekoDevice
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -42,34 +42,29 @@ async def async_setup_entry(
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     """Set up the writable backwash datetime entities."""
-
-    coordinator = config_entry.runtime_data.coordinator
-    async_add_entities(_build_entities(coordinator.get_devices(), coordinator))
-
-    @callback
-    def _async_add_new_device(device: AsekoDevice) -> None:
-        new_entities = _build_entities([device], coordinator)
-        if new_entities:
-            async_add_entities(new_entities)
-
-    config_entry.async_on_unload(
-        coordinator.async_add_new_device_listener(_async_add_new_device)
+    async_setup_platform_entities(
+        hass, config_entry, async_add_entities, Platform.DATETIME, _build_entities
     )
 
 
 def _build_entities(
     devices: list[AsekoDevice],
     coordinator: AsekoLocalDataUpdateCoordinator,
+    features: frozenset[str] | None = None,
 ) -> list[DateTimeEntity]:
     """Create one entity per device that has a backwash valve.
 
-    ``backwash_active`` is the decoder's presence marker for that output: it is
-    left as None on device types without one (NET).  See Issue #129.
+    The decoder lists ``backwash_running`` in ``device.features`` only for
+    units with that output (NET has none).  See Issue #129.  With
+    ``features`` given, only when the valve is among what the device has
+    just started showing.
     """
+    if features is not None and "backwash_running" not in features:
+        return []
     return [
         AsekoLastScheduledBackwashEntity(device, coordinator, LAST_SCHEDULED_BACKWASH)
         for device in devices
-        if device.backwash_active is not None
+        if "backwash_running" in device.possible_features
     ]
 
 
@@ -97,9 +92,11 @@ class AsekoLastScheduledBackwashEntity(AsekoLocalEntity, DateTimeEntity):
 
     async def async_set_value(self, value: datetime) -> None:
         """Record a user-supplied timestamp and re-project the next cycle."""
-        if value > dt_util.now():
-            raise ServiceValidationError(
+        unit_now = self.coordinator.unit_clock_now(self.device.serial_number)
+        if unit_now is not None and value > unit_now:
+            msg = (
                 f"{value.isoformat()} is in the future; "
                 "the last scheduled backwash must already have happened"
             )
+            raise ServiceValidationError(msg)
         self.coordinator.set_last_scheduled_backwash(value, self.device.serial_number)

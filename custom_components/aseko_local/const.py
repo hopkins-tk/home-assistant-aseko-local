@@ -15,7 +15,9 @@ DEFAULT_FORWARDER_PORT_V8 = 51050
 # Year offset and message sizes
 YEAR_OFFSET = 2000
 MESSAGE_SIZE = 120
-MAX_CLF_LIMIT = 100
+# How long mark_dump and the photo upload wait for the next frame.  A unit
+# sends every ten seconds or so, but not while its settings menu is open.
+MARK_DUMP_WAIT_TIMEOUT = 60
 
 # Connection timeout in seconds (3x normal 10s interval)
 READ_TIMEOUT = 30.0
@@ -24,12 +26,11 @@ READ_TIMEOUT = 30.0
 WATER_FLOW_TO_PROBES = 0xAA
 
 # Byte 37 bit 0x20 = second filtration period enabled (checkbox on the unit).
-# When clear, the unit still reports the last-configured start2/stop2 times in
+# When clear, the unit still reports the last-configured filtration_period_2_start/filtration_period_2_end times in
 # bytes 60-63, so they must be ignored. Confirmed on ASIN AQUA Salt by toggling
 # the period-2 checkbox and diffing two frames (PR #122 review). The decoder
 # applies this only to the verified device types (FILTRATION_PERIOD2_FLAG_TYPES);
 # other types report period 2 as-is until their mechanism is verified.
-FILTRATION_PERIOD2_ENABLED_MASK = 0x20
 
 # Probe missing flags
 # (unfortunately seems not to be true for HOME)
@@ -47,10 +48,12 @@ UNIT_TYPE_SALT = 0x0C  # SALT can be CLF (0x0D) or REDOX (0x0E) or DOSE (0x0F)
 UNIT_TYPE_PROFI = 0x10  # PROFI is 0x10 - not confirmed
 
 UNSPECIFIED_VALUE = 0xFF
+# bytes 0-3 of a v7 frame (and of every segment header): the serial number
+SERIAL_NUMBER_LENGTH = 4
 UNSPECIFIED_V8 = -500  # v8 text frame sentinel for absent/unavailable probe readings
 
 # Config / option keys
-CONF_ENABLE_RAW_LOGGING = "enable_raw_logging"
 CONF_FORWARDER_ENABLED = "forwarder_enabled"
 CONF_FORWARDER_HOST = "forwarder_host"
-CONF_FORWARDER_PORT = "forwarder_port"
+# Minutes the unit clock may be off before clock_out_of_sync turns on
+CONF_CLOCK_ALERT_MINUTES = "clock_alert_minutes"

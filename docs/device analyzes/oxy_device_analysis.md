@@ -1,31 +1,39 @@
-# ASIN AQUA Oxygen – Reverse Engineering & Implementation Plan
+# ASIN AQUA Oxygen (v7) — Device Analysis
 
-## Device
+[Documentation](../README.md) / [Device analyses](README.md)
 
-| Field | Value |
-|---|---|
-| Model | ASIN AQUA Oxygen |
-| Source | Log `oxy_log.log`, 2026-04-02 18:20 – 19:34 |
-| byte[4] | `0x05` → **Unknown unit type: 5** (current decoder fails here) |
+> **Status:** decoded from logs of one unit (Winnetoux, 2026-04-02, 04-11, 04-12); pump bits, dose targets and flow rates checked against the Aseko Live app, most settings only observed, alarms and level/heating bits assumed from other models.
+> **Profile:** [`profiles/v7/oxy.py`](../../custom_components/aseko_local/decoding/profiles/v7/oxy.py) · **Support:** [support matrix](../support_matrix.md)
+> **Evidence words** (`confirmed`, `confirmed on X`, `observed`, `assumed`, `not located`): see [evidence rules](../evidence-rules.md).
 
----
+## 1. Device
 
-## Frame Structure
+- **Model:** ASIN AQUA Oxygen — pH probe plus an OXY Pure (H₂O₂, "SANOSIL") probe; no CLF or REDOX probe. Four independent dosing pump ports (pH−, OXY Pure, flocculant, algicide) and a filtration output. No water level sensor on the captured unit.
+- **Wire identification:** v7 `byte[4]` = `0x05` → unit type OXY (exact match, no overlap with the other unit types). Configuration is fixed to pH + OXY Pure (`decode_v7_ph_and_oxy`).
+- **Sources:** one unit (Winnetoux, serial 110157165).
+  - `oxy_log.log`, 2026-04-02 18:20 – 19:34 (normal frames and a flocculant dosing event).
+  - 2026-04-11 log (algicide and OXY Pure pump events, dose targets).
+  - `oxy_2026-04-12.log` (pH− pump, parallel pumps).
+  - Aseko Live app history and settings for the same unit.
+  - An AquaNET log of 2026-04-07 (serial 110200612) for the meaning of the `byte[4]` probe bits and `byte[53]`.
 
-All OXY frames are 120 bytes, split into three 40-byte sub-frames. The sub-frame type is
-encoded at byte offset 5 (first sub-frame), 45, and 85:
+## 2. Frame structure
 
-| Sub-frame | Type byte | Content |
+120 bytes, three 40-byte segments, each starting with the serial (bytes 0–3 repeated) and `byte[4]` unit type. Segment type at bytes 5 / 45 / 85; checksum at bytes 39 / 79 / 119.
+
+| Segment | Type byte | Content |
 |---|---|---|
 | 0–39 | `0x01` | Live sensor data |
-| 40–79 | `0x03` | Configuration / setpoints |
-| 80–119 | `0x02` | Flow rates / dosing |
+| 40–79 | `0x03` | Setpoints and schedule |
+| 80–119 | `0x02` | Parameters and flow rates |
 
----
+Normal frame (only filtration running), 2026-04-02 19:33:38:
 
-## Representative Frames
-
-### Normal frame (no pump running except filtration) – 19:33:38
+> **Checksum mismatch, suspected transcription error:** the checksum of the middle segment of this frame does not match
+> (computed `0x32`, stored `0x3f`). A mistyped hex digit among bytes 40–78 when the frame was
+> copied here would explain it, but without the original capture that is not proven, and which
+> byte cannot be told from the checksum. Do not use it
+> as test data. The flocculant frame below checks out.
 
 ```
 06 90 dd 6d 05 01 1a 04 02 17 15 0a 00 00 02 cd 00 1e 00 1e fd 9d 80 fe 70 00 5f fe aa 08
@@ -36,7 +44,7 @@ encoded at byte offset 5 (first sub-frame), 45, and 85:
 58 0f 2b 0f 1e 1e aa cb 00 3a
 ```
 
-### Flocculant pump running – 19:33:52 (duration: ~2 seconds)
+Flocculant pump running, 2026-04-02 19:33:52 (about 2 s):
 
 ```
 06 90 dd 6d 05 01 1a 04 02 17 15 17 00 00 02 cd 00 1e 00 1e fd 9d 80 fe 70 00 5f fe aa 28
@@ -47,411 +55,252 @@ encoded at byte offset 5 (first sub-frame), 45, and 85:
 58 0f 2b 0f 1e 1e aa cb 00 27
 ```
 
-**Only change vs. normal frame**: byte[29] `0x08` → `0x28` (+bit `0x20`).
-Checksum bytes (39, 79, 119) and timestamp second (byte[11]) change as expected.
+Only change versus the normal frame: `byte[29]` `0x08` → `0x28` (+`0x20`); the timestamp second (`byte[11]`) and the checksums change as expected. All other bytes are identical.
 
----
+## 3. Byte map
 
-## Byte Map – Sub-frame 1 (live sensor data)
+Values are from the Winnetoux unit. Setpoint values marked (04-11) come from the 2026-04-11 log; the 2026-04-02 frame above differs there (see §8).
 
-| Byte(s) | Value (normal) | Decoded | Notes |
-|---|---|---|---|
-| `[0:4]` | `06 90 dd 6d` | Serial = 110_157_165 | |
-| `[4]` | `0x05` | Unit type / probe flags | **OXY-specific, see below** |
-| `[5]` | `0x01` | Sub-frame type | |
-| `[6:12]` | `1a 04 02 17 15 0a` | 2026-04-02 23:21:10 | Device clock desynchronised from server |
-| `[12]` | `00` | 0 | Dosing-warning bitmask — see [`home_device_analysis.md`](home_device_analysis.md) §"Dosing warnings & alarms" |
-| `[13]` | `00` | 0 | Alarm bitmask (`0x01`=disinfection, `0x02`=pH, `0x04`=no flow) — see § above |
-| `[14:16]` | `02 cd` | pH = 7.17 | ÷100 |
-| `[16:18]` | `00 1e` | CLF slot = 30 → 0.30 | **Placeholder, see §CLF/REDOX** |
-| `[18:20]` | `00 1e` | REDOX slot = 30 mV | **Placeholder, see §CLF/REDOX** |
-| `[20:22]` | `fd 9d` | cl_free_mv = −611 mV (signed) | **Placeholder, no CLF probe** |
-| `[25:27]` | `00 5f` | Water temp = 9.5 °C | ÷10 |
-| `[28]` | `0xaa` | Water flow to probes = ON | `== 0xAA` |
-| `[29]` | `0x08` / `0x28` | Actuator bitmask | **See §byte[29]** |
-| `[37]` | `0x03` | Third-pump config byte | **See §byte[37]** |
+### Bytes 0–39 — live data
 
-## Byte Map – Sub-frame 2 (config / setpoints)
-
-| Byte(s) | Value | Decoded | Notes |
-|---|---|---|---|
-| `[52]` | `0x48` = 72 | Required pH = 7.2 | ÷10 |
-| `[53]` | `0x0c` = 12 | Required OXY dosage = **12 ml/m³/d** | Raw value, no scaling — see §byte[53] |
-| `[54]` | `0x0a` = 10 | Required Floc = **10 ml/h** | ✓ Confirmed 2026-04-11 (Winnetoux) |
-| `[55]` | `0x19` = 25 | Required water temp = 25 °C | |
-| `[56:58]` | `08 00` | Filtration start1 = 08:00 | |
-| `[58:60]` | `10 00` | Filtration stop1 = 16:00 | |
-| `[60:62]` | `12 00` | Filtration start2 = 18:00 | Always populated — see Issue #133 |
-| `[62:64]` | `16 00` | Filtration stop2 = 22:00 | Always populated — see Issue #133 |
-| `[68]` | `0x00` | Backwash every N days = 0 (disabled) | |
-| `[69:71]` | `0c 1e` | Backwash time = 12:30 | |
-| `[71]` | `0x0a` | Backwash duration = 100 s | ×10 |
-| `[72]` | `0x0f` = 15 | Required Algicide = **15 ml/m³/d** | ✓ Confirmed 2026-04-11 (Winnetoux) |
-| `[73]` | `0x28` = 40 s | Delay after startup | |
-
-## Byte Map – Sub-frame 3 (flow rates)
-
-| Byte(s) | Value | Decoded | Notes |
-|---|---|---|---|
-| `[92:94]` | `00 29` | Pool volume = 41 m³ | |
-| `[95]` | `0x3c` = 60 | Flowrate pH− = **60 ml/min** | Confirmed |
-| `[97]` | `0x3c` = 60 | Flowrate pH+ = 60 ml/min | Position unconfirmed |
-| `[99]` | `0x3c` = 60 | Flowrate OXY Pure = **60 ml/min** | Confirmed |
-| `[101]` | `0x0a` = 10 | Flowrate Floc = **10 ml/min** | Confirmed |
-| `[103]` | `0x3c` = 60 | Flowrate Algicide = **60 ml/min** | ✓ Confirmed 2026-04-11 (Winnetoux) |
-| `[106:108]` | `00 78` | Delay after dose = 120 s | |
-
----
-
-## byte[4] = 0x05 – Unit Type & Probe Flags
-
-`0x05 = 0b00000101`
-
-### Why the current decoder fails
-
-| Check | Expression | Result |
-|---|---|---|
-| `UNIT_TYPE_PROFI` | `0x05 == 0x08` | `False` |
-| `UNIT_TYPE_SALT` | `0x05 & 0x0C == 0x0C` | `0x04 ≠ 0x0C` → False |
-| `UNIT_TYPE_HOME` | `0x05 & 0x03 == 0x03` | `0x01 ≠ 0x03` → False |
-| `UNIT_TYPE_NET` | `bool(0x05 & 0x08)` | `bool(0)` → False |
-| **→** | falls through | **`raise ValueError("Unknown unit type: 5")` → connection closed** |
-
-### Probe flags decoded from 0x05
-
-| Flag constant | Mask | `0x05 & mask` | Meaning |
-|---|---|---|---|
-| `PROBE_REDOX_MISSING` | `0x01` | `0x01` (set) | REDOX **absent** ✓ |
-| `PROBE_CLF_MISSING` | `0x02` | `0x00` (**not set**) | ⚠️ CLF flagged as *present* — **incorrect for OXY** |
-| `PROBE_DOSE_MISSING` | `0x04` | `0x04` (set) | DOSE absent ✓ |
-| `PROBE_SANOSIL_MISSING` | `0x08` | `0x00` (not set) | SANOSIL **present** ✓ (= OXY Pure probe) |
-
-**Bug**: the current `_configuration()` logic would add `AsekoProbeType.CLF` for OXY because
-`PROBE_CLF_MISSING` bit is `0`. This is wrong — OXY has no CLF probe. See §CLF/REDOX analysis.
-
-**Fix**: for `AsekoDeviceType.OXY`, hard-code probe set to `{PH, SANOSIL}`. If future OXY
-variants with an optional CLF/REDOX probe are observed, revisit with captured frames.
-
-**Recommended constant**: `UNIT_TYPE_OXY = 0x05` (exact match — no overlap with existing types).
-
----
-
-## byte[29] – Actuator Bitmask
-
-| Frame | byte[29] | Binary | Bits set |
-|---|---|---|---|
-| Normal (all frames except 19:33:52) | `0x08` | `0000 1000` | bit 3 only |
-| Flocculant pump running (19:33:52) | `0x28` | `0010 1000` | bit 3 + bit 5 |
-
-`0x28 XOR 0x08 = 0x20` — **bit 5 (`0x20`) = flocculant pump** confirmed.
-
-**Only byte[29] changed** in the floc frame (besides timestamp second and checksums).
-Every other byte across all 110 non-timestamp/non-checksum positions is identical.
-
-### Confirmed masks for OXY
-
-**Updated 2026-04-12** — Winnetoux log `oxy_2026-04-12.log` confirms pH− mask and reveals parallel pump operation.
-
-| Bit | Mask | byte[29] observed | Status | Evidence |
+| Byte | Field | Decoding | Evidence | Notes |
 |---|---|---|---|---|
-| 3 | `0x08` | `0x08` | Filtration running | Set in all frames; filtration runs 24h ✓ |
-| 4 | `0x10` | `0x18 = 0x08|0x10` | **Algicide pump** ✓ | 2026-04-11 log: toggles exactly at algicide pump on/off |
-| 5 | `0x20` | `0x28 = 0x08|0x20` | Flocculant pump ✓ | 2026-04-02 log: toggles exactly at floc dosing event |
-| 6 | `0x40` | `0x48 = 0x08|0x40` | **OXY Pure pump** ✓ | 2026-04-11 log: toggles exactly at OXY pump on/off |
-| 7 | `0x80` | `0x88 = 0x08|0x80` | **pH− pump** ✓ | 2026-04-12 log: byte[29] 0x08→0x88 at pH− pump on |
+| 0–3 | `serial_number` | big-endian integer | confirmed | Repeated in every segment header. |
+| 4 | unit type / probe flags | `0x05` = OXY | confirmed | See §4 `byte[4]`. |
+| 5 | segment type | `0x01` | confirmed | |
+| 6–11 | `timestamp` | Y M D h m s | confirmed | `1a 04 02 17 15 0a` = 2026-04-02 23:21:10 while the log said 19:33:38: device clock not synchronised. |
+| 12 | dosing warnings | bit field | assumed | `0x00` in every OXY frame; HOME encoding. See §4. |
+| 13 | alarms | bit field | assumed | `0x00` in every OXY frame. See §4. |
+| 14–15 | `ph` | ÷100 | observed | `02 cd` = 7.17; not compared with the app. |
+| 16–17 | CLF slot | — | observed | `0x001E` invariant placeholder, not read. See §5. |
+| 18–19 | REDOX slot | — | observed | `0x001E` invariant placeholder, not read. |
+| 20–21 | `free_chlorine_mv` slot | signed | observed | `0xFD9D` = −611 mV, placeholder, not read. |
+| 22 | settings | bit field | assumed | `0x80`. See §4. |
+| 23–24 | `air_temperature` | ÷10 | assumed | `0xFE70` (no air probe, the SALT marker) in every OXY frame, so no entity yet. See §7. |
+| 25–26 | `water_temperature` | ÷10 | observed | `00 5f` = 9.5 °C; not compared with the app. |
+| 27 | `water_level` | cm | assumed | Confirmed on HOME; `0xFE` on the captured OXY = no level sensor connected (other OXY units may have one). |
+| 28 | `water_flow_to_probes` | `== 0xAA` | observed | `0xAA` = flow; not compared with the app. |
+| 29 | actuators | bit field | confirmed | See §4. |
+| 37 | settings / routing | bit field | assumed | `0x03` in every frame. See §4. |
+| 38 | — | — | not located | `0x08`, meaning unknown. |
+| 39 | checksum | | confirmed | |
 
-### Pumps can run in parallel
+### Bytes 40–79 — setpoints and schedule
 
-The 2026-04-12 log contains frames with `byte[29] = 0xa8 = 0x08|0x20|0x80` — filtration, flocculant pump
-and pH− pump all active simultaneously. This occurred at 11:37:58 (matching the Aseko cloud timeline:
-pH− 1m24s + Floc+c 2s overlapping).
-
-All bits in byte[29] are independent and additive. Any combination is valid.
-
----
-
-## byte[37] = 0x03 – Third-Pump Config
-
-`0x03 = 0b00000011`
-
-On SALT devices, byte[37] bit 7 (`0x80`) routes the third pump slot to algicide or flocculant.
-On OXY, `0x03` has neither `0x80` nor `0x10` set — the SALT routing logic does **not** apply.
-
-**Status**: unchanged across all captured OXY frames (2026-04-02 and 2026-04-11). The value
-`0x03` = both pump modules present is a stable presence bitmap, not a routing indicator.
-
-**Hypothesis** (not confirmed with asymmetric frame):
-- bit 0 (`0x01`): flocculant pump module connected
-- bit 1 (`0x02`): algicide pump module connected
-→ `0x03` = both present (consistent with Winnetoux's device showing 4 pumps).
-
-**Implementation**: for `AsekoDeviceType.OXY`, do not apply the `ALGICIDE_CONFIGURED` byte[37]
-routing. Both flowrate_algicide and flowrate_floc are read from their own dedicated bytes.
-
-Since Issue #133 the decoder also reads the 4-state filtration mode directly
-from `byte[37]` for every `FILTRATION_TYPES` device (OXY included), using the
-same firmware A/B encodings as HOME — see
-[`home_device_analysis.md`](home_device_analysis.md) §"byte[37] – Filtration
-mode flag".
-
----
-
-## CLF/REDOX Sentinel Analysis
-
-`bytes[16:18] = bytes[18:20] = 0x001E = 30` — **invariant across all 7 captured frames**.
-
-| Slot | Raw value | Decoded | Assessment |
-|---|---|---|---|
-| `[16:18]` CLF | `0x001E` | 0.30 mg/L | Never changes — **placeholder**, no CLF probe |
-| `[18:20]` REDOX | `0x001E` | 30 mV | Physically impossible (real pool ORP ≥ ~100 mV) — **placeholder** |
-| `[20:22]` | `0xFD9D` | −611 mV (signed) | Implausible — **placeholder** |
-
-**Conclusion**: `0x001E` is the OXY firmware's sentinel value for disconnected analogue probe
-slots. The values never fluctuate, confirming they are not real measurements.
-
-**Note on the existing REDOX fallback**: the decoder has a fallback
-(`if data[18] == 0xFF and data[19] == 0xFF → use [16:18] for REDOX`) — this does **not**
-trigger for OXY because `0x1E ≠ 0xFF`. Without an OXY-type guard, a decoded device
-would show REDOX = 30 mV (wrong) and CLF = 0.30 mg/L (wrong).
-
-**Fix**: when `device_type == AsekoDeviceType.OXY`, skip `_fill_redox_data()` and
-`_fill_clf_data()` entirely.
-
----
-
-## Flowrate Confirmation – byte[101] = 10 ml/min
-
-The Aseko cloud (Verlauf, 2.4.2026) shows Floc+c dosing **every ~20 minutes, 2 seconds each,
-over 24 hours**:
-
-```
-24h × 3 pulses/h × 2 s = 144 s total dosing time
-Consumed: 0.02 L = 20 ml
-Rate: 20 ml ÷ 144 s ≈ 0.14 ml/s = 8.3 ml/min ≈ 10 ml/min
-```
-
-**Confirmed**: byte[101] = `0x0A` = 10 → **10 ml/min** (Floc pump hardware flow rate).
-
-The Aseko UI label "Flockungsmittel: 10 ml/Stunde" refers to the configured dosing **setpoint**
-(target dose per hour of filtration), which is different from the pump's hardware flow rate
-stored in byte[101].
-
-All flowrate bytes on OXY use the same unit: **ml/min**.
-
-| Byte | Value | Pump | Flow rate |
-|---|---|---|---|
-| `[95]` | 60 | pH− | 60 ml/min ✓ |
-| `[97]` | 60 | pH+ (position unconfirmed) | 60 ml/min |
-| `[99]` | 60 | OXY Pure | 60 ml/min ✓ |
-| `[101]` | 10 | Flocculant | 10 ml/min ✓ |
-| `[103]` | 60 | Algicide | 60 ml/min ✓ confirmed 2026-04-11 |
-
----
-
-## Period 2 schedule bytes (Issue #133)
-
-Like SALT and HOME, the OXY controller keeps sending the last-configured
-`start2`/`stop2` times in bytes 60-63 even after the user disables Period 2 in
-the controller UI.  This was first verified on SALT (PR #122 frame diff) and
-on HOME (Issue #133 diagnostic files from @dtpugh, serial 110169464, firmware
-B).  The same protocol behaviour is assumed for OXY because OXY shares the
-SALT/HOME byte layout for the filtration schedule — no protocol-level
-reason exists to believe the OXY firmware clears the bytes when Period 2 is
-disabled.
-
-**Decoder behaviour** (post Issue #133 fix): the decoder reads bytes 60-63
-unconditionally for any device in `FILTRATION_TYPES` (which includes OXY
-since it exposes a filtration output).  The lazy-creation guard in
-`sensor.py` skips the `filtration_2_start` / `filtration_2_stop` entities
-only if the bytes are `0xFF` (the bytes have never been configured on the
-controller).  Once the entity is registered, it stays populated with the
-last-configured time even when the user disables Period 2 — the
-`filtration_schedule` sensor (decoded from the `byte[37]` schedule bits)
-separately reports `TIMER_PERIOD_1` so the user knows the schedule is
-inactive.
-
-NET is excluded because it has no filtration output at all and is not in
-`FILTRATION_TYPES`.
-
-## Issue: `raise ValueError` Closes the TCP Connection
-
-**Current flow in `aseko_server.py`:**
-
-```
-Frame received
-  → _call_forward_cb()      ← cloud forwarding already happens HERE
-  → AsekoDecoder.decode()
-      → _unit_type()
-          → raise ValueError("Unknown unit type: 5")
-  → except ValueError → break   ← connection is closed
-  → new TCP connect on next frame (~10 s)
-```
-
-The frame **is forwarded to the cloud** already. But the `raise` → `break` closes the
-connection, forcing a new TCP handshake every 10 seconds. This prevents users with unknown
-device types from collecting a stable log while also forwarding data to the cloud.
-
-**Fix**: Change `_unit_type()` to `return None` (keep the WARNING log) instead of
-`raise ValueError`. The `decode()` method already handles `unit_type=None` gracefully
-(`_fill_consumable_data` returns early when `masks is None`).
-
-## byte[4] – Probe Configuration Changes the Perceived Device Type
-
-**Critical finding from AquaNET log (7.4.2026 13:15–13:16):** The same physical device
-(serial 110200612) sent two different `byte[4]` values within 70 seconds, after switching
-probe mode in the Aseko cloud:
-
-| Time | byte[4] | Device type decoded | Mode |
-|---|---|---|---|
-| 13:15:00 | `0x0b = 0b00001011` | HOME | ml/m³/h DOSE mode (CLF probe disabled) |
-| 13:16:10 | `0x09 = 0b00001001` | NET | CLF probe active |
-
-**byte[4] XOR: `0x0b XOR 0x09 = 0x02`** — exactly `PROBE_CLF_MISSING` bit toggled.
-
-byte[4] is a **live probe-configuration bitmap**, not a permanent hardware identifier.
-The same physical device decodes as different HA types depending only on what the user
-configured in the Aseko app.
-
-| byte[4] bit | Mask | Clear (0) = | Set (1) = |
-|---|---|---|---|
-| 0 | `0x01` | REDOX probe present | REDOX absent |
-| 1 | `0x02` | CLF / SANOSIL probe present | CLF absent |
-| 2 | `0x04` | DOSE mode active (volume dosing) | DOSE mode inactive |
-| 3 | `0x08` | SANOSIL / OXY Pure probe | SANOSIL absent |
-
----
-
-## How the Aseko Cloud Identifies Hardware Models
-
-The Aseko cloud lists show the correct hardware name ("ASIN AQUA Oxygen", "ASIN AQUA Net")
-regardless of probe configuration. This is **not derived from byte[4]** in the 120-byte frame.
-
-**The Aseko cloud uses server-side registration data**: when a device is paired to an account,
-its serial number is permanently associated with its hardware model. The cloud does not need
-to re-detect the device type from every frame.
-
-**Consequence for the local integration**: there is no byte in the 120-byte frame that
-reliably encodes the underlying hardware model independently of probe configuration.
-The frame only tells us which probes are configured, not which hardware box is sending.
-
-### Known ambiguity: NET in DOSE mode decodes as HOME
-
-| byte[4] | Actual hardware | Decoded as | Why |
-|---|---|---|---|
-| `0x09` | NET (CLF active) | NET ✓ | `bool(0x09 & 0x08)` → NET |
-| `0x0b` | NET (DOSE mode) | **HOME** ✗ | `0x0b & 0x03 == 0x03` → HOME match first |
-| `0x05` | OXY | **ValueError** ✗ | no check matches (existing bug) |
-
-The NET-in-DOSE-mode → HOME misclassification is an **existing bug**, not introduced by
-OXY work. It is out of scope for the current PR but should be filed as a separate issue.
-
-### Why OXY detection by byte[4] == 0x05 is reliable
-
-`0x05 = 0b00000101` is the **only known value** that produces all of:
-- SANOSIL present (`0x05 & 0x08 = 0`) — identifies the OXY Pure probe hardware
-- DOSE absent (`0x05 & 0x04 = 4`) — OXY always uses concentration-based control
-- REDOX absent (`0x05 & 0x01 = 1`) — no REDOX probe on base OXY model
-- None of the existing type checks match
-
-Across all 100+ captured OXY frames from 2.4.2026 this value never changed. A NET or HOME
-device with SANOSIL probe would produce a different byte[4] because they have SANOSIL_MISSING
-bit set (`0x08`) differently structured with the HOME/NET bits in the lower nibble.
-
-### Long-term solution
-
-A user-configurable "device type override" per serial number in the HA config entry would
-eliminate all ambiguity. This is a future enhancement (not v1.4.0 scope).
-
----
-
-## byte[53] – Required OXY Dosage (not CLF/REDOX on OXY devices)
-
-On standard devices, byte[53] encodes the setpoint for whichever probe/mode is active.
-**byte[53] is the universal "required disinfection setpoint" slot**, interpretation depends on
-active probe:
-
-| Active probe / mode | `AsekoProbeType` | byte[53] interpretation | Scaling | Confirmed |
+| Byte | Field | Decoding | Evidence | Notes |
 |---|---|---|---|---|
-| CLF probe | `CLF` | required_cl_free | ÷10 → mg/L | ✓ `0x02` → 0.20 mg/L (13:16:10 log) |
-| REDOX probe | `REDOX` | required_redox | ×10 → mV | ✓ existing |
-| OXY / H₂O₂ (SANOSIL) probe | `SANOSIL` | required OXY dosage | raw → ml/m³/d | ✓ `0x08` → 8 ml/m³/d → changed to 12 (log 6.4.) |
-| Volume dosing mode | `DOSE` | required dosing rate | raw → ml/m³/h | ✓ `0x05` → 5 ml/m³/h (13:15:00 log) |
+| 45 | segment type | `0x03` | confirmed | |
+| 52 | `ph_target` | ÷10 | observed | `0x48` = 7.2; not compared with the app. |
+| 53 | `oxygen_dose_target` | raw, ml/m³/d | confirmed | `0x08` = 8 on 2026-04-02, 12 after the 2026-04-06 change. Universal disinfection setpoint slot, see §5. |
+| 54 | `flocculant_dose_target` | raw, ml/h | confirmed | 10 (04-11), matches the app. |
+| 55 | `water_temperature_target` | °C | observed | `0x19` = 25 °C; not compared with the app. |
+| 56–57 | `filtration_period_1_start` | h, min | observed | 08:00 in every frame; not compared with the app. |
+| 58–59 | `filtration_period_1_end` | h, min | observed | 16:00 in every frame. |
+| 60–61 | `filtration_period_2_start` | h, min | observed | 18:00 in every frame. Kept after period 2 is disabled, see §5. |
+| 62–63 | `filtration_period_2_end` | h, min | observed | 22:00 in every frame. |
+| 68 | `backwash_interval` | days, 0 = off | observed | 0 (disabled); not compared with the app. |
+| 69–70 | `backwash_start_time` | h, min | observed | `0c 1e` = 12:30; not compared with the app. |
+| 71 | `backwash_duration` | ×10 s | observed | `0x0a` = 100 s; not compared with the app. |
+| 72 | `algaecide_dose_target` | raw, ml/m³/d | confirmed | 15 (04-11), matches the app. |
+| 73 | — | — | not located | `0x28`, meaning unknown. |
+| 74–75 | `startup_delay` | s | observed | `00 f0` = 240 s. |
+| 76–77 | `max_refill_time` | s | assumed | `0e 10` = 3600 s (60 min), plausible; verified on SALT against the app only. |
+| 78 | live state | bit field | assumed | `0xAA`. See §4. |
+| 79 | checksum | | confirmed | |
 
-**SANOSIL ≠ DOSE**: They are separate concepts:
-- `SANOSIL` = H₂O₂/OXY Pure is the **primary disinfection method**, using byte[53] for its dosage setpoint in **ml/m³/d**. The OXY device has no CLF/REDOX probe; the SANOSIL probe occupies that sensor slot.
-- `DOSE` = generic **volume dosing mode** that replaces direct probe measurement with timed dosing, uses byte[53] in **ml/m³/h**. When DOSE is active, the CLF bit (0x02) is set in byte[4] (CLF "absent"), which shifts the device from NET → HOME detection.
+### Bytes 80–119 — parameters and flow rates
 
-**Insight from DOSE mode frames (13:15:00):** When the AquaNET is in ml/m³/h mode, byte[16:18] = `0x006a` = **1.06 mg/L** — a real fluctuating value from the CLF hardware, even though the *mode* is "volume dosing". The probe is still physically connected and measuring; only the setpoint/control logic changes. This is different from OXY where `byte[16:18] = 0x001E` (invariant placeholder — no CLF probe hardware present).
+| Byte | Field | Decoding | Evidence | Notes |
+|---|---|---|---|---|
+| 85 | segment type | `0x02` | confirmed | |
+| 92–93 | `pool_volume` | m³ | observed | `00 29` = 41 m³; not compared with the app. |
+| 95 | `ph_minus_flow_rate` | ml/min | confirmed | 60 ml/min. |
+| 97 | pH+ flow rate | ml/min | assumed | 60; position unconfirmed, `ph_plus_flow_rate` is not mapped on any protocol. |
+| 99 | `oxygen_flow_rate` | ml/min | confirmed | 60 ml/min. |
+| 101 | `flocculant_flow_rate` | ml/min | confirmed | 10 ml/min; see §6 for the consumption check. |
+| 102, 104, 105 | water level thresholds | cm | assumed | Level thresholds on SALT. `water_level_refill_start` is not located on OXY: `byte[103]` is the algicide flow rate. |
+| 103 | `algaecide_flow_rate` | ml/min | confirmed | 60 ml/min (04-11), stable across sessions. |
+| 106–107 | `dosing_delay` | s | observed | `00 78` = 120 s; not compared with the app. |
+| 112 | `ph_minus_concentration` | % | assumed | Confirmed on HOME. |
+| 115 | `max_ph_doses` | count | observed | `0x1e` = 30; position confirmed on SALT, OXY setting never compared. |
+| 119 | checksum | | confirmed | |
 
-**Verification (log 2.4.2026 vs. UI 6.4.2026):**
+All OXY flow rate bytes use ml/min.
 
-- Frame byte[53] = `0x08` = **8** → OXY required dosage = 8 ml/m³/d (recorded 2.4.2026)
-- Aseko cloud shows change on **6.4.2026 11:36:33**: "Dosierungsmenge 8 ml/m³/d → 12 ml/m³/d"
-- Current UI status: **OXY 12 ml/m³/d** ✓
+## 4. Bit fields
 
-This means: the SANOSIL probe occupies the same sensor slot as CLF/REDOX, and byte[53] is
-reused for its required dosage setpoint. No scaling is needed — the raw integer value is the
-ml/m³/d target.
+### `byte[4]` — unit type / probe flags
 
-**Implementation impact:**
-- OXY needs a new `AsekoDevice` field: `required_sanosil: int | None` (ml/m³/d)
-- In `decode()`: when `AsekoDeviceType.OXY`, read `required_sanosil = data[53]` instead of `required_redox`/`required_cl_free`
-- Alternatively, `required_cl_free` could be repurposed (no CLF probe present anyway), but a dedicated field is cleaner for HA entity naming
+`0x05` = `0b00000101`, unchanged across all captured OXY frames. The bits are a live probe-configuration map (see §5), the exact value `0x05` identifies OXY.
 
----
+| Bit / mask | Meaning | Evidence | Notes |
+|---|---|---|---|
+| `0x01` | REDOX probe absent | assumed | Set on OXY (no REDOX). |
+| `0x02` | CLF probe absent | confirmed on NET | Clear on OXY although there is no CLF probe: the SANOSIL probe sits in the CLF slot. Toggled on a NET when switching to DOSE mode. |
+| `0x04` | DOSE mode inactive | assumed | Set on OXY (concentration-based control). |
+| `0x08` | SANOSIL / OXY Pure probe absent | assumed | Clear on OXY = OXY Pure present. |
+| `0x05` (whole byte) | unit type OXY | confirmed | Profile configuration fixed to pH + OXY Pure. |
 
+### `byte[12]` — dosing warnings
 
+| Bit / mask | Meaning | Evidence | Notes |
+|---|---|---|---|
+| `0x20` | max disinfection dose | assumed | HOME encoding (Issue #134); never set on OXY. |
+| `0x40` | pH dosing ineffective | assumed | HOME encoding (Issue #134); never set on OXY. |
 
-| Question | Status |
-|---|---|
-| Algicide mask in byte[29]? | ✅ **0x10** – confirmed 2026-04-11 (Winnetoux log) |
-| OXY Pure mask in byte[29]? | ✅ **0x40** – confirmed 2026-04-11 (Winnetoux log) |
-| pH− mask in byte[29]? | ✅ **0x80** – confirmed 2026-04-12 (Winnetoux log) |
-| Pumps can run in parallel? | ✅ **Yes** – 2026-04-12: `0xa8 = 0x08|0x20|0x80` (floc + pH− simultaneously) |
-| byte[103] = algicide flowrate? | ✅ **Confirmed** – 60 ml/min, stable across both sessions |
-| byte[54] = required_floc (10 ml/h)? | ✅ **Confirmed** – 2026-04-11: value=10, matches Aseko UI |
-| byte[72] = required_algicide (15 ml/m³/d)? | ✅ **Confirmed** – 2026-04-11: value=15, matches Aseko UI |
-| OXY with CLF or REDOX probe possible? | ⏳ Awaiting frame from OXY with optional CLF/REDOX installed |
+See [`home_device_analysis.md`](home_device_analysis.md) §"Dosing warnings & alarms".
 
----
+### `byte[13]` — alarms
 
-## Implementation Plan
+| Bit / mask | Meaning | Evidence | Notes |
+|---|---|---|---|
+| `0x01` | `alarm_max_disinfection_dose` | assumed | HOME encoding; `0x00` in every OXY frame. |
+| `0x02` | `alarm_ph_dosing_ineffective` | assumed | HOME encoding; never set on OXY. |
+| `0x04` | `alarm_no_flow_to_probes` | confirmed on NET, HOME | Never set on OXY. |
+| `0x08` | `alarm_rapid_ph_change` | assumed | From `error_codes.md`; never set on OXY. |
 
-### Branch strategy: single branch (`feat/pump-monitoring-consumption`) → v1.4.0
+### `byte[22]` — settings
 
-No second branch needed. Unconfirmed pump masks default to `0x00` (no false positives).
-v1.5.0 will confirm remaining byte[29] bits once more frames are available.
+| Bit / mask | Meaning | Evidence | Notes |
+|---|---|---|---|
+| `0x08` | `variable_speed_pump_enabled` | assumed | Confirmed on HOME; clear on OXY (`0x80`). |
 
-### Changes per file
+### `byte[29]` — actuators
 
-#### `const.py`
-- Add `UNIT_TYPE_OXY = 0x05`
+All bits are independent and additive; any combination is valid (see §5).
 
-#### `aseko_data.py`
-- ✅ `AsekoDeviceType.OXY = "ASIN AQUA Oxygen"` in enum
-- ✅ `ACTUATOR_MASKS[AsekoDeviceType.OXY]` — all confirmed values set:
-  ```python
-  AsekoDeviceType.OXY: AsekoActuatorMasks(
-      filtration=0x08,  # confirmed ✓
-      algicide=0x10,    # confirmed ✓ 2026-04-11
-      flocculant=0x20,  # confirmed ✓
-      oxy=0x40,         # confirmed ✓ 2026-04-11
-      ph_minus=0x80,    # confirmed ✓ 2026-04-12
-  )
-  ```
+| Bit / mask | Meaning | Evidence | Notes |
+|---|---|---|---|
+| `0x01` | `backwash_running` | assumed | Confirmed on SALT. |
+| `0x02` | `refilling` | assumed | Confirmed on HOME and SALT. |
+| `0x04` | `heating_running` | assumed | JS-DE-Tech relay_byte bit 2. |
+| `0x08` | `filtration_relay` (→ `filtration_running`) | confirmed | Set in every captured frame; filtration ran 24 h. |
+| `0x10` | `algaecide_pump_running` | confirmed | 2026-04-11: `0x18` exactly while the algicide pump ran. Profile override `decode_v7_oxy`. |
+| `0x20` | `flocculant_pump_running` | confirmed | 2026-04-02 19:33:52: `0x28` at the floc dosing event. |
+| `0x40` | `oxygen_pump_running` | confirmed | 2026-04-11: `0x48` exactly while the OXY Pure pump ran. |
+| `0x80` | `ph_minus_pump_running` | confirmed | 2026-04-12: `0x08` → `0x88` at pH− pump on. |
 
-#### `aseko_decoder.py`
-1. ✅ `_unit_type()`: returns `None` instead of raising (keep WARNING log)
-2. ✅ `_unit_type()`: `if data[4] == UNIT_TYPE_OXY: return AsekoDeviceType.OXY`
-3. ✅ `_configuration()`: returns `{PH, OXY}` directly for `AsekoDeviceType.OXY`
-4. ✅ `decode()`: skips `_fill_clf_data()` / `_fill_redox_data()` for OXY
-5. ✅ `_fill_required_data()`: OXY path reads `required_floc = byte[54]`, `required_algicide = byte[72]`
-6. ✅ `_fill_flowrate_data()`: OXY path reads `flowrate_oxy = byte[99]`, `flowrate_floc = byte[101]`, `flowrate_algicide = byte[103]`
-7. ✅ `_fill_consumable_data()`: OXY masks now sufficient — `algicide_pump_running` and `oxy_pump_running` set correctly
+### `byte[37]` — settings / routing
 
-#### `tests/test_aseko_decoder.py`
-- ✅ OXY normal frame test (byte[29]=0x08)
-- ✅ OXY floc-running frame test (byte[29]=0x28)
-- ✅ OXY pH− pump test (byte[29]=0x88) — confirmed 2026-04-12
-- ⏳ Add test for algicide pump (byte[29]=0x18) — new frame confirmed 2026-04-11
-- ⏳ Add test for OXY pump (byte[29]=0x48) — new frame confirmed 2026-04-11
+`0x03` in every captured OXY frame (2026-04-02 and 2026-04-11). Bits mapped on an ASIN AQUA Salt by toggling one setting at a time (see [`salt_device_analysis.md`](salt_device_analysis.md) §byte[37]).
+
+| Bit / mask | Meaning | Evidence | Notes |
+|---|---|---|---|
+| `0x01` | always set | observed | |
+| `0x02` | `flow_detection_enabled` | assumed | As on SALT; set on OXY. |
+| `0x04` | `service_menu_open` | observed | Clear in every OXY frame; menu never captured open. |
+| `0x10` | filtration period 1 | observed | Clear; with `0x20` clear reads nonstop, matching 24 h filtration. No schedule transition captured. |
+| `0x20` | filtration period 2 | observed | Clear. Same bits on OXY, HOME and SALT. |
+| `0x40` | `water_level_sensor_enabled` | assumed | As on SALT; clear on OXY, fits `byte[27]` = `0xFE`. |
+| `0x80` | SALT third-pump routing | assumed | Clear; not applied on OXY, algicide and flocculant have their own bytes. |
+
+### `byte[78]` — live state
+
+`0xAA` on the Winnetoux frames. Not read by the OXY profile.
+
+| Bit / mask | Meaning | Evidence | Notes |
+|---|---|---|---|
+| `0x02` | filtration state | confirmed on SALT, NET | Set, filtration was running. |
+| `0x08` | VS pump type | confirmed on SALT | Set, but `byte[22]` `0x08` (VS pump enabled) is clear on OXY. |
+| `0x20` | — | not located | Not understood on OXY. |
+| `0x80` | — | not located | Not understood on OXY. |
+
+## 5. Model-specific behaviour
+
+### Detection and hardware model
+
+- `byte[4]` is a live probe-configuration bitmap, not a hardware identifier. On 2026-04-07 an AquaNET (serial 110200612) sent `0x0b` at 13:15:00 (ml/m³/h DOSE mode, CLF disabled) and `0x09` at 13:16:10 (CLF active): XOR `0x02`, exactly the CLF bit.
+- The Aseko cloud shows the correct hardware name regardless of probe configuration because it uses server-side registration of the serial; no byte in the frame encodes the hardware model independently of the probe configuration.
+- `0x05` is reliable for OXY: it is the only known value with OXY Pure present, DOSE absent and REDOX absent, and it never changed across the captured OXY frames.
+
+### CLF / REDOX sentinel slots
+
+Bytes 16–17 and 18–19 both read `0x001E` = 30 in every captured frame; bytes 20–21 read `0xFD9D` = −611 mV. As CLF this would be 0.30 mg/L, as REDOX 30 mV (implausible for a pool). The values never fluctuate, which suggests `0x001E` is a placeholder for probe slots with nothing connected on this unit, and the profile creates no CLF or REDOX entities. By contrast, a NET in DOSE mode still sends a real, fluctuating CLF value (`0x006a` = 1.06 mg/L on 2026-04-07) because the probe stays connected.
+
+### `byte[53]` — disinfection setpoint slot
+
+`byte[53]` holds the setpoint of whichever disinfection probe or mode is active:
+
+| Active probe / mode | Meaning | Scaling | Seen |
+|---|---|---|---|
+| CLF | free chlorine target | ÷10 mg/L | `0x02` = 0.20 mg/L (NET, 2026-04-07 13:16:10) |
+| REDOX | redox target | ×10 mV | |
+| SANOSIL (OXY Pure) | OXY dose target | raw ml/m³/d | `0x08` = 8, later 12 (OXY) |
+| DOSE | dosing rate | raw ml/m³/h | `0x05` = 5 (NET, 2026-04-07 13:15:00) |
+
+SANOSIL and DOSE are different: SANOSIL is H₂O₂ as the primary disinfection with its probe in the CLF slot (ml/m³/d); DOSE is timed volume dosing replacing probe control (ml/m³/h), and sets the CLF-absent bit in `byte[4]`.
+
+### Flow rate versus dose target
+
+`byte[101]` (10 ml/min) is the flocculant pump's hardware flow rate; the app's "flocculant 10 ml/h" is the dosing setpoint in `byte[54]`. All OXY flow rate bytes are ml/min.
+
+### Parallel pumps
+
+On 2026-04-12 11:37:58 `byte[29]` = `0xa8` = `0x08 | 0x20 | 0x80`: filtration, flocculant and pH− running together, matching the app timeline (pH− 1 min 24 s with an overlapping 2 s floc pulse).
+
+### Third pump routing
+
+On SALT, `byte[37]` routes the third pump slot to algicide or flocculant. On OXY that routing does not apply: `algaecide_flow_rate` (`byte[103]`), `flocculant_flow_rate` (`byte[101]`) and both dose targets are read from their own bytes.
+
+### Filtration period 2 (Issue #133)
+
+Like SALT (PR #122 frame diff) and HOME (Issue #133), the unit is assumed to keep sending the last-configured period 2 times in bytes 60–63 after period 2 is disabled; OXY shares the SALT/HOME schedule layout and no reason is known for its firmware to clear them. `0xFF` there means never configured. Whether a period is active is reported by `filtration_schedule` from the `byte[37]` schedule bits.
+
+### Water level
+
+No level sensor on the captured unit (`byte[27]` = `0xFE`, `byte[37]` `0x40` clear). The level features are read with the HOME/SALT positions but have no OXY evidence; `water_level_high_alarm`, `water_level_low_alarm` and `water_level_refill_stop` have none recorded at all.
+
+## 6. Ground truth
+
+| Date | Field | Decoded | Unit / app | Result |
+|---|---|---|---|---|
+| 2026-04-02 | `oxygen_dose_target` (`byte[53]`) | 8 ml/m³/d | Aseko Live app history: 8 ml/m³/d until changed to 12 on 2026-04-06 11:36:33; 12 afterwards | match |
+| 2026-04-02 | `flocculant_pump_running` (`byte[29]` `0x20`) | on at 19:33:52 | app: flocculant dosing event | match |
+| 2026-04-02 | `flocculant_flow_rate` (`byte[101]`) | 10 ml/min | app history: pulses every ~20 min, 2 s each, over 24 h = 144 s, 0.02 L = 20 ml → ≈ 8.3 ml/min | consistent |
+| 2026-04-11 | `flocculant_dose_target` (`byte[54]`) | 10 ml/h | app: 10 ml/h | match |
+| 2026-04-11 | `algaecide_dose_target` (`byte[72]`) | 15 ml/m³/d | app: 15 ml/m³/d | match |
+| 2026-04-11 | `algaecide_pump_running` (`byte[29]` `0x10`) | toggles | app: algicide pump on/off | match |
+| 2026-04-11 | `oxygen_pump_running` (`byte[29]` `0x40`) | toggles | app: OXY Pure pump on/off | match |
+| 2026-04-12 | `ph_minus_pump_running` (`byte[29]` `0x80`) | on | app: pH− pump on | match |
+| 2026-04-12 | parallel pumps (`byte[29]` = `0xa8`) | floc + pH− at 11:37:58 | app timeline: pH− 1 min 24 s overlapping floc 2 s | match |
+
+## 7. Settings the frame does not carry
+
+- **Air temperature:** the Aseko Live app shows it on Oxygen units, but bytes 23–24 are `0xFE70` in every captured OXY frame.
+- **Heating control** (`heating_control_enabled`): not located — described in the ASIN AQUA Oxygen manual, no OXY frame compared with it.
+- **Freeze protection** (`freeze_protection_enabled`): not located — described in the manual, no OXY frame compared with it.
+
+## 8. Open questions
+
+1. **OXY with an optional CLF or REDOX probe** — does it exist, and what do `byte[4]` and bytes 16–21 look like? A frame from such a unit would settle it.
+2. **Heating control and freeze protection** — a diagnostics dump before and after toggling each on the unit.
+3. **Air temperature** — a dump from an Oxygen unit whose app shows air temperature.
+4. **Alarms in bytes 12–13** — a dump while the unit shows an alarm or dosing warning.
+5. **Actuator bits `0x01` / `0x02` / `0x04`** (backwash, refill, heating) — frames while each runs.
+6. **Filtration schedule bits** — a frame after switching from nonstop to period 1 / period 2, and after disabling period 2 (bytes 60–63).
+7. **`byte[54]` / `byte[72]`** read `0x01` in the 2026-04-02 frame but 10 / 15 on 2026-04-11 — were the setpoints changed in between? An app history check for that week.
+8. **`byte[97]` pH+ flow rate** — a frame from a unit with a pH+ pump.
+9. **Water level on OXY** — a frame from an Oxygen unit with a level sensor (thresholds versus the algicide flow rate at `byte[103]`).
+10. **Unknown bytes** `byte[38]` = `0x08`, `byte[73]` = `0x28`, `byte[78]` `0x20` / `0x80` — dumps before and after changing settings.
+11. **Observed values** (pH, water temperature, targets, schedule, backwash, delays, pool volume, max pH doses) — a glance at the unit or app next to the entities.
+
+## 9. History
+
+- **2026-09 — profiles:** the decoder was split into device profiles; the OXY profile replaced the `_fill_*` methods, `ACTUATOR_MASKS` and `FILTRATION_TYPES` of the old decoder. `byte[37]` was re-read with the SALT settings bits; the earlier guess that `0x03` meant two pump-module presence bits is superseded. The old HOME "firmware A / B" split turned out to be the waterlevel bit (see [`home_device_analysis.md`](home_device_analysis.md) §"One HOME, not two firmwares").
+- **Startup delay label:** the profile notes that an earlier version of this document mislabelled `byte[73]`; the startup delay is bytes 74–75.
+- **Frame counts:** the 2026-04-02 analysis spoke both of "7 captured frames" (sentinel slots invariant) and of "100+ captured OXY frames" (`byte[4]` unchanged).
+- **Issue #133 implementation:** period 2 bytes were read unconditionally for every device in `FILTRATION_TYPES` (OXY included, NET excluded as it has no filtration output); `sensor.py` skipped creating the period 2 entities only while the bytes were `0xFF`.
+- **v1.4.0 (branch `feat/pump-monitoring-consumption`, single branch):** unconfirmed pump masks defaulted to `0x00`. Changes:
+  - `const.py`: `UNIT_TYPE_OXY = 0x05`.
+  - `aseko_data.py`: `AsekoDeviceType.OXY = "ASIN AQUA Oxygen"`; OXY actuator masks filtration `0x08`, algicide `0x10`, flocculant `0x20`, oxy `0x40`, pH− `0x80`.
+  - `aseko_decoder.py`: `_unit_type()` returned `None` instead of raising and matched `0x05`; `_configuration()` returned `{PH, OXY}` for OXY; CLF/REDOX fill skipped for OXY; OXY paths for dose targets (`byte[54]`, `byte[72]`) and flow rates (`byte[99]`, `byte[101]`, `byte[103]`). A dedicated `required_sanosil` field for `byte[53]` was planned instead of reusing `free_chlorine_target`.
+  - Tests: normal, floc (`0x28`) and pH− (`0x88`) frames; algicide (`0x18`) and OXY (`0x48`) frame tests were still to do.
+- **Why the pre-v1.4.0 decoder failed on OXY:** `0x05` matched none of the PROFI / SALT / HOME / NET checks, so `_unit_type()` raised `ValueError("Unknown unit type: 5")`. In `aseko_server.py` the frame was already forwarded to the cloud, but the exception closed the TCP connection, forcing a reconnect every ~10 s. The probe flags would also have added a CLF probe (bit `0x02` clear), and the REDOX fallback (`bytes[18:20] == 0xFFFF`) did not catch `0x001E`, so OXY would have shown REDOX 30 mV and CLF 0.30 mg/L.
+- **Known misclassification at the time:** a NET in DOSE mode (`byte[4]` = `0x0b`) decoded as HOME because the HOME check matched first; flagged as a separate issue, out of scope for the OXY work. A per-serial "device type override" in the config entry was proposed as a future enhancement.
+
+## 10. References
+
+- Issues: #133 (period 2 bytes), #134 and #151 (HOME alarm encodings); PR #122 (SALT period 2 frame diff).
+- Related analyses: [`home_device_analysis.md`](home_device_analysis.md), [`salt_device_analysis.md`](salt_device_analysis.md), [`net_device_analysis.md`](net_device_analysis.md).
+- Profile: [`profiles/v7/oxy.py`](../../custom_components/aseko_local/decoding/profiles/v7/oxy.py); [support matrix](../support_matrix.md); [evidence rules](../evidence-rules.md).
+- Tests: `tests/test_decode_v7.py` (OXY normal, flocculant and pH− frames).

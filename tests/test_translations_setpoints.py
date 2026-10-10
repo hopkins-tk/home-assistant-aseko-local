@@ -6,13 +6,13 @@ from pathlib import Path
 import pytest
 
 CORE_KEYS = [
-    "filtration_1_start",
-    "filtration_1_stop",
-    "filtration_2_start",
-    "filtration_2_stop",
+    "filtration_period_1_start",
+    "filtration_period_1_end",
+    "filtration_period_2_start",
+    "filtration_period_2_end",
     "pool_volume",
-    "delay_after_startup",
-    "delay_after_dose",
+    "startup_delay",
+    "dosing_delay",
 ]
 
 TRANSLATIONS_DIR = Path("custom_components/aseko_local/translations")

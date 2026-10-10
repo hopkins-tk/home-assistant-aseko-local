@@ -1,274 +1,186 @@
 #!/usr/bin/env python3
-"""Tools for analysing and test-generating Aseko fw v8 text frames.
+"""Look at a firmware v8 (text) Aseko frame section by section.
 
 Usage:
-    python3 v8_tools.py --annotate   '{v1 110203680 ...}'
-    python3 v8_tools.py --generateTest '{v1 110203680 ...}'
+    python scripts/v8_tools.py '{v1 110203680 ...}' --annotate
+    python scripts/v8_tools.py '{v1 110203680 ...}' --generate-test
 
-The frame argument must be the full text of a v8 frame including braces.
-Surrounding whitespace and the trailing newline are stripped automatically.
+The frame is the whole text including the braces.  Standalone: it does not
+import Home Assistant or the integration.  Its section parser follows the
+integration's (``decoding/frames/v8.py``): ``crc16`` is hexadecimal, every
+other section decimal, and a token that is not a number reads None without
+losing the rest of its section; ``tests/test_scripts.py`` keeps the two alike.
 """
 
-import re
-import sys
+from __future__ import annotations
 
-# ---------------------------------------------------------------------------
-# Known field mapping: section -> {index: (field_name, description)}
-# ---------------------------------------------------------------------------
+import argparse
+import re
+
+SENTINEL = -500  # the v8 "not fitted / not measured" marker
+
+# What the integration reads where (decoding/features, v8 readings).  Only a
+# guide for reading a frame; the profiles and docs/support_matrix.md decide.
 FIELD_MAP: dict[str, dict[int, tuple[str, str]]] = {
     "ins": {
-        0: ("water_temperature", "/ 10 -> degC  (-500 = absent)"),
-        8: ("water_flow_to_probes", "bool (1 = flowing)"),
-        13: ("?", "unknown -- varies between frames"),
-        14: ("?", "unknown -- varies between frames"),
-        15: ("?", "unknown -- varies between frames"),
-        16: ("timestamp_hour", "local hour from device clock"),
-        17: ("timestamp_minute", "local minute from device clock"),
+        0: ("water_temperature", "/ 10 -> degC"),
+        8: ("water_flow_to_probes", "1 = water flows"),
+        16: ("unit_clock hour", "the unit's clock"),
+        17: ("unit_clock minute", "the unit's clock"),
     },
     "ains": {
-        0: ("ph", "/ 100 -> pH value  (-500 = absent)"),
-        1: ("ph_duplicate?", "identical to ains[0]"),
-        2: ("?", "unknown -- consistently ~5 below ains[6]"),
-        3: ("redox_x10?", "= ains[6] * 10  (/ 10 -> same mV)"),
-        6: ("redox", "direct mV  (-500 = absent)"),
-        7: ("redox_duplicate?", "identical to ains[6]"),
+        0: ("ph", "/ 100"),
+        6: ("redox", "mV"),
     },
     "outs": {
-        0: ("cl_pump_running?", "unconfirmed"),
-        1: ("ph_minus_pump_running?", "unconfirmed"),
-        2: ("filtration_pump_running", "bool"),
+        2: ("filtration_relay", "1 = on"),
+        8: ("ph_minus_pump_running", "unconfirmed"),
+        9: ("chlorine_pump_running", "unconfirmed (NET)"),
     },
     "areqs": {
-        0: ("required_ph", "/ 10 -> pH setpoint"),
-        1: ("required_redox", "* 10 -> mV setpoint"),
+        0: ("ph_target", "/ 10"),
+        1: ("redox_target", "* 10 -> mV"),
         14: ("pool_volume", "m3"),
-        17: ("delay_after_startup", "minutes"),
-        18: ("delay_after_dose", "minutes"),
+        17: ("startup_delay", "minutes"),
+        18: ("dosing_delay", "minutes"),
     },
 }
 
-SENTINEL = -500  # v8 absent-probe marker
+_SECTION_RE = re.compile(r"(\w+):\s*(.*?)(?=\s+\w+:|$)", re.DOTALL)
+_HEADER_RE = re.compile(r"v1\s+(\d+)\s+(\d+)\s+(\S+)\s+(\S+)")
 
 
-# ---------------------------------------------------------------------------
-# Parser
-# ---------------------------------------------------------------------------
+NET_HEADER_TYPES = range(800, 900)
+SALT_HEADER_TYPES = range(100, 200)
 
 
-def parse_v8_frame(text: str) -> tuple[dict, dict[str, list[int]]]:
-    """Parse a raw v8 frame string.
+def model_from_header_type(header_type: int) -> str | None:
+    """Return the model the header type names (as the integration's v8 profiles do)."""
+    if header_type in NET_HEADER_TYPES:
+        return "NET"
+    if header_type in SALT_HEADER_TYPES:
+        return "SALT"
+    return None
 
-    Returns:
-        header   -- dict with keys: serial, f2, f3, f4
-        sections -- dict of {section_name: [int, ...]}
-    Raises ValueError on parse failure.
-    """
+
+def parse_v8_frame(
+    text: str,
+) -> tuple[dict[str, str | int], dict[str, list[int | None]]]:
+    """(header, sections) of a v8 frame; raises ValueError when it is not one."""
     text = text.strip()
-    if not text.startswith("{") or "}" not in text:
-        raise ValueError("Frame must start with '{' and contain '}'")
-    body = text.lstrip("{").rstrip("\n").rstrip("}").strip()
-
-    m = re.match(r"v1\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)", body)
-    if not m:
-        raise ValueError(f"Header not recognised: {body[:60]!r}")
-
-    header = {
-        "serial": int(m.group(1)),
-        "f2": int(m.group(2)),
-        "f3": int(m.group(3)),
-        "f4": int(m.group(4)),
+    if not text.startswith("{") or not text.endswith("}"):
+        msg = "a v8 frame starts with '{' and ends with '}'"
+        raise ValueError(msg)
+    body = text[1:-1].strip()
+    match = _HEADER_RE.match(body)
+    if not match:
+        msg = f"header not recognised: {body[:60]!r}"
+        raise ValueError(msg)
+    header: dict[str, str | int] = {
+        "serial": int(match.group(1)),
+        "type": int(match.group(2)),
+        "f3": match.group(3),
+        "f4": match.group(4),
     }
-
-    sections: dict[str, list[int]] = {}
-    for sm in re.finditer(r"(\w+):\s*(.*?)(?=\s+\w+:|$)", body, re.DOTALL):
-        name = sm.group(1)
+    sections: dict[str, list[int | None]] = {}
+    for section in _SECTION_RE.finditer(body):
+        name = section.group(1)
         if name == "v1":
             continue
-        try:
-            sections[name] = [int(v) for v in sm.group(2).split()]
-        except ValueError:
-            sections[name] = []  # crc16 is hex, not decimal
-
+        base = 16 if name == "crc16" else 10
+        values: list[int | None] = []
+        for token in section.group(2).split():
+            try:
+                values.append(int(token, base))
+            except ValueError:
+                values.append(None)
+        sections[name] = values
     return header, sections
 
 
-# ---------------------------------------------------------------------------
-# --annotate
-# ---------------------------------------------------------------------------
+def annotate(text: str) -> str:
+    """Every section, value by value, with what the integration reads there."""
+    header, sections = parse_v8_frame(text)
+    model = model_from_header_type(int(header["type"]))
+    out = [
+        f"serial = {header['serial']}",
+        f"type   = {header['type']} ({model or 'unknown model'})",
+        f"f3     = {header['f3']}  f4 = {header['f4']}  (unknown)",
+        "",
+    ]
+    for name, values in sections.items():
+        known = FIELD_MAP.get(name, {})
+        out.append(f"[{name}]")
+        for i, value in enumerate(values):
+            field, note = known.get(i, ("", ""))
+            if value is None:
+                shown, mark = "?", "  <- not a number"
+            elif name == "crc16":
+                shown, mark = f"0x{value:04x}", ""
+            else:
+                shown, mark = (
+                    str(value),
+                    "  <- absent (-500)" if value == SENTINEL else "",
+                )
+            out.append(f"  [{i:>2}] {shown:>7}  {field:<24} {note}{mark}".rstrip())
+        out.append("")
+    return "\n".join(out)
 
 
-def cmd_annotate(frame_text: str) -> None:
-    """Print a human-readable annotated view of every section."""
-    header, sections = parse_v8_frame(frame_text)
-
-    print("=== v8 frame annotation ===\n")
-    print(f"  serial = {header['serial']}")
-    print(f"  f2     = {header['f2']}   (unknown)")
-    print(f"  f3     = {header['f3']}   (unknown)")
-    print(f"  f4     = {header['f4']}   (unknown)")
-    print()
-
-    for sec_name, values in sections.items():
-        if not values:
-            print(f"[{sec_name}]  (no integer values -- likely hex crc16)")
-            continue
-
-        known = FIELD_MAP.get(sec_name, {})
-        print(f"[{sec_name}]")
-        print(f"  {'idx':>4}  {'value':>7}  {'field':<30}  description")
-        print(f"  {'---':>4}  {'-----':>7}  {'-----':<30}  -----------")
-        for i, v in enumerate(values):
-            field, desc = known.get(i, ("", ""))
-            absent = "  <- ABSENT" if v == SENTINEL else ""
-            print(f"  [{i:>2}]  {v:>7}  {field:<30}  {desc}{absent}")
-        print()
-
-
-# ---------------------------------------------------------------------------
-# --generateTest
-# ---------------------------------------------------------------------------
-
-
-def cmd_generate_test(frame_text: str) -> None:
-    """Output a pytest snippet for this frame."""
-    header, sections = parse_v8_frame(frame_text)
-    ins = sections.get("ins", [])
-    ains = sections.get("ains", [])
-    outs = sections.get("outs", [])
-    areqs = sections.get("areqs", [])
-
-    def get(lst, i):
-        return lst[i] if i < len(lst) else None
-
-    def probe(lst, i):
-        v = get(lst, i)
-        return None if (v is None or v == SENTINEL) else v
-
-    # Split frame into 70-char chunks for readable bytes literal
-    clean = frame_text.strip().rstrip("}") + "}"
-    chunks = [clean[i : i + 70] for i in range(0, len(clean), 70)]
-
-    # Compute expected values
-    serial = header["serial"]
-    temp_raw = probe(ins, 0)
-    temp = round(temp_raw / 10, 1) if temp_raw is not None else None
-    ph_raw = probe(ains, 0)
-    ph = round(ph_raw / 100, 2) if ph_raw is not None else None
-    redox = probe(ains, 6)
-    filt_raw = get(outs, 2)
-    filt = bool(filt_raw) if filt_raw is not None else None
-    req_ph_r = get(areqs, 0)
-    req_ph = round(req_ph_r / 10, 1) if req_ph_r is not None else None
-    req_rx_r = get(areqs, 1)
-    req_redox = req_rx_r * 10 if req_rx_r is not None else None
-    pool_vol = get(areqs, 14)
-    del_start = get(areqs, 17)
-    del_dose = get(areqs, 18)
-    hour = get(ins, 16)
-    minute = get(ins, 17)
-    flow_raw = get(ins, 8)
-    flow = bool(flow_raw) if flow_raw is not None else None
-
-    print("# --- generated by v8_tools.py --generateTest ---")
-    print()
-    print("FRAME = (")
-    for chunk in chunks:
-        print(f'    b"{chunk}"')
-    print('    b"\\n"')
-    print(")")
-    print()
-    print()
-    print("def test_decoded_frame():")
-    print("    device = AsekoV8Decoder.decode(FRAME)")
-    print()
-    print(f"    assert device.serial_number == {serial}")
-    print("    assert device.device_type == AsekoDeviceType.NET")
-    print()
-
-    if temp is not None:
-        print(f"    # ins[0]={temp_raw}  / 10 = {temp} degC")
-        print(f"    assert device.water_temperature == pytest.approx({temp})")
+def generate_test(text: str) -> str:
+    """Return a pytest skeleton; expected values are TODOs to fill in from the unit."""
+    header, _ = parse_v8_frame(text)
+    model = model_from_header_type(int(header["type"]))
+    frame = text.strip()
+    chunks = [frame[i : i + 70] for i in range(0, len(frame), 70)]
+    out = [
+        "# --- generated by scripts/v8_tools.py --generate-test ---",
+        "# Fill in the expected values from the unit's display or the Aseko app",
+        "# at the moment the frame was sent.",
+        "",
+        "from custom_components.aseko_local.decoding import decode",
+        "from custom_components.aseko_local.models import AsekoDeviceType",
+        "",
+        "FRAME = (",
+        *(f'    b"{chunk}"' for chunk in chunks),
+        '    b"\\n"',
+        ")",
+        "",
+        "",
+        "def test_decoded_frame():",
+        "    device = decode(FRAME)",
+        "",
+        f"    assert device.serial_number == {header['serial']}",
+    ]
+    if model is not None:
+        out.append(f"    assert device.device_type == AsekoDeviceType.{model}")
     else:
-        print("    # water_temperature: absent (ins[0] == -500)")
-        print("    assert device.water_temperature is None")
-
-    if flow is not None:
-        print(f"    # ins[8]={flow_raw}")
-        print(f"    assert device.water_flow_to_probes is {flow}")
-
-    if hour is not None:
-        print(f"    # ins[16]={hour}  ins[17]={minute}")
-        print(f"    assert device.timestamp.hour == {hour}")
-        print(f"    assert device.timestamp.minute == {minute}")
-
-    print()
-    if ph is not None:
-        print(f"    # ains[0]={ph_raw}  / 100 = {ph}")
-        print(f"    assert device.ph == pytest.approx({ph})")
-    else:
-        print("    # ph: absent (ains[0] == -500)")
-        print("    assert device.ph is None")
-
-    if redox is not None:
-        print(f"    # ains[6]={redox}")
-        print(f"    assert device.redox == {redox}")
-    else:
-        print("    # redox: absent (ains[6] == -500)")
-        print("    assert device.redox is None")
-
-    print()
-    if filt is not None:
-        print(f"    # outs[2]={filt_raw}")
-        print(f"    assert device.filtration_pump_running is {filt}")
-
-    print()
-    if req_ph is not None:
-        print(f"    # areqs[0]={req_ph_r}  / 10 = {req_ph}")
-        print(f"    assert device.required_ph == pytest.approx({req_ph})")
-    if req_redox is not None:
-        print(f"    # areqs[1]={req_rx_r}  * 10 = {req_redox} mV")
-        print(f"    assert device.required_redox == {req_redox}")
-    if pool_vol is not None:
-        print(f"    # areqs[14]={pool_vol}")
-        print(f"    assert device.pool_volume == {pool_vol}")
-    if del_start is not None:
-        print(f"    # areqs[17]={del_start}")
-        print(f"    assert device.delay_after_startup == {del_start}")
-    if del_dose is not None:
-        print(f"    # areqs[18]={del_dose}")
-        print(f"    assert device.delay_after_dose == {del_dose}")
-
-    # List non-zero unknowns
-    unknowns = []
-    for sec_name, values in sections.items():
-        known = FIELD_MAP.get(sec_name, {})
-        for i, v in enumerate(values):
-            if i not in known and v != 0 and v != SENTINEL:
-                unknowns.append(f"    #   {sec_name}[{i}] = {v}")
-    if unknowns:
-        print()
-        print("    # Unknown / not yet confirmed (non-zero):")
-        for line in unknowns:
-            print(line)
+        out.append(
+            f"    # header type {header['type']} names no known model: "
+            "the unknown profile reads it"
+        )
+    out += [
+        "    # TODO: assert the values the unit showed, e.g.",
+        "    # assert device.ph == pytest.approx(7.2)",
+    ]
+    return "\n".join(out) + "\n"
 
 
-# ---------------------------------------------------------------------------
-# Entry point
-# ---------------------------------------------------------------------------
+def main(argv: list[str] | None = None) -> None:
+    """Run the command line."""
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("frame", help="the whole v8 frame text, braces included")
+    action = parser.add_mutually_exclusive_group(required=True)
+    action.add_argument("--annotate", action="store_true", help="annotate every value")
+    action.add_argument(
+        "--generate-test", action="store_true", help="print a pytest skeleton"
+    )
+    args = parser.parse_args(argv)
+    try:
+        print(annotate(args.frame) if args.annotate else generate_test(args.frame))
+    except ValueError as exc:
+        parser.error(str(exc))
+
 
 if __name__ == "__main__":
-    if len(sys.argv) < 3:
-        print(__doc__)
-        sys.exit(1)
-
-    func, frame_arg = sys.argv[1], sys.argv[2]
-
-    if func == "--annotate":
-        cmd_annotate(frame_arg)
-    elif func == "--generateTest":
-        cmd_generate_test(frame_arg)
-    elif func == "--help":
-        print(__doc__)
-    else:
-        print(f"Unknown function: {func!r}")
-        sys.exit(1)
+    main()

@@ -92,3 +92,58 @@ reset_consumption:
             - canister
             - total
             - all
+    serial_number:
+      name: Serial number
+      description: >
+        Reset only this unit. Leave empty to reset every unit.
+      required: false
+      example: 110071590
+      selector:
+        number:
+          min: 1
+          mode: box
+
+mark_dump:
+  name: Mark dump
+  description: >
+    Writes a numbered, timestamped marker into the frame log that the
+    diagnostics download carries. Call it (e.g. from a dashboard button on
+    your phone), then photograph the unit's display straight away: the marker
+    sits between the frames received before and after, so frames and photos
+    line up without comparing clocks. The test cases card calls it for you and
+    stores the photos too. The response returns the marker number.
+  fields:
+    note:
+      name: Note
+      description: >
+        Optional short text stored with the marker, e.g. what you just changed
+        on the unit.
+      required: false
+      example: "Heating control ON"
+      selector:
+        text:
+    wait_for_next_frame:
+      name: Wait for the next frame
+      description: >
+        Write the marker only once the next whole frame has arrived (at most 60
+        seconds). Change the setting on the unit, call this, and the marker
+        lands right after the first frame that can carry the change -- a unit
+        with its settings menu open sends nothing until the menu is closed.
+        Either way the marker records how many seconds ago each unit's last
+        frame arrived.
+      required: false
+      default: true
+      selector:
+        boolean:
+    serial_number:
+      name: Serial number
+      description: >
+        Wait for a frame from this unit only, when several units send to the
+        same entry. Without it a frame from any unit counts.
+      required: false
+      example: 110071590
+      selector:
+        number:
+          min: 1
+          max: 4294967295
+          mode: box
