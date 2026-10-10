@@ -331,7 +331,9 @@ async def test_async_setup_salt_redox(hass) -> None:
     #   0xFF, which reads unknown, like the byte[37] settings, not absent
     # + 1 heating_linked_to_filtration: reported as sent (False) with heating
     #   control off, instead of hidden
-    assert len(added_entities) == 54
+    # + 1 chlorine_production_measured: byte[21] as sent next to the derived
+    #   chlorine_production (created disabled)
+    assert len(added_entities) == 55
     # Nothing has been observed yet, so the history is unknown rather than
     # guessed from the schedule.
     backwash_history = {
@@ -481,7 +483,9 @@ async def test_async_setup_salt_clf(hass) -> None:
     #   0xFF, which reads unknown, like the byte[37] settings, not absent
     # + 1 heating_linked_to_filtration: reported as sent (False) with heating
     #   control off, instead of hidden
-    assert len(added_entities) == 54
+    # + 1 chlorine_production_measured: byte[21] as sent next to the derived
+    #   chlorine_production (created disabled)
+    assert len(added_entities) == 55
     assert not any(
         getattr(e.entity_description, "key", None) == "free_chlorine_mv"
         for e in added_entities

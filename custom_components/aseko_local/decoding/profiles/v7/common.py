@@ -24,7 +24,7 @@ from ...features import (
     FiltrationPeriod1Start,
     FiltrationPeriod2End,
     FiltrationPeriod2Start,
-    FiltrationRunning,
+    FiltrationRelay,
     FiltrationSchedule,
     FlocculantDoseTarget,
     FlocculantFlowRate,
@@ -85,7 +85,7 @@ FILTRATION = (
     FiltrationPeriod2Start,
     FiltrationPeriod2End,
     FiltrationSchedule,
-    FiltrationRunning,
+    FiltrationRelay,
 )
 BACKWASH = (BackwashInterval, BackwashStartTime, BackwashDuration, BackwashRunning)
 WATER_LEVEL = (

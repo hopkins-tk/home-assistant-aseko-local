@@ -159,7 +159,7 @@ Example values are from the representative frame unless stated otherwise.
 | `0x01` | backwash valve relay (`backwash_running`) | assumed | confirmed on SALT |
 | `0x02` | water filling active (`refilling`) | confirmed | DomSchCoding, Issue #100; also on SALT (2026-09-06) against the refill thresholds |
 | `0x04` | heating running (`heating_running`) | assumed | JS-DE-Tech relay_byte bit 2; no HOME frame with the heater running |
-| `0x08` | filtration pump running (`filtration_running`) | confirmed | stays set under the manual override; §5 |
+| `0x08` | filtration pump relay (`filtration_relay`) | confirmed | stays set under the manual override; `filtration_running` is derived, §5 |
 | `0x10` | algicide pump running (`algaecide_pump_running`) | assumed | as on OXY; read only once the algicide flow rate is located, so no state yet |
 | `0x20` | flocculant pump running (`flocculant_pump_running`) | assumed | as on OXY (confirmed there) |
 | `0x40` | chlorine pump running (`chlorine_pump_running`) | assumed | port may be chlorine or OXY Pure |
@@ -220,7 +220,7 @@ Bytes 56–63 always carry the last-configured schedule; the unit does not clear
 
 ### Manual OFF override (`byte[37]` `0x04`)
 
-In the `0x35` manual OFF frame, `byte[29]` bit `0x08` is still set — it stays set in all four Issue #133 frames. The HOME profile reads `filtration_running` with `decode_v7_menu_override`, reporting the pump off while bit `0x04` is set. `service_menu_open` (someone at the unit) and `filtration_schedule` (what runs when nobody is) share the byte but are unrelated facts.
+In the `0x35` manual OFF frame, `byte[29]` bit `0x08` is still set — it stays set in all four Issue #133 frames. `filtration_relay` keeps the bit as sent; the derived `filtration_running` reports the pump off while bit `0x04` is set, on the profiles flagged `MENU_BIT_SWITCHES_FILTRATION_OFF` (HOME; `decoding/derived.py`). `service_menu_open` (someone at the unit) and `filtration_schedule` (what runs when nobody is) share the byte but are unrelated facts.
 
 The override is HOME-only. On SALT the same bit marks the settings menu being open, which says nothing about what the person did (they may have switched the pump on), so forcing it off would invent a state (see [SALT analysis](salt_device_analysis.md), byte[37]). Whether HOME's bit is literally the same menu flag is unverified: the Issue #133 frames were downloaded one per mode, so a HOME unit going quiet the way SALT does would not have shown up.
 

@@ -9,7 +9,7 @@ from ...features import (
     ChlorinePumpRunning,
     Configuration,
     DosingDelay,
-    FiltrationRunning,
+    FiltrationRelay,
     Ph,
     PhMinusFlowRate,
     PhMinusPumpRunning,
@@ -41,7 +41,7 @@ NET = Profile(
         Configuration: derived("a probe is installed when its ains slot is not -500"),
         DosingDelay: confirmed("areqs[18] = 2 min vs the app"),
         StartupDelay: confirmed("areqs[17] = 2 min vs the app"),
-        FiltrationRunning: confirmed(
+        FiltrationRelay: confirmed(
             "outs[2] = 1 while the app showed 'Pump: ON / NONSTOP' (2026-04-13)"
         ),
         ChlorineFlowRate: assumed("not transmitted, 60 ml/min taken for consumption"),

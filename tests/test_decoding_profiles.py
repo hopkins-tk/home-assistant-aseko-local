@@ -16,6 +16,7 @@ import pytest
 
 from custom_components.aseko_local.const import UNIT_TYPE_PROFI, WATER_FLOW_TO_PROBES
 from custom_components.aseko_local.decoding import decode, engine
+from custom_components.aseko_local.decoding.derived import DERIVED
 from custom_components.aseko_local.decoding.evidence import (
     Evidence,
     EvidenceStatus,
@@ -31,8 +32,9 @@ from custom_components.aseko_local.decoding.features import (
     AlgaecidePumpRunning,
     Configuration,
     FiltrationPeriod2Start,
-    FiltrationRunning,
+    FiltrationRelay,
     FiltrationSchedule,
+    FlocculantPumpRunning,
     HeatingControlEnabled,
     Ph,
     PhTarget,
@@ -90,7 +92,7 @@ def test_every_feature_fills_one_real_field() -> None:
 
 def test_every_frame_derived_field_has_a_feature() -> None:
     """The fields the decoder does not own are the tracker's and the profile's."""
-    owned = {f.field for f in ALL_FEATURES}
+    owned = {f.field for f in ALL_FEATURES} | {d.field for d in DERIVED}
     not_from_the_frame = {
         "device_type",  # set from the profile
         "profile",  # the name of the profile that read the frame
@@ -160,8 +162,7 @@ def test_profile_readings_match_its_protocol(profile: Profile) -> None:
 
 def test_overrides_pick_the_named_reading() -> None:
     assert v7.HOME.reading_for(FiltrationSchedule) == "decode_v7"
-    assert v7.HOME.reading_for(FiltrationRunning) == "decode_v7_menu_override"
-    assert v7.SALT.reading_for(FiltrationRunning) == "decode_v7"
+    assert v7.HOME.reading_for(FiltrationRelay) == "decode_v7"
     assert v7.OXY.reading_for(AlgaecidePumpRunning) == "decode_v7_oxy"
 
 
@@ -349,15 +350,16 @@ def test_home_byte37_is_one_bit_field(
 def test_decoded_device_says_how_it_was_read() -> None:
     device = decode(_home_bytes(0x43))
     assert device.device_type is AsekoDeviceType.HOME
-    assert device.features <= v7.HOME.feature_names
+    assert device.features <= device.possible_features
+    assert device.possible_features == v7.HOME.feature_names | {"filtration_running"}
     assert "filtration_schedule" in device.features
-    assert device.flags == frozenset()
+    assert device.flags == {AsekoProfileFlag.MENU_BIT_SWITCHES_FILTRATION_OFF}
 
     salt = decode(bytes(_make_base_bytes()))
     assert AsekoProfileFlag.MENU_BIT_IS_PRESENCE_ONLY in salt.flags
 
     net_v8 = decode(REFERENCE_FRAME)
-    assert net_v8.features <= v8.NET.feature_names
+    assert net_v8.features <= net_v8.possible_features
     assert "ph" in net_v8.features
     assert "filtration_period_1_start" not in net_v8.features
 
@@ -378,19 +380,32 @@ def test_a_field_outside_the_profile_stays_none_whatever_the_frame_says() -> Non
     assert "filtration_period_1_start" not in device.features
     assert device.filtration_period_1_start is None
     assert device.filtration_running is None
+    assert "filtration_running" not in device.possible_features
 
 
 def test_home_menu_override_forces_the_pump_off() -> None:
+    """The derived value says off; the relay bit stays as sent."""
     data = _make_base_bytes()
     data[4] = 0x02
     data[29] = 0x08  # relay bit says running
     data[37] = 0x15  # period 1, settings menu open
     device = decode(bytes(data))
     assert device.service_menu_open is True
+    assert device.filtration_relay is True
     assert device.filtration_running is False
 
     data[37] = 0x11  # menu closed
     assert decode(bytes(data)).filtration_running is True
+
+
+def test_the_menu_bit_does_not_switch_salt_filtration_off() -> None:
+    """On SALT byte[37] 0x04 only says somebody is at the menu."""
+    data = _make_base_bytes()  # SALT
+    data[29] = 0x08
+    data[37] = 0xD7  # period 1, settings menu open
+    device = decode(bytes(data))
+    assert device.service_menu_open is True
+    assert device.filtration_running is True
 
 
 def test_entity_layer_reads_pump_presence_off_the_device() -> None:
@@ -464,7 +479,7 @@ def test_unset_byte22_and_byte78_settings_read_unknown_but_stay_present() -> Non
         "backwash_schedule_enabled",
         "variable_speed_pump_enabled",
         "heating_condition",
-        "heating_allowed",
+        "heating_condition_met",
         "variable_speed_pump_type",
     )
     for field in fields:
@@ -593,7 +608,7 @@ def test_salt_settings_found_with_marked_test_cases() -> None:
     data = _make_base_bytes()  # SALT
     data[37] = 0xDB  # flow detection, heating control, period 1, level meter, algicide
     data[22] = 0x3A  # backwash schedule, below, outside temperature, VS pump on
-    data[78] = 0x85  # heating allowed, Pentair / Dab
+    data[78] = 0x85  # heating condition met, Pentair / Dab
     data[29] = 0x50  # electrolysis running, right polarity
     device = decode(bytes(data))
     assert device.flow_detection_enabled is True
@@ -603,6 +618,7 @@ def test_salt_settings_found_with_marked_test_cases() -> None:
     assert device.freeze_protection_enabled is False
     assert device.variable_speed_pump_enabled is True
     assert device.heating_condition.value == "outside_temperature_below"
+    assert device.heating_condition_met is True
     assert device.heating_allowed is True
     assert device.variable_speed_pump_type.value == "pentair_dab"
     assert device.electrode_polarity.value == "right"
@@ -614,6 +630,7 @@ def test_salt_settings_found_with_marked_test_cases() -> None:
     assert device.heating_condition.value == "time_window"
     assert device.freeze_protection_enabled is True
     assert device.backwash_schedule_enabled is False
+    assert device.heating_condition_met is False
     assert device.heating_allowed is False
     assert device.variable_speed_pump_type.value == "hayward"
     assert device.electrode_polarity.value == "left"
@@ -631,14 +648,14 @@ def test_profile_rejects_a_feature_whose_dependency_is_not_listed() -> None:
 
 
 def test_an_optional_dependency_may_be_left_out() -> None:
-    """Filtration reads the menu bit only in HOME's named reading."""
+    """v8 reads the flocculant pump without the v7 flow rate."""
     profile = Profile(
-        name="filtration only",
-        protocol=Protocol.V7,
+        name="flocculant pump only",
+        protocol=Protocol.V8,
         model=AsekoDeviceType.SALT,
-        features=(FiltrationRunning,),
+        features=(FlocculantPumpRunning,),
     )
-    assert profile.feature_names == {"filtration_running"}
+    assert profile.feature_names == {"flocculant_pump_running"}
 
 
 def test_a_profile_cannot_be_changed_in_memory() -> None:

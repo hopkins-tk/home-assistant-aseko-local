@@ -75,7 +75,7 @@ frame. The fallback profiles are not in the support matrix.
 
 A **feature** is one field on `AsekoDevice`. Its file holds every known way to
 read it — its *readings* — for both protocols: `decode_v7` and `decode_v8` are
-the defaults, named readings (`decode_v7_oxy`, `decode_v7_menu_override`,
+the defaults, named readings (`decode_v7_oxy`,
 `decode_v7_routed_by_byte37`, `decode_v7_winter_mode`, …) cover models that
 differ. `decode_v7_not_located` / `decode_v8_not_located` stand for a value the
 model has but whose place in the frame is unknown. A feature declares
@@ -83,18 +83,16 @@ model has but whose place in the frame is unknown. A feature declares
 sorts its plan by them. A feature file knows nothing about models.
 
 ```python
-# features/filtration_running.py
-class FiltrationRunning(Feature):
-    field = "filtration_running"
-    depends_on = (ServiceMenuOpen,)
+# features/algaecide_pump_running.py
+class AlgaecidePumpRunning(Feature):
+    field = "algaecide_pump_running"
+    depends_on = (AlgaecideFlowRate,)  # the port is algicide only with a flow rate
 
-    def decode_v7(self, frame, device):               # default: the relay bit
-        return bool(frame[29] & 0x08)
+    def decode_v7(self, frame, device):      # default: SALT's bit
+        return flag_when_known(device.algaecide_flow_rate, frame[29], 0x20)
 
-    def decode_v7_menu_override(self, frame, device):  # HOME: the menu stops the pump
-        if device.service_menu_open:
-            return False
-        return bool(frame[29] & 0x08)
+    def decode_v7_oxy(self, frame, device):  # OXY / HOME: another bit
+        return flag_when_known(device.algaecide_flow_rate, frame[29], 0x10)
 ```
 
 ### Profiles
@@ -104,7 +102,7 @@ A **profile** is one (protocol, model) combination in its own module:
 - `features` — what the profile reads (groups from `common.py`); a missing feature is one the model does not have, or one nobody has decoded yet;
 - `overrides` — the reading to use where this model differs from the protocol default;
 - `evidence` — why each entry is believed, spelled out per profile as `confirmed(...)`, `observed(...)`, `assumed(...)` … from `evidence.py`, whose status sets the support-matrix mark ([rules](evidence-rules.md));
-- `flags` — model facts consumers need, instead of `device_type` checks: `MENU_BIT_IS_PRESENCE_ONLY` (read by the backwash tracker and the `service_menu` state of Connection status; adding it to a profile turns both on for that model), `DELAYS_IN_MINUTES` (v8 delays, read by `sensor.py`).
+- `flags` — model facts consumers need, instead of `device_type` checks: `MENU_BIT_IS_PRESENCE_ONLY` (read by the backwash tracker and the `service_menu` state of Connection status; adding it to a profile turns both on for that model), `MENU_BIT_SWITCHES_FILTRATION_OFF` (HOME; read by the derived `filtration_running`), `DELAYS_IN_MINUTES` (v8 delays, read by `sensor.py`).
 
 A profile is validated and its plan built once, at import; `overrides` and `evidence` are read-only afterwards. A profile changes by editing its module, never in memory.
 
@@ -115,10 +113,10 @@ HOME = Profile(
     features=(*IDENTITY, ..., *FILTRATION, ServiceMenuOpen, ...),
     overrides={
         Configuration: "decode_v7_by_unit_type_byte",
-        FiltrationRunning: "decode_v7_menu_override",
         AlgaecidePumpRunning: "decode_v7_oxy",
         AlgaecideFlowRate: "decode_v7_not_located",
     },
+    flags=frozenset({AsekoProfileFlag.MENU_BIT_SWITCHES_FILTRATION_OFF}),
     evidence={...},
 )
 ```
@@ -163,12 +161,40 @@ the decoder's call:
   entity stays and shows unknown), not `NOT_PRESENT`. Checked on 6 956 frames
   of an ASIN AQUA Salt: bytes 22, 37, 38 and 78 never carried `0xFF`.
 
+### Derived values: the user-facing meaning, beside the value as sent
+
+A feature never replaces its value because of another live state.  Where a
+value only means what a user expects in the context of another one, the
+user-facing value is **derived** in `decoding/derived.py` from the decoded
+fields, after the plan has run, and the decoded value keeps its own field and
+entity:
+
+| derived field (existing entity) | from | decoded field (diagnostic entity) |
+|---|---|---|
+| `heating_allowed` | Heating control on and the condition met | `heating_condition_met` (byte[78] 0x80, evaluated with Heating control off too) |
+| `chlorine_production` | the measured output while electrolysing, else 0 | `chlorine_production_measured` (byte[21] / `ains[9]`, runs down for 1–3 frames after a stop; created disabled) |
+| `filtration_running` | the relay, False on HOME while the pump is switched off by hand (`MENU_BIT_SWITCHES_FILTRATION_OFF`) | `filtration_relay` (byte[29] 0x08 / `outs[2]`; created disabled) |
+
+A derived value is present when all the fields it names are, and a profile
+has it when it reads all of them; the support matrix lists them.
+`derived.py` is for what one frame decides.  A value that needs a series of
+frames, Home Assistant's clock or a store -- the scheduled / manual backwash
+history, the clock offset, the consumption counters -- is derived the same
+way, beside the values it reads, but by a tracker in `trackers/`.  Why keep
+the decoded one: the rule is an assumption, not protocol (a unit that says
+*stopped* while current flows shows up only in the measured value); it is how
+quirks such as the run-down were found; history cannot be recomputed from a
+value never recorded; and things nobody foresaw are built from it, as the
+scheduled / manual backwash detection is built from the valve bit, the
+schedule and the unit's clock.
+
 Probe configuration is per unit, not per model, so it is handled this way
 rather than with more profiles: `byte[53]` is one of four setpoints and the
 profile lists all four.
 
 The engine sets on the device: `profile` (the name of the profile that read
-the frame), `possible_features` (every field the profile reads),
+the frame), `possible_features` (every field the profile reads, and the
+derived values it can have),
 `present_features` (present in this frame) and `frame_problems` (what the
 parser could not read). The coordinator keeps `features` as the union of
 everything the unit has shown since Home Assistant started.

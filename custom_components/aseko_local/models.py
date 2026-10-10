@@ -49,6 +49,13 @@ class AsekoProfileFlag(Enum):
     # flag to a profile turns both on for that model.
     MENU_BIT_IS_PRESENCE_ONLY = "menu_bit_is_presence_only"
 
+    # On HOME (Issue #133) byte[37] bit 0x04 is set while the pump has been
+    # switched off by hand at the unit, and the relay bit byte[29] 0x08 stays
+    # set meanwhile.  Where set, the derived ``filtration_running`` reads
+    # False while ``service_menu_open`` is True (``decoding.derived``); the
+    # relay bit itself stays as sent in ``filtration_relay``.
+    MENU_BIT_SWITCHES_FILTRATION_OFF = "menu_bit_switches_filtration_off"
+
     # ``startup_delay`` and ``dosing_delay`` are whole minutes (v8 areqs[17] /
     # areqs[18], 2 = "2 min" in the app) instead of v7's seconds.  The value is
     # kept as sent; ``sensor.py`` reads this flag for the unit.
@@ -220,14 +227,16 @@ class AsekoDevice:
     )
     redox: int | None = None  # byte 16 & 17 or 18 & 19
     salinity: float | None = None  # byte 20
-    chlorine_production: int | None = None  # byte 21
+    chlorine_production_measured: int | None = None  # byte 21, as sent
+    chlorine_production: int | None = None  # derived: 0 while not electrolysing
     electrolysis_running: bool | None = None  # byte 29 (4-th bit)
     electrode_polarity: AsekoElectrodePolarity | None = (
         None  # byte 29 (6-th bit for LEFT)
     )
     water_temperature: float | None = None  # byte 25 & 26
     water_flow_to_probes: bool | None = None  # byte 28 == aah
-    filtration_running: bool | None = None  # byte 29 (3-rd bit)
+    filtration_relay: bool | None = None  # byte 29 bit 0x08, as sent
+    filtration_running: bool | None = None  # derived: relay, HOME manual off
     heating_running: bool | None = None  # byte 29 (2-nd bit, 0x04)
     heating_control_enabled: bool | None = None  # byte 37 bit 3 (0x08) on HOME
     heating_linked_to_filtration: bool | None = None  # byte 38 bit 0x10 (setting)
@@ -238,7 +247,8 @@ class AsekoDevice:
     flow_detection_enabled: bool | None = None  # byte 37 bit 0x02
     backwash_schedule_enabled: bool | None = None  # byte 22 bit 0x10
     heating_condition: AsekoHeatingCondition | None = None  # byte 22 0x01/0x02/0x20
-    heating_allowed: bool | None = None  # byte 78 bit 0x80 (live)
+    heating_condition_met: bool | None = None  # byte 78 bit 0x80 (live)
+    heating_allowed: bool | None = None  # derived: control on and condition met
     ph_minus_concentration: int | None = None  # byte 112 (%) on HOME (Issue #139)
     chlorine_pump_running: bool | None = None  # byte 29 (6-th bit)
     ph_minus_pump_running: bool | None = None  # byte 29 (7-th bit)

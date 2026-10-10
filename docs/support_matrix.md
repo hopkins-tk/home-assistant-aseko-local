@@ -34,7 +34,7 @@ Further profiles exist that no unit is meant to decode with and that the tables 
 | `backwash_start_time` | ✅ | ✅ | 👁 | — | ❓ |
 | `chlorine_dose_target` | ❓ | ❓ | — | 👁 | ❓ |
 | `chlorine_flow_rate` | ✅ | — | — | ✅ | ❓ |
-| `chlorine_production` | — | ✅ | — | — | — |
+| `chlorine_production_measured` | — | ✅ | — | — | — |
 | `chlorine_pump_running` | ❓ | — | — | ✅ `decode_v7_net` | ❓ |
 | `configuration` | ✅ `decode_v7_by_unit_type_byte` | ✅ | ✅ `decode_v7_ph_and_oxy` | ✅ | ❓ `decode_v7_without_dose` |
 | `dosing_delay` | ✅ | ✅ | 👁 | 👁 | ❓ |
@@ -44,7 +44,7 @@ Further profiles exist that no unit is meant to decode with and that the tables 
 | `filtration_period_1_start` | ✅ | ✅ | 👁 | — | ❓ |
 | `filtration_period_2_end` | ✅ | ✅ | 👁 | — | ❓ |
 | `filtration_period_2_start` | ✅ | ✅ | 👁 | — | ❓ |
-| `filtration_running` | ✅ `decode_v7_menu_override` | ✅ | ✅ | — | ❓ |
+| `filtration_relay` | ✅ | ✅ | ✅ | — | ❓ |
 | `filtration_schedule` | ✅ | ✅ | 👁 | — | ❓ |
 | `flocculant_dose_target` | ✅ | ✅ `decode_v7_routed_by_byte37` | ✅ | — | ❓ `decode_v7_routed_by_byte37` |
 | `flocculant_flow_rate` | ✅ | ✅ `decode_v7_routed_by_byte37` | ✅ | — | ❓ `decode_v7_routed_by_byte37` |
@@ -54,8 +54,8 @@ Further profiles exist that no unit is meant to decode with and that the tables 
 | `free_chlorine_mv` | ✅ | — | — | ✅ | ❓ |
 | `free_chlorine_target` | ✅ | ✅ | — | 👁 | ❓ |
 | `freeze_protection_enabled` | ✅ | ✅ `decode_v7_winter_mode` | 🔍 | — | — |
-| `heating_allowed` | — | ✅ | — | — | — |
 | `heating_condition` | — | ✅ | — | — | — |
+| `heating_condition_met` | — | ✅ | — | — | — |
 | `heating_control_enabled` | ✅ | ✅ | 🔍 | — | — |
 | `heating_linked_to_filtration` | ❓ | ✅ | — | — | — |
 | `heating_running` | ❓ | ❓ | ❓ | — | ❓ |
@@ -100,7 +100,7 @@ Further profiles exist that no unit is meant to decode with and that the tables 
 | `algaecide_dose_target` | — | ✅ |
 | `algaecide_pump_running` | — | ✅ |
 | `chlorine_flow_rate` | ❓ | — |
-| `chlorine_production` | — | ✅ |
+| `chlorine_production_measured` | — | ✅ |
 | `chlorine_pump_running` | ❓ | — |
 | `configuration` | ✅ | ✅ |
 | `dosing_delay` | ✅ | 👁 |
@@ -108,7 +108,7 @@ Further profiles exist that no unit is meant to decode with and that the tables 
 | `electrolysis_running` | — | ✅ |
 | `filtration_period_1_end` | — | ✅ |
 | `filtration_period_1_start` | — | ✅ |
-| `filtration_running` | ✅ | ❓ |
+| `filtration_relay` | ✅ | ❓ |
 | `filtration_schedule` | — | ✅ |
 | `flocculant_dose_target` | — | 👁 |
 | `flocculant_pump_running` | — | 👁 |
@@ -126,6 +126,16 @@ Further profiles exist that no unit is meant to decode with and that the tables 
 | `unit_clock` | ✅ | ✅ |
 | `water_flow_to_probes` | ✅ | ❓ |
 | `water_temperature` | ✅ | ✅ |
+
+## Worked out from other fields
+
+Not read from the frame: each value is computed in `decoding/derived.py` from the fields it names, which keep their own entities as sent.  A profile has the value when it reads all of them; a flag after a profile changes the rule for that model.
+
+| field | from | profiles |
+|---|---|---|
+| `heating_allowed` | `heating_control_enabled`, `heating_condition_met` | v7 SALT |
+| `chlorine_production` | `chlorine_production_measured`, `electrolysis_running` | v7 SALT, v8 SALT |
+| `filtration_running` | `filtration_relay` | v7 HOME (`MENU_BIT_SWITCHES_FILTRATION_OFF`), v7 SALT, v7 OXY, v7 PROFI, v8 NET, v8 SALT |
 
 ## Help wanted
 
@@ -209,7 +219,7 @@ Every entry below is read today without a confirming capture.  If you own one of
 - `filtration_period_1_start` — assumed: no real PROFI frame has been captured; layout inferred from the manual and the other models (profi_device_analysis.md)
 - `filtration_period_2_end` — assumed: no real PROFI frame has been captured; layout inferred from the manual and the other models (profi_device_analysis.md)
 - `filtration_period_2_start` — assumed: no real PROFI frame has been captured; layout inferred from the manual and the other models (profi_device_analysis.md)
-- `filtration_running` — assumed: no real PROFI frame has been captured; layout inferred from the manual and the other models (profi_device_analysis.md)
+- `filtration_relay` — assumed: no real PROFI frame has been captured; layout inferred from the manual and the other models (profi_device_analysis.md)
 - `filtration_schedule` — assumed: no real PROFI frame has been captured; layout inferred from the manual and the other models (profi_device_analysis.md)
 - `flocculant_dose_target` — assumed: no real PROFI frame has been captured; layout inferred from the manual and the other models (profi_device_analysis.md); the PROFI setpoints screen has a flocculant dose (ml/24 h m3) on its shared flocculant / algicide output
 - `flocculant_flow_rate` — assumed: no real PROFI frame has been captured; layout inferred from the manual and the other models (profi_device_analysis.md)
@@ -250,7 +260,7 @@ Every entry below is read today without a confirming capture.  If you own one of
 
 ### v8 SALT
 
-- `filtration_running` — assumed: only the header type (1xx) says SALT; the NET layout is taken over unverified
+- `filtration_relay` — assumed: only the header type (1xx) says SALT; the NET layout is taken over unverified
 - `ph_minus_flow_rate` — assumed: only the header type (1xx) says SALT; the NET layout is taken over unverified
 - `ph_minus_pump_running` — assumed: only the header type (1xx) says SALT; the NET layout is taken over unverified
 - `water_flow_to_probes` — assumed: only the header type (1xx) says SALT; the NET layout is taken over unverified

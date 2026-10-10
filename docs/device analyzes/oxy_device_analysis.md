@@ -174,7 +174,7 @@ All bits are independent and additive; any combination is valid (see §5).
 | `0x01` | `backwash_running` | assumed | Confirmed on SALT. |
 | `0x02` | `refilling` | assumed | Confirmed on HOME and SALT. |
 | `0x04` | `heating_running` | assumed | JS-DE-Tech relay_byte bit 2. |
-| `0x08` | `filtration_running` | confirmed | Set in every captured frame; filtration ran 24 h. |
+| `0x08` | `filtration_relay` (→ `filtration_running`) | confirmed | Set in every captured frame; filtration ran 24 h. |
 | `0x10` | `algaecide_pump_running` | confirmed | 2026-04-11: `0x18` exactly while the algicide pump ran. Profile override `decode_v7_oxy`. |
 | `0x20` | `flocculant_pump_running` | confirmed | 2026-04-02 19:33:52: `0x28` at the floc dosing event. |
 | `0x40` | `oxygen_pump_running` | confirmed | 2026-04-11: `0x48` exactly while the OXY Pure pump ran. |

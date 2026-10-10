@@ -24,7 +24,7 @@ from .backwash_schedule_enabled import BackwashScheduleEnabled
 from .backwash_start_time import BackwashStartTime
 from .chlorine_dose_target import ChlorineDoseTarget
 from .chlorine_flow_rate import ChlorineFlowRate
-from .chlorine_production import ChlorineProduction
+from .chlorine_production_measured import ChlorineProductionMeasured
 from .chlorine_pump_running import ChlorinePumpRunning
 from .configuration import Configuration
 from .dosing_delay import DosingDelay
@@ -34,7 +34,7 @@ from .filtration_period_1_end import FiltrationPeriod1End
 from .filtration_period_1_start import FiltrationPeriod1Start
 from .filtration_period_2_end import FiltrationPeriod2End
 from .filtration_period_2_start import FiltrationPeriod2Start
-from .filtration_running import FiltrationRunning
+from .filtration_relay import FiltrationRelay
 from .filtration_schedule import FiltrationSchedule
 from .flocculant_dose_target import FlocculantDoseTarget
 from .flocculant_flow_rate import FlocculantFlowRate
@@ -44,8 +44,8 @@ from .free_chlorine import FreeChlorine
 from .free_chlorine_mv import FreeChlorineMv
 from .free_chlorine_target import FreeChlorineTarget
 from .freeze_protection_enabled import FreezeProtectionEnabled
-from .heating_allowed import HeatingAllowed
 from .heating_condition import HeatingCondition
+from .heating_condition_met import HeatingConditionMet
 from .heating_control_enabled import HeatingControlEnabled
 from .heating_linked_to_filtration import HeatingLinkedToFiltration
 from .heating_running import HeatingRunning
@@ -87,7 +87,7 @@ ALL_FEATURES: tuple[type[Feature], ...] = (
     WaterLevelSensorEnabled,
     FlowDetectionEnabled,
     BackwashScheduleEnabled,
-    HeatingAllowed,
+    HeatingConditionMet,
     HeatingCondition,
     VariableSpeedPumpType,
     AirTemperature,
@@ -109,8 +109,8 @@ ALL_FEATURES: tuple[type[Feature], ...] = (
     StartupDelay,
     ElectrolysisRunning,
     ElectrodePolarity,
-    ChlorineProduction,
-    FiltrationRunning,
+    ChlorineProductionMeasured,
+    FiltrationRelay,
     FiltrationSchedule,
     FiltrationPeriod1Start,
     FiltrationPeriod2Start,
@@ -176,7 +176,7 @@ __all__ = [
     "BackwashStartTime",
     "ChlorineDoseTarget",
     "ChlorineFlowRate",
-    "ChlorineProduction",
+    "ChlorineProductionMeasured",
     "ChlorinePumpRunning",
     "Configuration",
     "DosingDelay",
@@ -186,7 +186,7 @@ __all__ = [
     "FiltrationPeriod1Start",
     "FiltrationPeriod2End",
     "FiltrationPeriod2Start",
-    "FiltrationRunning",
+    "FiltrationRelay",
     "FiltrationSchedule",
     "FlocculantDoseTarget",
     "FlocculantFlowRate",
@@ -196,8 +196,8 @@ __all__ = [
     "FreeChlorineMv",
     "FreeChlorineTarget",
     "FreezeProtectionEnabled",
-    "HeatingAllowed",
     "HeatingCondition",
+    "HeatingConditionMet",
     "HeatingControlEnabled",
     "HeatingLinkedToFiltration",
     "HeatingRunning",

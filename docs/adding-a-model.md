@@ -84,6 +84,13 @@ the model has but nobody has found.
    the pump off): hiding it is the dashboard's job, not the decoder's. A bit of
    a settings byte reads `0xFF` as `None` (`flag_or_none`). See
    [Report what the frame says](decoding-by-device-profile.md#report-what-the-frame-says).
+
+   Never change the value because of another live state. If it misleads
+   without one (an output that runs down after its device stops, a condition
+   bit evaluated while the function is off), add a `Derived` entry to
+   `decoding/derived.py` for the user-facing value and keep this field as
+   sent; a value that needs several frames belongs in a tracker. See
+   [Derived values](decoding-by-device-profile.md#derived-values-the-user-facing-meaning-beside-the-value-as-sent).
 3. Add it to `ALL_FEATURES` in `features/__init__.py`, list it in the profiles that have it.
 4. Add the entity description in `sensor.py` / `binary_sensor.py` with
    `feature="<field>"` and the translations in `translations/*.json`. Entities
@@ -98,6 +105,14 @@ python scripts/generate_support_matrix.py
 
 - Add the captured frame to `tests/test_decode_v7.py` (or `test_decode_v8.py`)
   with the values the unit showed.
+- A profile gets the derived values (`decoding/derived.py`) whose fields it
+  lists, without any code of its own: check the "Worked out from other
+  fields" section of the regenerated matrix, then add the profile to
+  `EXPECTED_DERIVED` in `tests/test_derived.py` and a frame for it to
+  `_frame_for`.  Both tests fail until you do, and they decode that frame to
+  check every derived value is filled.  If a derived rule does not fit the
+  model (it sends the value differently), give the profile a flag the rule
+  reads, as HOME's `MENU_BIT_SWITCHES_FILTRATION_OFF` does.
 
 Running the tests:
 

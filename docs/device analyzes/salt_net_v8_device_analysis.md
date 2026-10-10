@@ -27,7 +27,7 @@ shows a chlorine pump it does not have (the complaint in Issue #131).
 | Value | Position | Evidence |
 |---|---|---|
 | `salinity` | `ains[8]` / 10 (kg/m³) | confirmed: the display read **10.1** with `ains[8] = 101` in the same minute (header 106) |
-| `chlorine_production` | `ains[9]` (g/h) | confirmed: **19** and **20** in captures their owner labelled 19 and 20 g/h, **0** with the electrolyser off |
+| `chlorine_production_measured` (→ `chlorine_production`) | `ains[9]` (g/h) | confirmed: **19** and **20** in captures their owner labelled 19 and 20 g/h, **0** with the electrolyser off |
 | `electrolysis_running` | `outs[14]` ≠ 0 | confirmed on the labelled captures |
 | `electrode_polarity` | `outs[14]`: 0 waiting, **2 right**, **3 left** | confirmed: the owner recorded the direction the app showed with each capture |
 | `algaecide_pump_running` | `outs[11]` while `fncs[6] = 10` | confirmed: on the header 106 unit `outs[11]` went on and off exactly over the algicide dose 00:03:47–00:06:24 on 2026-09-22 (Issue #169); `outs[11] = 1` in the capture labelled "algicide pump running" (Issue #131) |

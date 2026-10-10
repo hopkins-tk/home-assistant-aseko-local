@@ -55,6 +55,9 @@
       "filtration_running": {
         "name": "Filtrační čerpadlo běží"
       },
+      "filtration_relay": {
+        "name": "Relé filtrace"
+      },
       "heating_running": {
         "name": "Topení aktivní"
       },
@@ -127,6 +130,9 @@
       "heating_allowed": {
         "name": "Ohřev povolen"
       },
+      "heating_condition_met": {
+        "name": "Podmínka ohřevu splněna"
+      },
       "clock_out_of_sync": {
         "name": "Hodiny nesynchronizované"
       }
@@ -169,6 +175,9 @@
       },
       "chlorine_production": {
         "name": "Výkon elektrolyzéru"
+      },
+      "chlorine_production_measured": {
+        "name": "Výkon elektrolyzéru (měřený)"
       },
       "electrode_polarity": {
         "name": "Směr elektrolyzéru",

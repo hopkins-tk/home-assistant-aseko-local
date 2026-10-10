@@ -55,6 +55,9 @@
       "filtration_running": {
         "name": "Filtration running"
       },
+      "filtration_relay": {
+        "name": "Filtration relay"
+      },
       "heating_running": {
         "name": "Heating running"
       },
@@ -127,6 +130,9 @@
       "heating_allowed": {
         "name": "Heating allowed"
       },
+      "heating_condition_met": {
+        "name": "Heating condition met"
+      },
       "clock_out_of_sync": {
         "name": "Clock out of sync"
       }
@@ -169,6 +175,9 @@
       },
       "chlorine_production": {
         "name": "Chlorine production"
+      },
+      "chlorine_production_measured": {
+        "name": "Chlorine production (measured)"
       },
       "electrode_polarity": {
         "name": "Electrode polarity",

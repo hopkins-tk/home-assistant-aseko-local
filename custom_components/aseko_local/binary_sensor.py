@@ -59,6 +59,15 @@ BINARY_SENSORS: tuple[AsekoLocalBinarySensorEntityDescription, ...] = (
         value_fn=lambda device: device.filtration_running,
     ),
     AsekoLocalBinarySensorEntityDescription(
+        key="filtration_relay",
+        feature="filtration_relay",
+        translation_key="filtration_relay",
+        icon="mdi:pump",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        value_fn=lambda device: device.filtration_relay,
+    ),
+    AsekoLocalBinarySensorEntityDescription(
         key="heating_active",
         feature="heating_running",
         translation_key="heating_running",
@@ -69,7 +78,7 @@ BINARY_SENSORS: tuple[AsekoLocalBinarySensorEntityDescription, ...] = (
         key="heating_control_enabled",
         feature="heating_control_enabled",
         translation_key="heating_control_enabled",
-        icon="mdi:radiator-off",
+        icon="mdi:thermostat",
         value_fn=lambda device: device.heating_control_enabled,
     ),
     AsekoLocalBinarySensorEntityDescription(
@@ -123,6 +132,14 @@ BINARY_SENSORS: tuple[AsekoLocalBinarySensorEntityDescription, ...] = (
         translation_key="heating_allowed",
         icon="mdi:radiator",
         value_fn=lambda device: device.heating_allowed,
+    ),
+    AsekoLocalBinarySensorEntityDescription(
+        key="heating_condition_met",
+        feature="heating_condition_met",
+        translation_key="heating_condition_met",
+        icon="mdi:thermostat",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda device: device.heating_condition_met,
     ),
     AsekoLocalBinarySensorEntityDescription(
         key="cl_pump_running",

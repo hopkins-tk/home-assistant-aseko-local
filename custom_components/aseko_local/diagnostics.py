@@ -54,7 +54,7 @@ _BYTE_LABELS: dict[int, str] = {
     18: "redox[hi] (PROFI)",
     19: "redox[lo] (PROFI)",
     20: "salinity (SALT) / free_chlorine_mv[hi] (NET)",
-    21: "chlorine_production (SALT) / free_chlorine_mv[lo] (NET)",
+    21: "chlorine_production_measured (SALT) / free_chlorine_mv[lo] (NET)",
     22: "settings (0x01 heating time window, 0x02 by outside temp, 0x04 winter mode, 0x08 VS pump enabled, 0x10 backwash schedule, 0x20 outside temp below)",
     23: "air_temperature[hi]",
     24: "air_temperature[lo]  (signed, ÷10 = °C; SALT confirmed)",
@@ -95,7 +95,7 @@ _BYTE_LABELS: dict[int, str] = {
     75: "startup_delay[lo]",
     76: "max_refill_time[hi] (seconds)",
     77: "max_refill_time[lo] (seconds)",
-    78: "live state (0x80 heating allowed, 0x40 winter mode, 0x0C VS pump type, 0x02 filtration running / 0x01 stopped)",
+    78: "live state (0x80 heating condition met, 0x40 winter mode, 0x0C VS pump type, 0x02 filtration running / 0x01 stopped)",
     79: "checksum of bytes 40-78 (0xAA xor)",
     85: "segment marker",
     92: "pool_volume[hi]",
@@ -141,7 +141,7 @@ _V8_AINS_LABELS: dict[int, str] = {
 }
 
 _V8_OUTS_LABELS: dict[int, str] = {
-    2: "filtration_running (1=on)",
+    2: "filtration_relay (1=on)",
     8: "ph_minus_pump_running (1=dosing)",
 }
 
@@ -317,12 +317,17 @@ def _device_state(device: AsekoDevice) -> dict[str, Any]:
         "redox": device.redox,
         "salinity": device.salinity,
         "chlorine_production": device.chlorine_production,
+        "chlorine_production_measured": device.chlorine_production_measured,
         "electrolysis_running": device.electrolysis_running,
         "electrode_polarity": (
             device.electrode_polarity.value if device.electrode_polarity else None
         ),
         "water_flow_to_probes": device.water_flow_to_probes,
         "filtration_running": device.filtration_running,
+        "filtration_relay": device.filtration_relay,
+        "heating_allowed": device.heating_allowed,
+        "heating_condition_met": device.heating_condition_met,
+        "heating_control_enabled": device.heating_control_enabled,
         "chlorine_pump_running": device.chlorine_pump_running,
         "ph_minus_pump_running": device.ph_minus_pump_running,
         "ph_plus_pump_running": device.ph_plus_pump_running,

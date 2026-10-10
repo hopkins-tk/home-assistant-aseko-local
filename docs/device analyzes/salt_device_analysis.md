@@ -46,7 +46,7 @@ No representative hex frame is recorded in this document.
 | 16–17 | `free_chlorine` / `redox` | CLF: / 100 mg/l; REDOX: × 1 mV | confirmed | 0.77 and 0.93 mg/l on the CLF unit; 593..670 mV on the REDOX unit |
 | 18–19 | `redox` (second slot) | × 1 mV | — | read instead of 16–17 when not `0xFFFF` (CLF + REDOX units); `0xFFFF` on a basic SALT |
 | 20 | `salinity` | / 10 (g/l = kg/m³) | confirmed | |
-| 21 | `chlorine_production` | raw | confirmed | reported as sent; `0` in almost every frame with the electrolyzer off (`byte[29]` 0x10 clear), 18 of 6 568 such frames carried 3–25 g/h |
+| 21 | `chlorine_production_measured` | raw | confirmed | reported as sent; `0` in almost every frame with the electrolyzer off (`byte[29]` 0x10 clear), 18 of 6 546 such frames carried 3–25 g/h, each in the 1–3 frames after a stop, running down to 0; the derived `chlorine_production` reads 0 while stopped |
 | 22 | settings flags | bitmask | confirmed | see [§4](#byte22--settings-flags) |
 | 23–24 | `air_temperature` | int16 BE / 10 °C, window −30.0 … 60.0 | confirmed | see [§5 Air temperature](#air-temperature) |
 | 25–26 | `water_temperature` | uint16 BE / 10 °C | confirmed | |
@@ -154,7 +154,7 @@ Shared v7 alarm layout; see [`home_device_analysis.md`](home_device_analysis.md)
 | `0x01` | backwash valve open → `backwash_running` | confirmed | capture of a manual backwash, 2026-08-11 |
 | `0x02` | refilling (water filling valve) → `refilling` | confirmed | 2026-09-06 08:12–08:21, see [Ground truth](#6-ground-truth) |
 | `0x04` | heating running → `heating_running` | assumed | JS-DE-Tech `relay_byte` bit 2; never set, heating control is off on the REDOX unit |
-| `0x08` | filtration running → `filtration_running` | confirmed | every active phase (PR #87) |
+| `0x08` | filtration relay → `filtration_relay` (→ `filtration_running`) | confirmed | every active phase (PR #87) |
 | `0x10` | electrolysis running → `electrolysis_running` | confirmed | 25 frames (PR #87) |
 | `0x20` | third port running → `algaecide_pump_running` / `flocculant_pump_running` | confirmed | 27 frames (PR #87); flocculant from the Apr 3 frames; chemical chosen by `byte[37]` 0x80 |
 | `0x40` | electrode polarity: set = right, clear = left → `electrode_polarity` | confirmed | switched by hand both ways 2026-09-13; meaningful only while 0x10 is set, otherwise *waiting* |
@@ -194,7 +194,7 @@ Other observed values: `0xB7`, `0xB3` (algicide), `0x37`, `0x33` (flocculant; PR
 
 | Bit / mask | Meaning | Evidence | Notes |
 |---|---|---|---|
-| `0x80` | heating allowed now → `heating_allowed` | confirmed | follows the time window and the outside-temperature condition as clock and settings change |
+| `0x80` | heating condition met now → `heating_condition_met` | confirmed | follows the time window and the outside-temperature condition as clock and settings change; set with Heating control off too (always, with no condition), so the derived `heating_allowed` also needs `byte[37]` 0x08 |
 | `0x40` | winter mode active | confirmed | same as `byte[22]` 0x04; not decoded separately |
 | `0x0C` | VS pump type → `variable_speed_pump_type`: `0x00` Speck / Uwe EO PM, `0x04` Pentair / Dab E.SWIM, `0x08` Hayward | confirmed | every brand selected in turn; kept while the VS pump is off, changes immediately on another pick |
 | `0x02` | filtration running | observed | not decoded (`byte[29]` 0x08 says the same); seen the same way on NET and OXY |
@@ -204,7 +204,7 @@ Other observed values: `0xB7`, `0xB3` (algicide), `0x37`, `0x33` (flocculant; PR
 
 ### Electrolyzer
 
-`electrolysis_running` = `byte[29]` 0x10; `chlorine_production` = `byte[21]` as sent (0 in almost every frame while not running); `electrode_polarity` = `byte[29]` 0x40 (set = right, clear = left, *waiting* while 0x10 is clear); `salinity` = `byte[20]` / 10. The electrolyzer and the third pump can run at the same time.
+`electrolysis_running` = `byte[29]` 0x10; `chlorine_production_measured` = `byte[21]` as sent (0 in almost every frame while not running), `chlorine_production` = the same while running, else 0; `electrode_polarity` = `byte[29]` 0x40 (set = right, clear = left, *waiting* while 0x10 is clear); `salinity` = `byte[20]` / 10. The electrolyzer and the third pump can run at the same time.
 
 ### Third pump routing
 

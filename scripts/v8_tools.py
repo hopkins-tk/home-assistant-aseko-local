@@ -33,7 +33,7 @@ FIELD_MAP: dict[str, dict[int, tuple[str, str]]] = {
         6: ("redox", "mV"),
     },
     "outs": {
-        2: ("filtration_running", "1 = on"),
+        2: ("filtration_relay", "1 = on"),
         8: ("ph_minus_pump_running", "unconfirmed"),
         9: ("chlorine_pump_running", "unconfirmed (NET)"),
     },

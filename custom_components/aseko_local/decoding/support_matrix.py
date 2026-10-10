@@ -12,6 +12,7 @@ from __future__ import annotations
 from collections import defaultdict
 from collections.abc import Callable
 
+from .derived import DERIVED, Derived
 from .evidence import EvidenceStatus
 from .feature import NOT_LOCATED, Feature
 from .features import ALL_FEATURES
@@ -82,6 +83,7 @@ def render() -> str:
     w = out.append
     _intro(w)
     _tables(w)
+    _derived(w)
     _help_wanted(w)
     _totals(w)
     return "\n".join(out)
@@ -150,6 +152,39 @@ def _tables(w: Callable[[str], None]) -> None:
             cells = [_status(p, feature) for p in profiles]
             w(f"| `{feature.field}` | " + " | ".join(cells) + " |")
         w("")
+
+
+def _derived(w: Callable[[str], None]) -> None:
+    """Write the values worked out from decoded fields, and which profiles have them."""
+    w("## Worked out from other fields")
+    w("")
+    w(
+        "Not read from the frame: each value is computed in "
+        "`decoding/derived.py` from the fields it names, which keep their own "
+        "entities as sent.  A profile has the value when it reads all of them; "
+        "a flag after a profile changes the rule for that model."
+    )
+    w("")
+    w("| field | from | profiles |")
+    w("|---|---|---|")
+    for derived in DERIVED:
+        sources = ", ".join(f"`{name}`" for name in derived.requires)
+        having = ", ".join(
+            _with_flags(p, derived)
+            for p in ALL_PROFILES
+            if p not in FALLBACK_PROFILES
+            and p.feature_names.issuperset(derived.requires)
+        )
+        w(f"| `{derived.field}` | {sources} | {having} |")
+    w("")
+
+
+def _with_flags(profile: Profile, derived: Derived) -> str:
+    """Name ``profile``, followed by the flags of it that ``derived`` reads."""
+    flags = [f for f in derived.flags if f in profile.flags]
+    if not flags:
+        return profile.name
+    return f"{profile.name} ({', '.join(f'`{f.name}`' for f in flags)})"
 
 
 def _help_wanted(w: Callable[[str], None]) -> None:

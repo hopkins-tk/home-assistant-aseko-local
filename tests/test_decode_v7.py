@@ -405,22 +405,27 @@ def test_decode_electrolyzer_data_waiting_direction() -> None:
 
 
 @pytest.mark.parametrize(
-    ("byte21", "byte29", "expected"),
+    ("byte21", "byte29", "measured", "derived"),
     [
-        (22, 0x10, 22),  # running
-        (0, 0x08, 0),  # stopped: the unit sends 0 almost always
-        (18, 0x08, 18),  # stopped, but the unit still sends a value: reported as sent
-        (0, 0x10, 0),  # running, 0 around a start
-        (0xFF, 0x10, None),  # not filled in
+        (22, 0x10, 22, 22),  # running
+        (0, 0x08, 0, 0),  # stopped: the unit sends 0 almost always
+        (18, 0x08, 18, 0),  # stopped, still running down: as sent / 0
+        (0, 0x10, 0, 0),  # running, 0 around a start
+        (0xFF, 0x10, None, None),  # not filled in
+        (0xFF, 0x08, None, 0),  # not filled in, but stopped
     ],
 )
-def test_chlorine_production_is_byte21_as_sent(byte21, byte29, expected) -> None:
-    """byte[21] is reported whatever byte[29] says; electrolysis_running is separate."""
+def test_chlorine_production_is_byte21_while_electrolysing(
+    byte21, byte29, measured, derived
+) -> None:
+    """byte[21] is kept as sent; the derived value reads 0 while byte[29] says stopped."""
     data = _make_base_bytes()
     data[4] = 0x0E  # SALT with REDOX probe
     data[21] = byte21
     data[29] = byte29
-    assert decode(bytes(data)).chlorine_production == expected
+    device = decode(bytes(data))
+    assert device.chlorine_production_measured == measured
+    assert device.chlorine_production == derived
 
 
 def test_decode_profi() -> None:

@@ -15,7 +15,8 @@ internals:
    reading read its value.  A feature is one field on ``AsekoDevice`` and
    lives in its own file under ``features/``, holding every known way to read
    that one value for both protocols.  A feature file knows nothing about
-   models.
+   models.  Last, ``derived`` works out the values that only mean what a
+   user expects in the context of another one, from the decoded fields.
 
 ``decode`` below runs the three steps and is the entry point for everything
 outside this package.

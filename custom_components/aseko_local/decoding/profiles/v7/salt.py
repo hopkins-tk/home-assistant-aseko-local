@@ -19,7 +19,7 @@ from ...features import (
     BackwashScheduleEnabled,
     BackwashStartTime,
     ChlorineDoseTarget,
-    ChlorineProduction,
+    ChlorineProductionMeasured,
     Configuration,
     DosingDelay,
     ElectrodePolarity,
@@ -28,7 +28,7 @@ from ...features import (
     FiltrationPeriod1Start,
     FiltrationPeriod2End,
     FiltrationPeriod2Start,
-    FiltrationRunning,
+    FiltrationRelay,
     FiltrationSchedule,
     FlocculantDoseTarget,
     FlocculantFlowRate,
@@ -37,8 +37,8 @@ from ...features import (
     FreeChlorine,
     FreeChlorineTarget,
     FreezeProtectionEnabled,
-    HeatingAllowed,
     HeatingCondition,
+    HeatingConditionMet,
     HeatingControlEnabled,
     HeatingLinkedToFiltration,
     HeatingRunning,
@@ -102,7 +102,7 @@ SALT = Profile(
         Redox,
         FreeChlorine,
         Salinity,
-        ChlorineProduction,
+        ChlorineProductionMeasured,
         ElectrolysisRunning,
         ElectrodePolarity,
         *SETTINGS,
@@ -127,7 +127,7 @@ SALT = Profile(
         FlowDetectionEnabled,
         BackwashScheduleEnabled,
         HeatingCondition,
-        HeatingAllowed,
+        HeatingConditionMet,
         VariableSpeedPumpType,
         *BACKWASH,
         *ALARMS,
@@ -144,7 +144,7 @@ SALT = Profile(
         FlowDetectionEnabled: confirmed(
             "byte[37] 0x02; confirmed on the own SALT by toggling it on the unit with a frame-log marker after each change, 2026-09-13/14"
         ),
-        HeatingAllowed: confirmed(
+        HeatingConditionMet: confirmed(
             "byte[78] 0x80 follows the heating time window and the outside-temperature condition; confirmed on the own SALT by toggling it on the unit with a frame-log marker after each change, 2026-09-13/14"
         ),
         HeatingCondition: confirmed(
@@ -206,10 +206,10 @@ SALT = Profile(
         ElectrodePolarity: confirmed(
             "byte[29] 0x40 = right, clear = left, switched by hand both ways; confirmed on the own SALT by toggling it on the unit with a frame-log marker after each change, 2026-09-13/14"
         ),
-        ChlorineProduction: confirmed(
-            "byte[21] as sent (PR #87); matches the app and unit display, 2026-09-11; 0 in almost every frame with the electrolyser off, 18 of 6 568 stopped frames carried 3-25 g/h (marked test cases, 2026-09-13/14)"
+        ChlorineProductionMeasured: confirmed(
+            "byte[21] as sent (PR #87); matches the app and unit display, 2026-09-11; 0 in almost every frame with the electrolyser off, 18 of 6 546 stopped frames carried 3-25 g/h, each right after a stop and falling to 0 (marked test cases, 2026-09-13/14)"
         ),
-        FiltrationRunning: confirmed("byte[29] 0x08 in every active phase (PR #87)"),
+        FiltrationRelay: confirmed("byte[29] 0x08 in every active phase (PR #87)"),
         FiltrationSchedule: confirmed(
             "0xC3 / 0xD3 / 0xF3, every transition both ways; matches the app and unit display, 2026-09-11"
         ),

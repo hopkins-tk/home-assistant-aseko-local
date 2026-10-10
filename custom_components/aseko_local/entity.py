@@ -12,6 +12,10 @@ and one removed later does not lose its history:
   **unavailable** -- the accessory is not fitted (any more), the port is
   routed elsewhere, or the frame could not say.  The diagnostics download
   lists those fields under ``not_present_now``.
+
+A description with ``entity_registry_enabled_default=False`` (a decoded value
+next to its derived one, see ``decoding.derived``) stays disabled until a
+user enables it.
 """
 
 from __future__ import annotations
@@ -99,7 +103,8 @@ class AsekoLocalEntity(CoordinatorEntity[AsekoLocalDataUpdateCoordinator]):
         )
         # Disabled until the unit shows the quantity; see the module docstring.
         self._attr_entity_registry_enabled_default = (
-            self._feature is None or self._feature in unit.features
+            description.entity_registry_enabled_default
+            and (self._feature is None or self._feature in unit.features)
         )
         model = (
             self.device.device_type.value

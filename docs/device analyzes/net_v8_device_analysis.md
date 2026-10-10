@@ -127,7 +127,7 @@ The date is therefore taken from Home Assistant on every v8 model.
 |---|---|---|---|---|
 | `outs[0]` | unknown | bool | observed | 0 / 0; once a dosing-pump candidate |
 | `outs[1]` | unknown | bool | observed | 0 / 0; once a dosing-pump candidate |
-| `outs[2]` | `filtration_running` | bool | confirmed | 1 / 1 |
+| `outs[2]` | `filtration_relay` (→ `filtration_running`) | bool | confirmed | 1 / 1 |
 | `outs[8]` | `ph_minus_pump_running` | bool | assumed | 0 / 0; no frame shows a pump running |
 | `outs[9]` | `chlorine_pump_running` | bool | assumed | 0 / 0; no frame shows a pump running |
 

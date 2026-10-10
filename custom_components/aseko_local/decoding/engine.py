@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from ..models import AsekoDevice
+from . import derived
 from .presence import NOT_PRESENT
 
 if TYPE_CHECKING:
@@ -25,6 +26,9 @@ def decode(
     list minus every reading that answered ``NOT_PRESENT`` (see
     ``presence``).  A field the unit has but could not read in this frame is
     in ``features`` with the value None.
+
+    The derived values (``derived``) follow, from the fields just read; each
+    is in ``features`` when all the fields it needs are.
     """
     device = AsekoDevice(
         device_type=profile.model,
@@ -40,7 +44,10 @@ def decode(
         else:
             present.add(feature.field)
         setattr(device, feature.field, value)
+    derived.apply(device, present)
     device.features = frozenset(present)
     device.present_features = device.features
-    device.possible_features = profile.feature_names
+    device.possible_features = profile.feature_names | derived.possible(
+        profile.feature_names
+    )
     return device

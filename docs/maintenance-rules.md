@@ -11,6 +11,7 @@ Read the rules for the area you are changing:
 - [An offset of `None` means "was not known", not "use the current one"](#an-offset-of-none-means-was-not-known-not-use-the-current-one)
 - [Entity identity does not change](#entity-identity-does-not-change)
 - [A profile reports what the frame says](#a-profile-reports-what-the-frame-says)
+- [A feature never overrides its value with another live state](#a-feature-never-overrides-its-value-with-another-live-state)
 
 Invariants that are not visible in the line being edited, each one written
 down because breaking it cost real data or a wrong reading once.  They are
@@ -72,3 +73,26 @@ A value is read as the unit sent it; `NOT_PRESENT` is for what the frame
 says is not on the unit, never for a setting that is currently moot.  See
 [Evidence rules](evidence-rules.md) and
 [Decoding by device profile](decoding-by-device-profile.md).
+
+## A feature never overrides its value with another live state
+
+A feature decodes its own bytes -- scaling, units, enum mapping, `0xFF` to
+`None`, presence -- and nothing more.  When a value only means what a user
+expects in the context of another one ("heating allowed" with Heating
+control off, the electrolyser output running down after a stop, HOME's
+filtration switched off by hand), the user-facing value is computed from the
+decoded fields:
+
+- from one frame: a `Derived` entry in
+  [`decoding/derived.py`](../custom_components/aseko_local/decoding/derived.py);
+- across frames (needs history, Home Assistant's clock or a store): a
+  tracker in [`trackers/`](../custom_components/aseko_local/trackers/), like
+  the scheduled / manual backwash history, the clock offset and the
+  consumption counters.
+
+Either way the decoded value keeps its own field and entity (diagnostic, and
+created disabled when it mostly duplicates the derived one), and an existing
+entity key keeps the meaning users rely on.  Overriding inside the feature
+once hid how byte[21] and byte[78] behave, and a rule written for one model
+is easy to leave applying to another.  See
+[Derived values](decoding-by-device-profile.md#derived-values-the-user-facing-meaning-beside-the-value-as-sent).

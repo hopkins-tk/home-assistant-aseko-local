@@ -6,7 +6,7 @@ be bit 0x40 of byte[37] -- the Waterlevel setting.  One profile covers both.
 
 from __future__ import annotations
 
-from ....models import AsekoDeviceType
+from ....models import AsekoDeviceType, AsekoProfileFlag
 from ...evidence import assumed, confirmed, confirmed_on, not_located, observed
 from ...features import (
     AirTemperature,
@@ -31,7 +31,7 @@ from ...features import (
     FiltrationPeriod1Start,
     FiltrationPeriod2End,
     FiltrationPeriod2Start,
-    FiltrationRunning,
+    FiltrationRelay,
     FiltrationSchedule,
     FlocculantDoseTarget,
     FlocculantFlowRate,
@@ -129,7 +129,6 @@ HOME = Profile(
     features=_HOME_FEATURES,
     overrides={
         Configuration: "decode_v7_by_unit_type_byte",
-        FiltrationRunning: "decode_v7_menu_override",
         # four independent pump ports like OXY: algicide is bit 0x10, not the
         # 0x20 flocculant bit, which counted both chemicals for one pump
         AlgaecidePumpRunning: "decode_v7_oxy",
@@ -137,6 +136,7 @@ HOME = Profile(
         # algicide flow rate is not known
         AlgaecideFlowRate: "decode_v7_not_located",
     },
+    flags=frozenset({AsekoProfileFlag.MENU_BIT_SWITCHES_FILTRATION_OFF}),
     evidence={
         BackwashScheduleEnabled: observed(
             "byte[22] 0x10 set on serial 110128063 with backwash every 3 days (0x90); confirmed on an ASIN AQUA Salt (2026-09-13)"
@@ -197,8 +197,8 @@ HOME = Profile(
         StartupDelay: confirmed(
             "bytes 74-75 = 480 s vs '8 min' in Aseko Live, serial 110128063"
         ),
-        FiltrationRunning: confirmed(
-            "byte[29] 0x08 stays set under the override, so 0x04 wins (Issue #133)"
+        FiltrationRelay: confirmed(
+            "byte[29] 0x08; stays set while the pump is switched off by hand, which byte[37] 0x04 shows (Issue #133)"
         ),
         FiltrationSchedule: confirmed(
             "byte[37] 0x10 / 0x20, 0x01 / 0x11 / 0x31 on serial 110169464 (Issue #133); the values once read as firmware A (0x43 nonstop, 0x53 timer) are the same bits with Waterlevel (0x40) and Flow detection (0x02) set"

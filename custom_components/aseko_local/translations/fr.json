@@ -55,6 +55,9 @@
       "filtration_running": {
         "name": "Pompe de filtration en marche"
       },
+      "filtration_relay": {
+        "name": "Relais de filtration"
+      },
       "heating_running": {
         "name": "Chauffage actif"
       },
@@ -127,6 +130,9 @@
       "heating_allowed": {
         "name": "Chauffage autorisé"
       },
+      "heating_condition_met": {
+        "name": "Condition de chauffage remplie"
+      },
       "clock_out_of_sync": {
         "name": "Horloge désynchronisée"
       }
@@ -169,6 +175,9 @@
       },
       "chlorine_production": {
         "name": "Puissance de l'électrolyseur"
+      },
+      "chlorine_production_measured": {
+        "name": "Puissance de l'électrolyseur (mesurée)"
       },
       "electrode_polarity": {
         "name": "Direction de l'électrolyseur",

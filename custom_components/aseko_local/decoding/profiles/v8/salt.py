@@ -21,7 +21,7 @@ from ...features import (
     AlgaecideDoseTarget,
     AlgaecidePumpRunning,
     ChlorineFlowRate,
-    ChlorineProduction,
+    ChlorineProductionMeasured,
     ChlorinePumpRunning,
     Configuration,
     DosingDelay,
@@ -55,7 +55,7 @@ _NET_FEATURES = tuple(
 #: What a salt unit sends on top of the NET layout.
 _SALT_ONLY = (
     Salinity,
-    ChlorineProduction,
+    ChlorineProductionMeasured,
     ElectrolysisRunning,
     ElectrodePolarity,
     AlgaecidePumpRunning,
@@ -141,7 +141,7 @@ SALT = Profile(
             "ains[8] / 10 = 10.1 kg/m3 while the unit's display read 10.1 in "
             "the same minute (Issue #131, firmware 106)"
         ),
-        ChlorineProduction: confirmed(
+        ChlorineProductionMeasured: confirmed(
             "ains[9] = 19 and 20 g/h in captures their owner labelled 19 and "
             "20 g/h from the app, 0 with the electrolyser off (Issue #131)"
         ),

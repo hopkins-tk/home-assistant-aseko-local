@@ -127,7 +127,7 @@ Not the backwash flag.
 | `0x01` | `backwash_running` | assumed | Confirmed on SALT |
 | `0x02` | `refilling` | assumed | Confirmed on HOME and SALT |
 | `0x04` | `heating_running` | assumed | Same bit as HOME/SALT/OXY |
-| `0x08` | `filtration_running` | assumed | |
+| `0x08` | `filtration_relay` (→ `filtration_running`) | assumed | |
 | `0x20` | `flocculant_pump_running` | assumed | Only while a flocculant flow rate is configured |
 | `0x40` | `chlorine_pump_running` | assumed | Port may be chlorine or OXY Pure |
 | `0x80` | `ph_minus_pump_running` | assumed | |

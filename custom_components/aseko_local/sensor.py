@@ -249,6 +249,17 @@ SENSORS: list[AsekoSensorEntityDescription] = [
         value_fn=lambda device: device.chlorine_production,
     ),
     AsekoSensorEntityDescription(
+        key="chlorine_production_measured",
+        feature="chlorine_production_measured",
+        translation_key="chlorine_production_measured",
+        native_unit_of_measurement="g/h",
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        icon="mdi:lightning-bolt-outline",
+        value_fn=lambda device: device.chlorine_production_measured,
+    ),
+    AsekoSensorEntityDescription(
         key="electrolyzer_direction",
         feature="electrode_polarity",
         translation_key="electrode_polarity",

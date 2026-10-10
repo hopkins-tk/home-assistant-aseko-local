@@ -23,7 +23,7 @@ from ...features import (
     FiltrationPeriod1Start,
     FiltrationPeriod2End,
     FiltrationPeriod2Start,
-    FiltrationRunning,
+    FiltrationRelay,
     FiltrationSchedule,
     FlocculantDoseTarget,
     FlocculantFlowRate,
@@ -161,7 +161,7 @@ OXY = Profile(
         StartupDelay: observed(
             "bytes 74-75 = 240 s on the Winnetoux OXY; not compared with the app"
         ),
-        FiltrationRunning: confirmed("byte[29] 0x08 in every captured frame"),
+        FiltrationRelay: confirmed("byte[29] 0x08 in every captured frame"),
         FiltrationSchedule: observed(
             "byte[37] = 0x03 reads nonstop while the Winnetoux OXY ran filtration 24 h; no schedule transition captured"
         ),
