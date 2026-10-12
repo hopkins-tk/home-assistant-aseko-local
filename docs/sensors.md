@@ -1,5 +1,10 @@
 # Entity Reference
 
+> **Since v2.0.0 the per-value reference is generated:**
+> [support matrix](support_matrix.md), rendered from the device profiles, with
+> an evidence entry behind every mark. The table below is kept as the v7 / v8
+> parity overview it was written as; its entity names are the pre-2.0.0 ones.
+
 This document lists every entity exposed by `aseko_local`, with its
 support status on the v7 (binary 120-byte frame) and v8 (text frame)
 protocols. Status is checked against the source in `custom_components/aseko_local/`
@@ -121,7 +126,7 @@ Every pump in `AsekoDevice.installed_pumps` produces a pair of sensors:
 | CL pump running | `cl_pump_running` | ✅ | ❌ | V7 only. V8 SALT_NET has `fncs[2]=1` → CL pump structurally absent (decoder returns `None`). |
 | pH− pump running | `ph_minus_pump_running` | ✅ | ✅ | V7: byte 29 bit 7. V8: `outs[8]`. Universally present — never gated. |
 | pH+ pump running | `ph_plus_pump_running` | ✅ | ❌ | Not installed on any known v8 device. |
-| Algicide pump running | `algicide_pump_running` | ✅ | ✅ | V7: byte 29 bit 4 (SALT). V8: `outs[11]` for SALT_NET with fncs[6]=10. |
+| Algicide pump running | `algicide_pump_running` | ✅ | ✅ | V7: byte 29 bit 4 (SALT). V8: `outs[11]` for SALT_NET with fncs[6]=10. A Salt NET names the algicide entities "Algicide / ACO": its port doses Aseko ALGICID or the ACO stabiliser alike. |
 | Flocculant pump running | `floc_pump_running` | ✅ | ✅ | V8: `outs[11]` for SALT_NET with fncs[6]=18. Same physical port as algicide (decoder routes by `fncs[6]`). |
 | OXY pump running | `oxy_pump_running` | ✅ | ❌ | V7 OXY only. |
 | Water filling active | `water_filling_active` | ✅ | ❌ | V7 HOME/SALT only — byte 29 bit 0x02. |

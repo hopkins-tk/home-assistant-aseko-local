@@ -1,48 +1,29 @@
-# ASIN AQUA Home — Device Analysis
+# ASIN AQUA Home (v7) — Device Analysis
 
-**Model**: ASIN AQUA HOME (CLF variant)
-**Serial**: 110128063 (`0x06906bbf`)
-**Device type byte**: `0x02` → `UNIT_TYPE_HOME_CLF`
-**Source frame timestamp**: 2026-04-28 08:27:07
-**Ground truth**: Aseko Live app screenshots (Status, Consumption, Config pages)
+[Documentation](../README.md) / [Device analyses](README.md)
 
----
+> **Status:** core values checked against the Aseko Live app on one CLF unit (2026-04-28) plus settings bits from REDOX-unit diagnostics (Issues #110–#151); pump running bits, heating running and the algicide flow rate are still open.
+> **Profile:** [`profiles/v7/home.py`](../../custom_components/aseko_local/decoding/profiles/v7/home.py) · **Support:** [support matrix](../support_matrix.md)
+> **Evidence words** (`confirmed`, `confirmed on X`, `observed`, `assumed`, `not located`): see [evidence rules](../evidence-rules.md).
 
-## Firmware Revisions
+## 1. Device
 
-Two HOME v7 firmware revisions are observed in the wild. They use **different
-byte 37 layouts** for the filtration mode flag but share every other byte
-position. The two revisions are referred to throughout this document as
-**Firmware A** and **Firmware B**:
+- **Model:** ASIN AQUA HOME, in a CLF (free chlorine probe) and a REDOX variant.
+- **Pump ports:** 4 independent ports — pH−, chlorine (or OXY Pure on the same port), flocculant, algicide — the same layout as OXY Pure. Unlike SALT there is no shared third-pump port and no algicide/flocculant routing via `byte[37]` bit 7.
+- **Optional hardware / settings:** water level meter with refill valve, heating control (heat pump / electric heater), antifreeze, variable-speed filtration pump (Speck, Pentair, Hayward, Dab E.SWIM, Uwe EO PM), backwash valve.
+- **Identification on the wire:** v7 `byte[4]` unit type, exact sub-type: `0x02` = HOME CLF, `0x03` = HOME REDOX (Issue #110). One profile covers all HOME units (see §9 for the former firmware A/B split).
+- **Sources:**
+  - Unit serial 110128063 (`0x06906bbf`), HOME CLF, frame 2026-04-28 08:27:07, compared with the Aseko Live app (Issue #110; domin211, DomSchCoding).
+  - Serial 110175608, HOME REDOX (`byte[4]` = `0x03`), @dtpugh diagnostics: Issues #134, #135, #136, #137, #139, #151.
+  - Serial 110169464, HOME, @dtpugh's four Issue #133 diagnostics (24 h nonstop, P1 only, P1 & P2, OFF manual).
+  - Serial 110071590 (chlorine flow rate, Issues #110/#115).
+  - Cross-checks on an ASIN AQUA Salt (settings toggled one at a time, 2026-09-11..14) and on OXY/NET frames.
 
-| | Firmware A | Firmware B |
-|---|---|---|
-| Serial (known) | 110128063 (`0x06906bbf`) | 110169464 (`0x06912578`) |
-| | 110175608* (`0x06912578`, REDOX) | |
-| `byte[37]` mode values | high nibble `0x4` / `0x5` | high nibble `0x0` / `0x1` / `0x3` |
-| Known states | nonstop 24h, timer, transitional, | nonstop 24h, P1, P1&P2, each ± bit 0x04, transitional |
-| | heating ON, heating OFF, unconfigured | |
-| Source | This file (Issue #110, #135) | [Issue #133](../temp/Issue-133.md) |
-| Period 2 enable flag | bit 5 (`0x20`) — same as firmware B | bit 5 (`0x20`) |
-| Manual OFF signal | not present in captured frames | bit 2 (`0x04`) — see `byte[37]` table |
-| Heating control flag | bit 3 (`0x08`) — master enable | (n/o) |
-| Antifreeze flag | bit 7 (`0x80`) — master enable (Issue #136) | (n/o) |
+## 2. Frame structure
 
-\* Serial 110175608 (`byte[4]` = `0x03`, REDOX HOME) is the source of the heating-control findings ([Issue #135](https://github.com/hopkins-tk/home-assistant-aseko-local/issues/135)).
+v7: 120 bytes in one TCP payload, 3 × 40-byte segments. Each segment header: bytes `0–3` serial (big-endian), `4` unit type, `5` segment marker (`0x01` / `0x03` / `0x02`), `6–11` timestamp (YY MM DD hh mm ss). Bytes 39 and 118–119 may be a checksum (not identified).
 
-The two revisions are **disjoint by high nibble of byte 37**, so a single
-byte check distinguishes them without resorting to the serial number.
-Where a fact in this document differs between the two revisions (only
-`byte[37]` today), both values are listed side by side in the
-*byte[37] — Filtration mode flag* table under "Device Specifications"
-below. All other byte positions are identical across A and B.
-
----
-
-## Raw Frame (120 bytes)
-
-The Aseko protocol sends 3×40-byte segments in a single TCP payload.
-Each segment header: `[0-3]` serial (big-endian), `[4]` device type, `[5]` segment marker (`0x01 / 0x03 / 0x02`), `[6-11]` timestamp.
+Representative frame, serial 110128063, 2026-04-28 08:27:07:
 
 ```
 Seg1 (bytes   0–39): 06 90 6b bf  02 01  1a 04 1c 08 1b 07
@@ -55,492 +36,298 @@ Seg3 (bytes 80–119): 06 90 6b bf  02 02  1a 04 1c 08 1b 07
                      00 3c 00 3c 00 3c 00 3c 00 0a 0d 21 37 64 00 f0 14 02 58 0f 0f 0f 1e 14 ff bc 02 71
 ```
 
----
-
-## Byte-by-Byte Analysis
-
-### Segment 1 (bytes 0–39) — real-time sensor data
-
-| Byte(s) | Hex      | Decimal | Field                    | Decoded value        | App value     | Status |
-|---------|----------|---------|--------------------------|----------------------|---------------|--------|
-| 0–3     | `06906bbf` | —     | Serial number (big-endian) | 110,128,063         | —             | ✓      |
-| 4       | `02`     | 2       | Device type              | HOME (CLF variant)   | —             | ✓      |
-| 5       | `01`     | 1       | Segment marker           | Segment 1            | —             | ✓      |
-| 6–11    | `1a 04 1c 08 1b 07` | — | Timestamp           | 2026-04-28 08:27:07  | —             | ✓      |
-| 12      | `00`     | 0       | **Dosing-warning bitmask** (`0x20`=disinfection, `0x40`=pH) | none           | —             | ✓ (Issue #134/#151) |
-| 13      | `28`     | 40      | **Alarm bitmask** (`0x01`=disinfection, `0x02`=pH, `0x04`=no flow, `0x08`=rapid pH) | low nibble `0x08` set → rapid-pH flag (unconfirmed) | — | ✓ (Issue #151) |
-| 14–15   | `0275`   | 629     | pH (÷100)                | **6.29**             | 6.56†         | ✓†     |
-| 16–17   | `0000`   | 0       | Cl free (÷100)           | **0.00 mg/l**        | 0.00 mg/l     | ✓      |
-| 18–19   | `0000`   | 0       | Unused (no REDOX probe)  | —                    | —             | —      |
-| 20–21   | `0002`   | 2       | Cl free mV (big-endian)  | **2 mV**             | —             | ✓      |
-| 22–23   | `90fe`   | 37118   | Unknown / VSP pump (see ¶) | —                 | —             | ¶      |
-| 24      | `70`     | 112     | Unknown                  | —                    | —             | ?      |
-| 25–26   | `017b`   | 379     | Water temp (÷10)         | **37.9°C**           | 38.2°C†       | ✓†     |
-| 27      | `08`     | 8       | **Water level (cm)**     | **8 cm**             | (level meter disabled on this device) | ✓     |
-| 28      | `00`     | 0       | Water flow to probes     | **False** (≠ 0xAA)   | NO            | ✓      |
-| 29      | `00`     | 0       | Actuator bits            | all pumps stopped    | STOP          | ✓      |
-| 30–31   | `ffff`   | —       | UNSPECIFIED / padding    | —                    | —             | —      |
-| 32–36   | `00…00`  | 0       | Unknown                  | —                    | —             | ?      |
-| 37      | `43`     | 67      | **Filtration mode flag (firmware A)** | see note §  | NONSTOP 24H    | ✓     |
-| 38      | `0a`     | 10      | Unknown                  | —                    | —             | ?      |
-| 39      | `85`     | 133     | Unknown (checksum?)      | —                    | —             | ?      |
-
-† pH 6.29 vs 6.56 and water temp 37.9 vs 38.2 are explained by different timestamps (frame: 08:27:07, screenshot: later that day). Not a decoding bug.
-
-§ **byte[37] = `0x43`**: HOME filtration mode flag, firmware A. The value `0x43` means *FILTRATION NONSTOP 24H* here. HOME devices have **independent pump ports** for flocculant and algicide (same layout as OXY Pure), so the SALT-style "shared third-pump port" routing rule (bit 7 = algicide) does **not** apply. The full encoding table (firmware A vs B) is in the *Device Specifications → byte[37]* section below.
-
-¶ **byte[22] bit 3 (0x08)**: On devices with a variable-speed filtration pump (serial 110175608 REDOX HOME, Issue #137), `0x83` → pump OFF, `0x8b` → pump ON (any brand). Decoded as `vsp_pump_running` — see *Variable-speed pump* section below. On this CLF frame (no VSP fitted) the byte carries an unknown value (`0x90fe`).
-
----
-
-### Segment 2 (bytes 40–79) — setpoints and schedule
-
-| Byte(s) | Hex      | Decimal | Field                         | Decoded value  | App value         | Status |
-|---------|----------|---------|-------------------------------|----------------|-------------------|--------|
-| 40–43   | `06906bbf` | —     | Serial (repeated)             | 110,128,063    | —                 | ✓      |
-| 44      | `02`     | 2       | Device type (repeated)        | HOME           | —                 | ✓      |
-| 45      | `03`     | 3       | Segment marker                | Segment 2      | —                 | ✓      |
-| 46–51   | `1a 04 1c 08 1b 07` | — | Timestamp (repeated)       | 2026-04-28 08:27:07 | —            | ✓      |
-| 52      | `46`     | 70      | required_ph (÷10)             | **7.0**        | 7.0               | ✓      |
-| 53      | `03`     | 3       | required_cl_free (÷10)        | **0.3 mg/l**   | 0.3               | ✓      |
-| 54      | `0a`     | 10      | required_floc                 | **10 ml/h**    | 10 ml/h           | ✓      |
-| 55      | `19`     | 25      | required_water_temperature    | 25°C           | — (disabled)      | ⚠ Open Item 3 |
-| 56–57   | `08 00`  | —       | start1                        | 08:00          | last-configured   | ✓     |
-| 58–59   | `10 00`  | —       | stop1                         | 16:00          | last-configured   | ✓     |
-| 60–61   | `12 00`  | —       | start2                        | 18:00          | last-configured   | ✓     |
-| 62–63   | `16 00`  | —       | stop2                         | 22:00          | last-configured   | ✓     |
-| 64–65   | `027c`   | 636     | Unknown                       | —              | —                 | ?      |
-| 66–67   | `017b`   | 379     | Unknown (= water temp raw)    | —              | —                 | ?      |
-| 68      | `03`     | 3       | backwash_every_n_days         | **3 days**     | every 3 days      | ✓      |
-| 69–70   | `15 00`  | —       | backwash_time                 | **21:00**      | starts at 21:00   | ✓      |
-| 71      | `0c`     | 12      | backwash_duration (×10 s)     | **120 s = 2 min** | takes 02:00 min | ✓    |
-| 72      | `00`     | 0       | required_algicide             | **0 ml/m³/day** | 0 ml/m³/day     | ✓      |
-| 73      | `28`     | 40      | Unknown                       | —              | —                 | ?      |
-| 74–75   | `01e0`   | 480     | delay_after_startup (s)       | **480 s = 8 min** | 8 min          | ✓      |
-| 76      | `2a`     | 42      | Unknown                       | —              | —                 | ?      |
-| 77      | `30`     | 48      | Unknown                       | —              | —                 | ?      |
-| 78      | `a0`     | 160     | Unknown                       | —              | —                 | ?      |
-| 79      | `d8`     | 216     | Unknown                       | —              | —                 | ?      |
-
-> **Schedule vs. mode flag**: bytes 56-63 always carry the last-configured
-> schedule (the unit does not clear them when switching to NONSTOP 24h). The
-> actual mode is reported separately in `byte[37]`. See the *byte[37]
-> — Filtration mode flag* section under "Device Specifications" below for the
-> two encodings.
-
----
-
-### Segment 3 (bytes 80–119) — pool parameters and flowrates
-
-| Byte(s) | Hex      | Decimal | Field                        | Decoded value  | App value         | Status |
-|---------|----------|---------|------------------------------|----------------|-------------------|--------|
-| 80–83   | `06906bbf` | —     | Serial (repeated)            | 110,128,063    | —                 | ✓      |
-| 84      | `02`     | 2       | Device type (repeated)       | HOME           | —                 | ✓      |
-| 85      | `02`     | 2       | Segment marker               | Segment 3      | —                 | ✓      |
-| 86–91   | `1a 04 1c 08 1b 07` | — | Timestamp (repeated)      | 2026-04-28 08:27:07 | —            | ✓      |
-| 92–93   | `003c`   | 60      | pool_volume (big-endian)     | **60 m³**      | 60 m³             | ✓      |
-| 94–95   | `003c`   | 60      | max_filling_time (big-endian) | **60 min**    | —                 | ✓      |
-| 96      | `00`     | 0       | Unknown                      | —              | —                 | ?      |
-| 97      | `3c`     | 60      | flowrate_ph_plus? (unconf.)  | —              | —                 | ?      |
-| 98      | `00`     | 0       | Unknown                      | —              | —                 | ?      |
-| 99      | `3c`     | 60      | flowrate_chlor               | **60 ml/min**  | Chlor Pure listed | ✓      |
-| 100     | `00`     | 0       | Unknown                      | —              | —                 | ?      |
-| 101     | `0a`     | 10      | **flowrate_floc**            | **10 ml/min**  | Floc+c listed     | ✓ (fixed) |
-| 102     | `0d`     | 13      | **water_level_low_alarm (cm)** | **13 cm**    | Low alarm         | ✓ (Issue #110) |
-| 103     | `21`     | 33      | **flowrate_algicide**        | **33 ml/min**  | Algicide listed   | ✓ (fixed) |
-| 104     | `37`     | 55      | **water_level_filling_off (cm)** | **55 cm**  | Filling OFF       | ✓ (Issue #110) |
-| 105     | `64`     | 100     | **water_level_high_alarm (cm)** | **100 cm**  | High alarm        | ✓ (Issue #110) |
-| 106–107 | `00f0`   | 240     | delay_after_dose (s)         | **240 s = 4 min** | 4 min          | ✓      |
-| 108     | `14`     | 20      | Unknown                      | —              | —                 | ?      |
-| 109–110 | `0258`   | 600     | Unknown                      | —              | —                 | ?      |
-| 111     | `0f`     | 15      | Unknown                      | —              | —                 | ?      |
-| 112     | `0f`     | 15      | **ph_minus_concentration**   | **5%**         | **5%**           | ✓ (Issue #139) |
-| 113     | `0f`     | 15      | Unknown                      | —              | —                 | ?      |
-| 114     | `1e`     | 30      | Unknown                      | —              | —                 | ?      |
-| 115     | `14`     | 20      | Unknown                      | —              | —                 | ?      |
-| 116     | `ff`     | —       | UNSPECIFIED / padding        | —              | —                 | —      |
-| 117     | `bc`     | 188     | Unknown                      | —              | —                 | ?      |
-| 118–119 | `0271`   | 625     | Unknown (checksum?)          | —              | —                 | ?      |
-
-Note on **bytes 94–95**: `max_filling_time` reads bytes[94:96] as a big-endian 16-bit value = `0x003c` = 60. `flowrate_ph_minus` independently reads byte[95] = `0x3c` = 60. They overlap but coincidentally produce the same result because the high byte (94) is 0x00. If byte[94] ever becomes non-zero the max_filling_time would be inflated; however for HOME this is expected to fit in one byte (max ~255 min).
-
----
-
-## Dosing warnings & alarms (bytes 12 / 13)
-
-HOME devices report dosing safety faults in two adjacent bytes. The decoder reads
-them for **all** device types (`_fill_alarm_data` in `aseko_decoder.py`):
-
-| Binary sensor | byte[12] bit | byte[13] bit |
-|---|---|---|
-| Too many doses of disinfection (`alarm_orp_too_many_doses`) | `0x20` | `0x01` |
-| Too many doses of pH (`alarm_ph_too_many_doses`) | `0x40` | `0x02` |
-| No flow to probes (`alarm_no_flow_to_probes`) | — | `0x04` |
-| Rapid pH change (`alarm_rapid_ph_change`) | — | `0x08` (unconfirmed) |
-
-Confirmed by @dtpugh's diagnostics on HOME serial 110175608 (byte[4] = `0x03`):
-
-* **Issue #134** (2026-07-05), before/after clearing on the controller: both
-  warnings active → byte[12] = `0x60`; pH only → `0x40`; cleared → `0x00`.
-  byte[13] stayed `0x00`.
-* **Issue #151** (2026-08-06/08): chlorine/disinfection "Maximum disinfection
-  dose exceeded" → byte[13] = `0x01` (byte[12] = `0x00`); pH fault → byte[12] =
-  `0x40`; cleared → both `0x00`.
-
-The disinfection fault was observed in byte[12] `0x20` (July) **and** in byte[13]
-`0x01` (August) — likely a firmware change on the Home. The decoder ORs both
-paths so either encoding is detected. The byte[13] `0x02` = pH mapping is
-**inferred** (symmetric to `0x01`; @dtpugh expected `0x02` for a pH fault) and
-still lacks a direct frame capture. The same disinfection fault maps to `ins[12]`
-bit `0x80` on v8 frames (Issue #151, `aseko_decoder_v8.py`), so both protocols
-share the `alarm_orp_too_many_doses` sensor.
-
----
-
-## Decoded Values vs Ground Truth Summary
-
-| Field                     | Decoded          | Aseko Live        | Match |
-|---------------------------|------------------|-------------------|-------|
-| pH                        | 6.29             | 6.56              | ✓ (Δt)|
-| Cl free                   | 0.00 mg/l        | 0.00 mg/l         | ✓     |
-| Water temperature         | 37.9°C           | 38.2°C            | ✓ (Δt)|
-| Water flow to probes      | False            | NO                | ✓     |
-| Filtration pump running   | False            | STOP              | ✓     |
-| filtration_schedule       | NONSTOP_24H      | NONSTOP 24H       | ✓ (Issue #110) |
-| service_menu_open         | False            | (nobody at the unit) | ✓ |
-| water_level               | 8 cm             | --- (level meter disabled) | ✓ (frame value) |
-| water_level_low_alarm     | 13 cm            | (config)          | ✓ (Issue #110) |
-| water_level_filling_on    | 33 cm            | (config)          | ✓ (Issue #110) |
-| water_level_filling_off   | 55 cm            | (config)          | ✓ (Issue #110) |
-| water_level_high_alarm    | 100 cm           | (config)          | ✓ (Issue #110) |
-| water_filling_active      | False            | --- (valve not active) | ✓ (Issue #100) |
-| required_ph               | 7.0              | 7.0               | ✓     |
-| required_cl_free          | 0.3 mg/l         | 0.3               | ✓     |
-| required_floc             | 10 ml/h          | 10 ml/h           | ✓ (fixed) |
-| required_algicide         | 0 ml/m³/day      | 0 ml/m³/day       | ✓ (fixed) |
-| required_water_temperature | 25°C            | --- (disabled)    | ⚠ Open Item 3 |
-| Filtration times          | 08:00–16:00 / 18:00–22:00 (last-configured) | NONSTOP 24H | ✓ (schedule from `byte[37]`, time bytes always present) |
-| backwash_every_n_days     | 3                | every 3 days      | ✓     |
-| backwash_time             | 21:00            | starts at 21:00   | ✓     |
-| backwash_duration         | 120 s            | 02:00 min         | ✓     |
-| pool_volume               | 60 m³            | 60 m³             | ✓     |
-| delay_after_startup       | 480 s (8 min)    | 8 min             | ✓     |
-| delay_after_dose          | 240 s (4 min)    | 4 min             | ✓     |
-| flowrate_ph_minus         | 60               | pH- listed        | ✓     |
-| flowrate_chlor            | 60               | Chlor Pure listed | ✓     |
-| flowrate_floc             | 10               | Floc+c listed     | ✓     |
-| flowrate_algicide         | 33               | Algicide listed   | ✓ (fixed) |
-| heating_control_enabled   | True / False     | — (app setting)   | ✓ (Issue #135, serial 110175608 REDOX HOME) |
-| antifreeze_enabled        | True / False     | — (app setting)   | ✓ (Issue #136, serial 110175608 REDOX HOME) |
-| vsp_pump_running          | True / False     | — (app setting)   | ✓ (Issue #137, serial 110175608 REDOX HOME) |
-| ph_minus_concentration    | 5%               | 5%                | ✓ (Issue #139, serial 110175608 REDOX HOME) |
-
----
-
-## Device Specifications
-
-### Pump ports
-
-HOME has **4 independent pump ports** (same layout as OXY Pure), unlike SALT
-which has a shared third-pump port. There is no SALT-style algicide/flocculant
-routing via `byte[37]` bit 7.
-
-| Port  | Pump                | `flowrate_*` byte | `flowrate_*` value | `byte[29]` bit (uncertain) | `byte[29]` mask |
-|-------|---------------------|-------------------|--------------------|-----------------------------|-----------------|
-| 1     | pH− (Ph minus)      | `byte[95]`        | `flowrate_ph_minus`  | bit 7                       | `0x80`          |
-| 2     | Chlorine / OXY Pure | `byte[99]`        | `flowrate_chlor`     | bit 6                       | `0x40`          |
-| 3     | Flocculant          | `byte[101]`       | `flowrate_floc`      | bit 5                       | `0x20`          |
-| 4     | Algicide            | `byte[103]`       | `flowrate_algicide`  | bit 4 (PROFI/SALT) / bit 5 (HOME, shared) | `0x20` |
-
-> **Note on cl/oxy routing**: the chlorine pump port can be configured as
-> Chlorine OR OXY Pure (same physical port, same bit in `byte[29]`). The
-> routing byte is not yet confirmed from frames — see Open Item 7.
-
-### Setpoints
-
-| Field                   | Byte(s)   | Unit             | Notes |
-|-------------------------|-----------|------------------|-------|
-| `required_ph`           | `byte[52]`| (raw ÷ 10)        |       |
-| `required_cl_free`      | `byte[53]`| mg/L (raw ÷ 10)   | HOME CLF variant only |
-| `required_redox`        | `byte[53]`| mV (raw × 10)     | HOME REDOX variant only |
-| `required_floc`         | `byte[54]`| ml/h              | Same byte position as SALT algicide; gated by `byte[37] != 0xFF` |
-| `required_algicide`     | `byte[72]`| ml/m³/day         | HOME-only, same byte position as OXY Pure |
-| `required_water_temperature` | `byte[55]` | °C            | Disabled on this device — see Open Item 3 |
-| `ph_minus_concentration`     | `byte[112]`| %             | pH⁻ acid concentration (Issue #139). HOME-only — gated on device type. |
-
-### Schedule (bytes 56-63)
-
-| Field   | Byte(s)   | Decoded      | Notes |
-|---------|-----------|--------------|-------|
-| `start1` | `byte[56:58]` | HH:MM     | Gated on `FILTRATION_TYPES` (HOME in) |
-| `stop1`  | `byte[58:60]` | HH:MM     | Gated on `FILTRATION_TYPES` |
-| `start2` | `byte[60:62]` | HH:MM     | Gated on `FILTRATION_TYPES` only — see Issue #133 |
-| `stop2`  | `byte[62:64]` | HH:MM     | Gated on `FILTRATION_TYPES` only — see Issue #133 |
-
-### `byte[37]` — Filtration mode flag + heating control (two encodings observed)
-
-> See the **Firmware Revisions** section at the top of this document for
-> background on why two encodings exist. The two are **disjoint by high
-> nibble** of `byte[37]` and therefore distinguishable on a single byte.
-> Working notes for firmware B: [docs/temp/Issue-133.md](../temp/Issue-133.md).
-
-HOME v7 firmware comes in two revisions that use **disjoint** byte 37 layouts.
-Both revisions are confirmed live (firmware A: serial 110128063, byte 4 = 0x02;
-firmware B: serial 110169464, byte 4 = 0x03 — see [Issue #133](../temp/Issue-133.md)).
-
-| Mode                          | Firmware A | Firmware B | Binary (A / B)               |
-|-------------------------------|------------|------------|------------------------------|
-| 24h nonstop                   | `0x43`     | `0x01`     | `0100_0011` / `0000_0001`    |
-| Timer (P1)                    | `0x53`*    | `0x11`     | `0101_0011` / `0001_0001`    |
-| Timer (P1 & P2)               | `0x53`*    | `0x31`     | `0101_0011` / `0011_0001`    |
-| OFF (manual)                  | (n/o)      | `0x35`     | — / `0011_0101`              |
-| Transitional                  | `0x47` / `0x57` | (n/o) | `0100_0111` / `0101_0111` / — |
-| Heating ON (nonstop)†         | `0x49`     | (n/o)      | `0100_1001` / —              |
-| Heating OFF (nonstop)†        | `0x41`     | (n/o)      | `0100_0001` / —              |
-| Heating OFF (initial/unconf.)† | `0x45`    | (n/o)      | `0100_0101` / —              |
-| Antifreeze ON (nonstop)†‡     | `0x81`     | (n/o)      | `1000_0001` / —              |
-
-† Bit 1 is clear (`0x02`) in all three heating-health values. When `byte[37]` & `0x40` is set
-  but bit-1 is clear, the decoder falls back to a schedule derived from the
-  filtration times (see `_fill_filtration_schedule` in `aseko_decoder.py`), using
-  the time bytes and the `PERIOD2_ENABLED_MASK` (`0x20`).
-  `heating_control_enabled` is decoded separately from bit 3 (`0x08`).
-
-  Both this fallback and the firmware-A branch above it are **HOME-only**.
-  Bit `0x40` only discriminates the two encodings here: SALT sets it in every
-  frame, and reports the filtration times unchanged in every mode, so for a
-  SALT the fallback could only ever return one constant answer.
-
-‡ When antifreeze is ON, `byte[55]` drops from the normal heating setpoint
-  (eg. 27°C) to the antifreeze setpoint (e.g. 4°C, 5°C or 9°C whatever user sets).
-  `antifreeze_enabled` is decoded from bit 7 (`0x80`), independent of
-  `heating_control_enabled` (bit 3).
-
-\* Firmware A cannot distinguish P1-only from P1&P2 from `byte[37]` alone — both
-share the value `0x53`. The decoder uses the existing `FILTRATION_PERIOD2_ENABLED_MASK = 0x20`
-(bit 5) to separate them, treating `0x53` as P1&P2 by default. The actual distinction
-on firmware A comes from the per-period enable bit, not the mode flag.
-
-(n/o = not observed in captured frames.)
-
-**Firmware B bit semantics**:
-
-| Bit  | Mask  | Meaning                                       |
-|------|-------|-----------------------------------------------|
-| 0    | `0x01`| Filtration present (always set)               |
-| 2    | `0x04`| Manual override active (user toggled OFF)     |
-| 4    | `0x10`| Period 1 enabled                              |
-| 5    | `0x20`| Period 2 enabled                              |
-
-Mode decoding on firmware B:
-- **24h nonstop** ⇔ `(byte[37] & 0x30) == 0`
-- **Timer mode** ⇔ `(byte[37] & 0x30) != 0`
-- **Manual override** ⇔ `(byte[37] & 0x04) != 0`
-
-**Firmware A bit semantics** (Issue #135, #136, serial 110175608 REDOX HOME):
-
-| Bit | Mask  | Meaning                                                    |
-|-----|-------|------------------------------------------------------------|
-| 7   | `0x80`| Antifreeze master enable (Issue #136)                      |
-| 6   | `0x40`| Firmware A high-nibble indicator (always set)              |
-| 3   | `0x08`| Heating control master enable                              |
-| 2   | `0x04`| Unknown / initial-unconfigured indicator (set on unconfigured `0x45`) |
-| 1   | `0x02`| Transitional edit in progress (set on `0x47` / `0x57`)     |
-| 0   | `0x01`| Filtration present (always set in known nonstop/timer)     |
-
-Filtration mode decoding on firmware A:
-- **Known modes**: `0x43` (nonstop), `0x53` (timer), `0x47`/`0x57` (transitional → `None`)
-- **Heating overlay values** (`0x41`, `0x45`, `0x49`) have bit 1 clear — the decoder
-  falls back to schedule-derived filtration mode for these.
-- **Heating control**: bit 3 (`0x08`) is gated on `AsekoDeviceType.HOME` in
-  `_fill_heating_demand()` and decoded into `heating_control_enabled`.
-- **Antifreeze**: bit 7 (`0x80`) is decoded as `antifreeze_enabled` (Issue #136).
-  When active, `byte[55]` holds the antifreeze setpoint (e.g. 4°C, 5°C, 9°C)
-  instead of the normal heating setpoint.
-
-**Note on `0x43` (firmware A)**: treat this as "consistent with NONSTOP 24H" rather
-than "confirmed NONSTOP 24H active". A frame captured in May 2026 from
-mannekung's device (after switching to NONSTOP 24H) still showed `0x53` (timer)
-with the Aseko app in "Suche" (search) mode — see [Issue #110 frame
-discussion](https://github.com/hopkins-tk/home-assistant-aseko-local/issues/110).
-
-**Note on `0x35` (firmware B, manual OFF)**: when this value appears, `byte[29]`
-bit 3 (`filtration_pump_running`) is still set in the frame — the firmware does
-not clear the schedule-driven bit on manual override. The decoder compensates
-by short-circuiting `filtration_pump_running` to `False` whenever
-`service_menu_open is True`.
-
-This override stays **HOME-only**, and SALT captures are now the reason why
-rather than just a lack of evidence: there the same bit marks the settings
-menu being open, which says a person is at the unit and nothing about what
-they did — they may equally have switched the pump *on*.  Forcing it off
-would invent a state the unit never reported.  See
-`salt_device_analysis.md` §byte[37] – filtration mode and schedule.
-
-Whether HOME's bit is literally the same menu flag is **unverified**: the
-four Issue #133 frames were downloaded one per mode, so a HOME unit going
-quiet the way SALT does would not have shown up in them.  If it does, the
-override here is reading a menu session rather than a standing override.
-
-**Note on Period 2 schedule bytes (Issue #133)**: All Aseko devices in
-`FILTRATION_TYPES` (SALT, HOME, OXY, PROFI) keep sending the last-configured
-`start2`/`stop2` times in bytes 60-63 even after the user disables Period 2
-in the controller UI. The controller never clears these bytes — they are
-treated as the device's "last-known schedule" and the active/inactive
-state is carried separately in `byte[37]` bit 5 (`0x20`) for HOME firmware
-A/B and SALT/OXY, or in the schedule-byte presence for byte[37] = 0xFF.
-Pre-fix, the decoder used `byte[37]` bit 0x20 to gate `start2`/`stop2` on
-None for any device where the enable flag was clear, which caused
-already-registered entities to flip to "unknown" when the user toggled
-the controller back from "P1 & P2" to "P1 only" (the entity registry
-protects the entity, but the value is read as `None`).  Post-fix, bytes
-60-63 are read unconditionally for any device in `FILTRATION_TYPES` (so
-`start2`/`stop2` stay populated and the entity shows the last-configured
-time); the `filtration_schedule` sensor separately reports `TIMER_PERIOD_1`
-to tell the user that Period 2 is inactive.  This behaviour was
-verified against the four diagnostic files from
-[Issue #133](../temp/Issue-133.md) (serial 110169464, ASIN AQUA Home
-firmware B): bytes 60-63 stay populated in all four modes (24h nonstop,
-P1 only, P1 & P2, OFF manual).  The decoder applies the same logic to
-SALT/OXY/PROFI for two reasons:
-
-1.  SALT and OXY share the same protocol layout for bytes 60-63, and
-    `byte[37]` bit 0x20 is the documented enable flag on those devices.
-    There is no protocol-level reason to believe they clear the bytes
-    when Period 2 is disabled.
-2.  PROFI has the same byte layout but no live frame has been captured
-    that toggles Period 2 on/off; the same fix prevents a potential
-    regression if a user reports the same "unknown entity" symptom on
-    PROFI later.
-
-NET is excluded because it has no filtration output at all and is
-not in `FILTRATION_TYPES`.
-
-### `byte[29]` — Actuator bitmask (HOME)
-
-Bit positions in `byte[29]` for HOME pump states. The masks in
-`ACTUATOR_MASKS[HOME]` are placeholders — they match OXY/NET but the per-pump
-bits for HOME-specific pumps (algicide, flocculant) are **not yet confirmed**
-by live capture (see Open Item 7).
-
-| Bit  | Mask  | Field                       | Confidence |
-|------|-------|-----------------------------|------------|
-| 0    | `0x01`| backwash valve relay        | ✓ confirmed (HOME/SALT/OXY all use this bit) |
-| 1    | `0x02`| water-filling active        | ✓ confirmed (NET/NOT-HOME, see Issue #100)    |
-| 2    | `0x04`| heating active              | ⚠ unconfirmed — see Open Item 9                |
-| 3    | `0x08`| filtration pump running     | ✓ confirmed (all FILTRATION_TYPES)            |
-| 4    | `0x10`| algicide pump running       | see Open Item 7        |
-| 5    | `0x20`| flocculant pump running     | see Open Item 7        |
-| 6    | `0x40`| cl pump running             | see Open Item 7        |
-| 7    | `0x80`| pH− pump running            | see Open Item 7        |
-
-### `byte[29]` vs `service_menu_open` (firmware B manual OFF)
-
-Cross-frame analysis of @dtpugh's four firmware B frames (24h nonstop, P1 only,
-P1 & P2, OFF manual) shows that `byte[29]` bit 3 stays set in **all four**
-frames — including the OFF frame. The override state lives in `byte[37]` bit 2
-(firmware B only, value `0x35`), not in `byte[29]`. The decoder compensates for
-this HOME-only behaviour in `_fill_consumable_data` (see `_fill_filtration_schedule`
-in `aseko_decoder.py`).
-
-Bit 2 is decoded into `service_menu_open` (a plain bool) and the schedule bits
-into `filtration_schedule`.  They are unrelated facts sharing a byte: one says
-somebody is at the unit, the other what it runs when nobody is.
-
-### `byte[22]` — Variable-speed filtration pump (Issue #137)
-
-Some HOME REDOX devices (serial 110175608) support a variable-speed filtration
-pump. The brand can be configured in the Aseko app (Speck, Pentair, Hayward,
-Dab E.SWIM, Uwe EO PM).
-
-**byte[22] bit 3 (0x08)** reflects the pump ON/OFF state:
-- `0x83` (`1000_0011`) → pump OFF
-- `0x8b` (`1000_1011`) → pump ON (any brand)
-
-The field is decoded as `vsp_pump_running` and gated on `AsekoDeviceType.HOME` in
-`_fill_vsp_pump()` — other device types (SALT, OXY, PROFI, NET) leave it `None`.
-
-**byte[78]** changes with the brand selection but is not a unique brand ID:
-
-| Brand | byte[78] hex | byte[78] dec |
-|-------|--------------|--------------|
-| OFF / Speck / Uwe EO PM | `0x22` | 34 |
-| Pentair / Dab E.SWIM | `0x26` | 38 |
-| Hayward | `0x2a` | 42 |
-
-Speck and Uwe share the same value as OFF, suggesting byte[78] is a
-**pump parameter** (speed/power class) rather than a brand identifier. The
-brand selection itself may be stored only in the Aseko cloud/app, not in the
-120-byte frame — see Open Item 11.
-
----
-
-## Open Items
-
-| # | Description |
-|---|-------------|
-| 3 | `required_water_temperature` vs app "---" — partially resolved by Issue #135: `byte[55]` is confirmed as the heating setpoint on serial 110175608 (REDOX HOME, heating ON frame). A frame from a device where the app actively shows a target temperature (not "---") would further validate this. |
-| 7 | `byte[29]` per-pump bits for HOME (algicide, flocculant, cl, pH−) are unconfirmed. The masks in `ACTUATOR_MASKS[HOME]` are placeholders matching OXY/NET. Capturing frames with a single HOME pump running (e.g. algicide only) would pin down the per-pump bit. Until then, `algicide_pump_running` and `floc_pump_running` may report incorrectly on HOME. |
-| 8 | `max_filling_time` overlap with `flowrate_ph_minus` (both use `byte[95]`). If `byte[94]` ever becomes non-zero, `max_filling_time` is inflated. Only a frame with a non-zero `byte[94]` would prove or disprove the assumption. |
-| 9 | `heating_active` binary sensor (`byte[29]` bit `0x04`) — needs a frame captured while the heat pump / electric heater is actually running. The `heating_control_enabled` field (byte[37] bit 3) is the **master enable**, separate from the actual heating output state in byte[29] bit 2. A frame with `byte[29]` bit 2 set would confirm this as the running-state indicator. |
-| 10 | Bytes 31, 38, 65 in the firmware B OFF frame all rise by ~1 (0x00→0x02, 0x02→0x03, 0xa3→0xa4) — possible additional "manual override active" sub-flags, not used by the decoder today. Single observation, no meaning assigned. |
-| 11 | `byte[78]` pump brand correlation (Issue #137): Speck and Uwe EO PM share `0x22` (same as OFF), Pentair and Dab E.SWIM share `0x26`. Needs a diagnostic captured while switching between two same-value brands (e.g. Speck → Uwe) without turning the pump off to confirm whether byte[78] is a brand ID or a pump parameter. |
-
----
-
-## Test Coverage
-
-Tests for the HOME decoder live in `tests/test_aseko_decoder.py`:
-
-| Test | Covers |
-|------|--------|
-| `test_decode_home` | End-to-end HOME REDOX frame decoding, including schedule + max_filling_time |
-| `test_decode_home_clf_real_frame` | Issue #110: real HOME CLF frame with `max_filling_time = 60` |
-| `test_decode_home_independent_flowrates` | Issue #115: HOME reads `byte[101]` and `byte[103]` independently of `byte[37]` |
-| `test_decode_home_flowrates_unspecified` | 0xFF on flowrate bytes → `None` (pump not installed) |
-| `test_decode_home_algicide_pump_running` | Issue #115: `algicide_pump_running` binary sensor is registered |
-| `test_decode_home_floc_pump_running_independent` | HOME reports `floc_pump_running` correctly when only floc pump is installed |
-| `test_filtration_schedule_new_encoding_24h` | Issue #133 firmware B: `byte[37]=0x01` → schedule `NONSTOP_24H` |
-| `test_filtration_schedule_new_encoding_p1` | Issue #133 firmware B: `byte[37]=0x11` → schedule `TIMER_PERIOD_1` |
-| `test_filtration_schedule_new_encoding_p1_and_p2` | Issue #133 firmware B: `byte[37]=0x31` → schedule `TIMER_PERIOD_1_AND_2` |
-| `test_service_menu_new_encoding_p1_and_p2` | Issue #133 firmware B: `byte[37]=0x35` → `service_menu_open` True |
-| `test_filtration_schedule_old_encoding_24h` | Issue #110 firmware A: `byte[37]=0x43` → schedule `NONSTOP_24H` |
-| `test_filtration_schedule_old_encoding_timer` | Issue #110 firmware A: `byte[37]=0x53` → schedule `TIMER_PERIOD_1_AND_2` |
-| `test_filtration_schedule_salt_uses_the_firmware_b_bits` | SALT: all six captured `byte[37]` values → schedule + menu flag |
-| `test_filtration_schedule_survives_the_service_menu` | `0xC3` → `0xC7` → `0xC3`: the schedule reads the same throughout |
-| `test_filtration_pump_running_off_when_manual_override` | Issue #133: `byte[37]=0x35` forces `filtration_pump_running=False` |
-| `test_filtration_pump_running_on_when_not_override` | Regression guard: `byte[29]&0x08` still drives the entity while bit 0x04 is clear |
-| `test_filtration_pump_running_not_overridden_on_salt` | Override short-circuit is HOME-only |
-| `test_decode_filtration_period2_disabled` | Issue #133: bytes 60-63 stay populated; mode flips to `TIMER_PERIOD_1` |
-| `test_decode_filtration_period2_bytes_unspecified` | Issue #133: bytes 60-63 = 0xFF → `start2`/`stop2` = `None` (entity skipped) |
-| `test_decode_filtration_period2_none_for_net` | Issue #133: NET never gets filtration entities (lazy-creation guard) |
-| `test_decode_filtration_period2_real_dtpugh_frames` | Issue #133: end-to-end against @dtpugh's four diagnostic files (P1 only / P1&P2 / 24h / OFF) |
-| `test_decode_home_heating_control_enabled` | Issue #135: `byte[37]=0x49` → `heating_control_enabled=True` with schedule-derived filtration mode |
-| `test_decode_home_heating_control_disabled` | Issue #135: `byte[37]=0x41` → `heating_control_enabled=False` |
-| `test_decode_home_heating_control_unconfigured` | Issue #135: `byte[37]=0x45` → `heating_control_enabled=False` (initial state) |
-| `test_decode_home_heating_control_not_present_on_salt` | Heating gating: SALT frames with `byte[37]` set never report `heating_control_enabled` |
-
----
-
-## Cross-References
-
-- Related decoder file: `custom_components/aseko_local/aseko_decoder.py`
-- Actuator masks: `custom_components/aseko_local/aseko_v7_helpers.py` → `ACTUATOR_MASKS[AsekoDeviceType.HOME]`
-- `AsekoByte37Masks`: `custom_components/aseko_local/aseko_v7_helpers.py`
-- OXY analysis (reference for shared byte layout): `docs/device analyzes/oxy_device_analysis.md`
-- NET v8 analysis: `docs/device analyzes/net_v8_device_analysis.md`
-- Issue #110: byte[37] firmware A (`0x43` = nonstop 24h) — original finding, frames in this file
-- Issue #115: HOME `algicide_pump_running` missing — fixed by independent-pump-port branch
-- Issue #133: byte[37] firmware B (4-state mode + manual OFF) — fixed by `_fill_filtration_schedule` rewrite.  Period 2 schedule bytes (60-63) are now read unconditionally for any device in `FILTRATION_TYPES` to avoid "unknown" entities when the user toggles the controller.  See the *Note on Period 2 schedule bytes (Issue #133)* under `byte[29]` vs `service_menu_open` below.
-- Issue #135: `byte[37]` bit 3 (`0x08`) = heating control master enable on HOME firmware A
-  (serial 110175608, REDOX HOME). Confirms `byte[55]` as target water temp setpoint.
-  Working notes: [docs/temp/Issue-135.md](../temp/Issue-135.md).
-- Issue #136: `byte[37]` bit 7 (`0x80`) = antifreeze master enable on HOME firmware A
-  (same device). `byte[55]` shows the antifreeze setpoint (e.g. 4°C, 5°C, 9°C)
-  when enabled.
-- Issue #137: `byte[22]` bit 3 (`0x08`) = variable-speed pump running state on HOME.
-  `byte[78]` changes with pump brand selection (Speck/Pentair/Hayward/Dab/Uwe) but
-  is not a unique brand ID — see Open Item 11.
-- Issue #139: `byte[112]` = pH⁻ acid concentration (%) on HOME (serial 110175608).
-  Confirmed 5% → 10% → 5% across three diagnostics.
-- Working notes: `docs/temp/Issue-133.md`
+## 3. Byte map
+
+Example values are from the representative frame unless stated otherwise.
+
+### Segment 1 — bytes 0–39, live data
+
+| Byte | Field | Decoding | Evidence | Notes |
+|---|---|---|---|---|
+| 0–3 | `serial_number` | big-endian u32 | confirmed | repeated in every segment header |
+| 4 | `configuration` / unit type | `0x02` CLF, `0x03` REDOX | confirmed | Issue #110 |
+| 5 | segment marker | `0x01` | confirmed | |
+| 6–11 | `timestamp` | YY MM DD hh mm ss | confirmed | `1a 04 1c 08 1b 07` = 2026-04-28 08:27:07 |
+| 12 | dosing warnings | bit field, §4 | confirmed | `0x00` |
+| 13 | alarms | bit field, §4 | confirmed | `0x28` |
+| 14–15 | `ph` | u16 ÷ 100 | confirmed | `0x0275` = 6.29 |
+| 16–17 | `free_chlorine` | u16 ÷ 100 mg/l | confirmed | 0.00 mg/l |
+| 18–19 | unused on CLF | — | — | `0x0000` (no REDOX probe); the profile reads `redox` for the REDOX variant with no evidence recorded |
+| 20–21 | `free_chlorine_mv` | u16 mV | confirmed | 2 mV |
+| 22 | settings | bit field, §4 | confirmed | `0x90` |
+| 23–24 | `air_temperature` | s16 ÷ 10 | assumed | `0xFE70` (no air probe, the SALT marker) in every captured HOME frame, so no entity yet; the Aseko Live app shows air temperature on HOME units |
+| 25–26 | `water_temperature` | u16 ÷ 10 °C | confirmed | 37.9 °C |
+| 27 | `water_level` | cm | confirmed | 8 cm (domin211, Issue #110) |
+| 28 | `water_flow_to_probes` | `== 0xAA` → flow | confirmed | `0x00` → no flow |
+| 29 | actuators | bit field, §4 | see §4 | `0x00`, all stopped |
+| 30–31 | — | padding | — | `0xFFFF` here; byte 31 see §8 |
+| 32–36 | unknown | — | — | `0x00` |
+| 37 | settings / schedule | bit field, §4 | confirmed | `0x43` |
+| 38 | settings / state flags | bitmask | — | `0x0a`; `0x10` heating linked to filtration → `heating_linked_to_filtration`, assumed as on SALT (confirmed there 2026-09-14); other bits see §8 |
+| 39 | checksum | 0xAA XOR bytes 0–38 | confirmed | `0x85`; the decoder checks it |
+
+### Segment 2 — bytes 40–79, setpoints and schedule
+
+| Byte | Field | Decoding | Evidence | Notes |
+|---|---|---|---|---|
+| 40–51 | segment header | serial, type, marker `0x03`, timestamp | confirmed | |
+| 52 | `ph_target` | ÷ 10 | confirmed | 7.0 |
+| 53 | `free_chlorine_target` (CLF) | ÷ 10 mg/l | confirmed | 0.3 mg/l |
+| 53 | `redox_target` (REDOX) | × 10 mV | assumed | no evidence recorded |
+| 53 | `chlorine_dose_target` | — | assumed | no evidence recorded |
+| 54 | `flocculant_dose_target` | ml/h | confirmed | 10 ml/h; same position as SALT algicide; gated by `byte[37] != 0xFF` |
+| 55 | `water_temperature_target` | °C | confirmed | heating setpoint (Issue #135, 110175608); antifreeze setpoint while antifreeze is on (§5); 25 °C with heating disabled on 110128063 |
+| 56–57 | `filtration_period_1_start` | hh mm | confirmed | 08:00, last-configured |
+| 58–59 | `filtration_period_1_end` | hh mm | confirmed | 16:00, last-configured |
+| 60–61 | `filtration_period_2_start` | hh mm | confirmed | 18:00, always transmitted (Issue #133) |
+| 62–63 | `filtration_period_2_end` | hh mm | confirmed | 22:00, always transmitted (Issue #133) |
+| 64–65 | unknown | — | — | `0x027c` = 636; byte 65 see §8 |
+| 66–67 | unknown | — | — | `0x017b` = 379, equals the water temperature raw value |
+| 68 | `backwash_interval` | days | confirmed | 3 |
+| 69–70 | `backwash_start_time` | hh mm | confirmed | 21:00 |
+| 71 | `backwash_duration` | × 10 s | confirmed | 120 s |
+| 72 | `algaecide_dose_target` | ml/m³/day | confirmed | 0; same position as OXY Pure |
+| 73 | unknown | — | — | `0x28` = 40 |
+| 74–75 | `startup_delay` | u16 s | confirmed | 480 s |
+| 76–77 | `max_refill_time` | u16 s | assumed | 10800 s = 180 min, plausible; verified on SALT only |
+| 78 | live state | bit field, §4 | confirmed | `0xa0` here |
+| 79 | checksum | 0xAA XOR bytes 40–78 | confirmed | `0xd8`; the decoder checks it |
+
+### Segment 3 — bytes 80–119, parameters and flow rates
+
+| Byte | Field | Decoding | Evidence | Notes |
+|---|---|---|---|---|
+| 80–91 | segment header | serial, type, marker `0x02`, timestamp | confirmed | |
+| 92–93 | `pool_volume` | u16 m³ | confirmed | 60 m³ |
+| 94 | unknown | — | — | `0x00` |
+| 95 | `ph_minus_flow_rate` | ml/min | observed | 60; the Aseko Live app lists the pH− pump, the rate itself was not compared (`byte[95]` confirmed on SALT) |
+| 96 | unknown | — | — | `0x00` |
+| 97 | unknown | — | — | `0x3c` = 60; `ph_plus_flow_rate`? unconfirmed, not mapped |
+| 98 | unknown | — | — | `0x00` |
+| 99 | `chlorine_flow_rate` | ml/min | confirmed | 60 (serials 110071590 / 110128063, Issues #110, #115) |
+| 100 | unknown | — | — | `0x00` |
+| 101 | `flocculant_flow_rate` | ml/min | confirmed | 10 (Issues #110, #115) |
+| 102 | `water_level_low_alarm` | cm | confirmed | 13 (domin211, Issue #110) |
+| 103 | `water_level_refill_start` | cm | confirmed on SALT | 33, between low alarm 13 and refill stop 55 |
+| 104 | `water_level_refill_stop` | cm | confirmed | 55 (domin211, DomSchCoding, Issue #110) |
+| 105 | `water_level_high_alarm` | cm | confirmed | 100 (domin211, Issue #110) |
+| — | `algaecide_flow_rate` | — | not located | entity reads unknown; §5 |
+| 106–107 | `dosing_delay` | u16 s | confirmed | 240 s |
+| 108 | unknown | — | — | `0x14` = 20 |
+| 109–110 | unknown | — | — | `0x0258` = 600 |
+| 111 | unknown | — | — | `0x0f` |
+| 112 | `ph_minus_concentration` | % | confirmed | 110175608, 5 % → 10 % → 5 % (Issue #139); raw `0x0f` in the 110128063 frame against 5 % in the app, see §8 |
+| 113 | unknown | — | — | `0x0f` |
+| 114 | unknown | — | — | `0x1e` = 30 |
+| 115 | `max_ph_doses` | count | observed | 20; position confirmed on SALT (2026-09-12), HOME setting never compared |
+| 116 | — | padding | — | `0xff` |
+| 117 | unknown | — | — | `0xbc` |
+| 118 | unknown | — | — | `0x02` |
+| 119 | checksum | 0xAA XOR bytes 80–118 | confirmed | `0x71`; the decoder checks it |
+
+## 4. Bit fields
+
+### `byte[12]` — dosing warnings
+
+| Bit / mask | Meaning | Evidence | Notes |
+|---|---|---|---|
+| `0x20` | too many doses of disinfection (`alarm_max_disinfection_dose`) | confirmed | Issue #134 |
+| `0x40` | too many doses of pH (`alarm_ph_dosing_ineffective`) | confirmed | Issues #134, #151 |
+
+### `byte[13]` — alarms
+
+| Bit / mask | Meaning | Evidence | Notes |
+|---|---|---|---|
+| `0x01` | too many doses of disinfection (`alarm_max_disinfection_dose`) | confirmed | Issue #151 |
+| `0x02` | too many doses of pH (`alarm_ph_dosing_ineffective`) | assumed | inferred, symmetric to `0x01`; no frame capture |
+| `0x04` | no flow to probes (`alarm_no_flow_to_probes`) | confirmed on NET | DomSchCoding, NET frame |
+| `0x08` | rapid pH change (`alarm_rapid_ph_change`) | assumed | set on 110128063 (`0x28`) with no matching alarm known in the app |
+
+### `byte[22]` — settings
+
+| Bit / mask | Meaning | Evidence | Notes |
+|---|---|---|---|
+| `0x01`, `0x02`, `0x20` | heating condition on SALT (time window / outside temperature / below) | — | not decoded on HOME: the HOME VSP frames carry `0x83` with both `0x01` and `0x02`, never seen on SALT |
+| `0x08` | variable-speed pump setting (`variable_speed_pump_enabled`) | confirmed | Issue #137, 110175608: `0x83` off, `0x8b` on (any brand); also toggled on SALT |
+| `0x10` | backwash schedule (`backwash_schedule_enabled`) | observed | set on 110128063 with backwash every 3 days (`0x90`); confirmed on SALT (2026-09-13) |
+| `0x80` | unknown | — | |
+
+### `byte[29]` — actuators
+
+| Bit / mask | Meaning | Evidence | Notes |
+|---|---|---|---|
+| `0x01` | backwash valve relay (`backwash_running`) | assumed | confirmed on SALT |
+| `0x02` | water filling active (`refilling`) | confirmed | DomSchCoding, Issue #100; also on SALT (2026-09-06) against the refill thresholds |
+| `0x04` | heating running (`heating_running`) | assumed | JS-DE-Tech relay_byte bit 2; no HOME frame with the heater running |
+| `0x08` | filtration pump relay (`filtration_relay`) | confirmed | stays set under the manual override; `filtration_running` is derived, §5 |
+| `0x10` | algicide pump running (`algaecide_pump_running`) | assumed | as on OXY; read only once the algicide flow rate is located, so no state yet |
+| `0x20` | flocculant pump running (`flocculant_pump_running`) | assumed | as on OXY (confirmed there) |
+| `0x40` | chlorine pump running (`chlorine_pump_running`) | assumed | port may be chlorine or OXY Pure |
+| `0x80` | pH− pump running (`ph_minus_pump_running`) | assumed | |
+
+### `byte[37]` — settings and filtration schedule
+
+One bit field of settings shared by HOME and SALT. These are settings, not hardware: Waterlevel, Heating control or the VS pump can be switched on without the device connected, and the app then shows nothing for it.
+
+| Bit / mask | Meaning | Evidence | Notes |
+|---|---|---|---|
+| `0x01` | always set | observed | every frame |
+| `0x02` | flow detection enabled (`flow_detection_enabled`) | confirmed on SALT | 2026-09-13; set in HOME `0x43` / `0x53`, clear in Issue #135's `0x41` / `0x45` / `0x49` |
+| `0x04` | settings menu open / manual override (`service_menu_open`) | confirmed | `0x35` manual OFF (Issue #133); `0x47` / `0x57` are the same bit |
+| `0x08` | heating control enabled (`heating_control_enabled`) | confirmed | Issue #135, 110175608; same bit on SALT (2026-09-13) |
+| `0x10` | filtration period 1 enabled | confirmed | Issue #133 |
+| `0x20` | filtration period 2 enabled | confirmed | Issue #133 |
+| `0x40` | Waterlevel enabled (`water_level_sensor_enabled`) | confirmed on SALT | 2026-09-13; set on the level-meter HOME units, clear on 110169464 and in the antifreeze frame `0x81` |
+| `0x80` | antifreeze enabled (`freeze_protection_enabled`) | confirmed | Issue #136, 110175608; on SALT this bit is algicide routing |
+
+No period bit → nonstop 24 h. Every captured HOME value, read with these bits:
+
+| `byte[37]` | Source | Schedule | Menu | Heating control | Antifreeze | Flow detection | Waterlevel |
+|---|---|---|---|---|---|---|---|
+| `0x43` | Issue #110 | nonstop 24 h | — | — | — | ✓ | ✓ |
+| `0x53` | Issue #110 | period 1 | — | — | — | ✓ | ✓ |
+| `0x47` / `0x57` | Issue #110 | nonstop / period 1 | ✓ | — | — | ✓ | ✓ |
+| `0x01` | Issue #133 | nonstop 24 h | — | — | — | — | — |
+| `0x11` | Issue #133 | period 1 | — | — | — | — | — |
+| `0x31` | Issue #133 | periods 1 and 2 | — | — | — | — | — |
+| `0x35` | Issue #133 | periods 1 and 2 | ✓ (manual OFF) | — | — | — | — |
+| `0x41` | Issue #135 | nonstop 24 h | — | — | — | — | ✓ |
+| `0x45` | Issue #135 | nonstop 24 h | ✓ | — | — | — | ✓ |
+| `0x49` | Issue #135 | nonstop 24 h | — | ✓ | — | — | ✓ |
+| `0x81` | Issue #136 | nonstop 24 h | — | — | ✓ | — | — |
+
+### `byte[78]` — live state and VS pump type
+
+| Bit / mask | Meaning | Evidence | Notes |
+|---|---|---|---|
+| `0x0C` | VS pump type group (`variable_speed_pump_type`) | confirmed | `0x22` → `0x00` Speck / Uwe EO PM (kept with the VS pump off), `0x26` → `0x04` Pentair / Dab E.SWIM, `0x2a` → `0x08` Hayward (Issue #137); same groups on SALT (2026-09-13/14) |
+| `0x02` / `0x01` | filtration running / standing | confirmed on SALT | all HOME values have `0x02` set (filtration running at capture) |
+| `0x20` | unknown | — | set in all HOME values |
+| `0x40` | winter mode active | confirmed on SALT | |
+| `0x80` | heating allowed now | confirmed on SALT | |
+
+## 5. Model-specific behaviour
+
+### Settings bits are not hardware
+
+Serial 110128063 sends `byte[37]` = `0x43` (Waterlevel on) and `byte[27]` = 8 cm, while the app showed `---` for the water level: the level meter setting is on without a working sensor. Refilling was not active (`---`, Issue #100).
+
+### Filtration schedule and period bytes
+
+Bytes 56–63 always carry the last-configured schedule; the unit does not clear them when switching to nonstop 24 h or disabling period 2. The active mode lives only in `byte[37]` (`0x10` / `0x20`). Verified on 110169464: bytes 60–63 stay populated in all four Issue #133 modes (24 h nonstop, P1 only, P1 & P2, OFF manual). Bytes 60–63 are therefore read unconditionally on every model with a filtration output (SALT, HOME, OXY, PROFI — PROFI without a toggling capture); `filtration_schedule` reports period 1 when period 2 is inactive. NET has no filtration output.
+
+`0x43` should be read as "consistent with nonstop 24 h": a May 2026 frame from mannekung's unit, taken after switching to nonstop 24 h, still showed `0x53` while the Aseko app was in "Suche" (search) mode (Issue #110).
+
+### Manual OFF override (`byte[37]` `0x04`)
+
+In the `0x35` manual OFF frame, `byte[29]` bit `0x08` is still set — it stays set in all four Issue #133 frames. `filtration_relay` keeps the bit as sent; the derived `filtration_running` reports the pump off while bit `0x04` is set, on the profiles flagged `MENU_BIT_SWITCHES_FILTRATION_OFF` (HOME; `decoding/derived.py`). `service_menu_open` (someone at the unit) and `filtration_schedule` (what runs when nobody is) share the byte but are unrelated facts.
+
+The override is HOME-only. On SALT the same bit marks the settings menu being open, which says nothing about what the person did (they may have switched the pump on), so forcing it off would invent a state (see [SALT analysis](salt_device_analysis.md), byte[37]). Whether HOME's bit is literally the same menu flag is unverified: the Issue #133 frames were downloaded one per mode, so a HOME unit going quiet the way SALT does would not have shown up.
+
+### Heating and antifreeze (`byte[55]`)
+
+`byte[55]` is the heating setpoint (Issue #135). With antifreeze on, it drops from the heating setpoint (e.g. 27 °C) to the antifreeze setpoint (e.g. 4, 5 or 9 °C, user-set; Issue #136). On SALT the corresponding winter mode is `byte[22]` `0x04`, because `byte[37]` `0x80` is algicide routing there. `heating_control_enabled` (`byte[37]` `0x08`) is the master enable, separate from the heating output `byte[29]` `0x04`.
+
+### Dosing alarms: two encodings of one fault
+
+@dtpugh's diagnostics on 110175608:
+
+- **Issue #134** (2026-07-05), before/after clearing on the controller: both warnings → `byte[12]` = `0x60`; pH only → `0x40`; cleared → `0x00`; `byte[13]` stayed `0x00`.
+- **Issue #151** (2026-08-06/08): "Maximum disinfection dose exceeded" → `byte[13]` = `0x01` (`byte[12]` = `0x00`); pH fault → `byte[12]` = `0x40`; cleared → both `0x00`.
+
+The disinfection fault appeared in `byte[12]` `0x20` in July and in `byte[13]` `0x01` in August, likely a firmware change; both paths are ORed. Issue #151 reports the same fault as `ins[12]` bit `0x80` on v8 frames; that is a hypothesis for now — the v8 profiles do not read `alarm_max_disinfection_dose`.
+
+### Variable-speed pump
+
+Supported on some HOME REDOX units (110175608). The brand is picked on the unit and in the Aseko app; the unit stores a protocol group, not a brand, so two brands share a value (`byte[78]` `0x0C`). `byte[22]` `0x08` is the setting, not the pump running.
+
+### Algicide flow rate and byte[103]
+
+`byte[103]` was read both as `algaecide_flow_rate` (33 ml/min) and as `water_level_refill_start` (33 cm) on 110128063. It is the threshold: bytes 102–105 are the level thresholds on SALT (confirmed against the unit, 2026-09-11), and 13 / 33 / 55 / 100 cm are in order here. The captured OXY sends its algicide flow rate on `byte[103]`, and it has no level sensor connected. HOME's algicide flow rate is not located, so neither the algicide pump state nor its consumption is computed.
+
+### Chlorine / OXY Pure port
+
+The chlorine port can be configured as chlorine or OXY Pure (same physical port, same `byte[29]` bit). The routing byte is not found in the frames.
+
+## 6. Ground truth
+
+Serial 110128063, frame 2026-04-28 08:27:07, against the Aseko Live app; pH and water temperature differ because the app value was read later that day.
+
+| Date | Field | Decoded | Unit / app | Result |
+|---|---|---|---|---|
+| 2026-04-28 | `ph` | 6.29 | 6.56 (later) | match (Δt) |
+| 2026-04-28 | `free_chlorine` | 0.00 mg/l | 0.00 mg/l | match |
+| 2026-04-28 | `water_temperature` | 37.9 °C | 38.2 °C (later) | match (Δt) |
+| 2026-04-28 | `water_flow_to_probes` | False | NO | match |
+| 2026-04-28 | `filtration_running` | False | STOP | match |
+| 2026-04-28 | `filtration_schedule` | nonstop 24 h | NONSTOP 24H | match (Issue #110) |
+| 2026-04-28 | filtration times | 08:00–16:00 / 18:00–22:00 | NONSTOP 24H | expected: last-configured times |
+| 2026-04-28 | `service_menu_open` | False | nobody at the unit | match |
+| 2026-04-28 | `water_level` | 8 cm | `---` (level meter not working) | frame value only |
+| 2026-04-28 | `refilling` | False | `---` (valve not active) | match (Issue #100) |
+| 2026-04-28 | water level thresholds | 13 / 33 / 55 / 100 cm | configured | not compared value by value |
+| 2026-04-28 | `ph_target` | 7.0 | 7.0 | match |
+| 2026-04-28 | `free_chlorine_target` | 0.3 mg/l | 0.3 | match |
+| 2026-04-28 | `flocculant_dose_target` | 10 ml/h | 10 ml/h | match |
+| 2026-04-28 | `algaecide_dose_target` | 0 ml/m³/day | 0 ml/m³/day | match |
+| 2026-04-28 | `water_temperature_target` | 25 °C | `---` (heating disabled) | not comparable |
+| 2026-04-28 | `backwash_interval` | 3 | every 3 days | match |
+| 2026-04-28 | `backwash_start_time` | 21:00 | 21:00 | match |
+| 2026-04-28 | `backwash_duration` | 120 s | 02:00 min | match |
+| 2026-04-28 | `pool_volume` | 60 m³ | 60 m³ | match |
+| 2026-04-28 | `startup_delay` | 480 s | 8 min | match |
+| 2026-04-28 | `dosing_delay` | 240 s | 4 min | match |
+| 2026-04-28 | `ph_minus_flow_rate` | 60 | pH− pump listed, rate not shown | not compared |
+| 2026-04-28 | `chlorine_flow_rate` | 60 | Chlor Pure listed, rate not shown | not compared |
+| 2026-04-28 | `flocculant_flow_rate` | 10 | Floc+c listed, rate not shown | not compared |
+| 2026-04-28 | `ph_minus_concentration` | 15 % (raw `0x0f`) | 5 % | **mismatch**, unresolved — see §8 |
+| Issue #135 | `heating_control_enabled` | True / False | app setting | match (110175608) |
+| Issue #135 | `water_temperature_target` | heating setpoint | app setting | match (110175608) |
+| Issue #136 | `freeze_protection_enabled` | True / False | app setting | match (110175608) |
+| Issue #137 | `variable_speed_pump_enabled` / type | on/off, brand group | app setting | match (110175608) |
+| Issue #139 | `ph_minus_concentration` | 5 → 10 → 5 % | app setting | match (110175608) |
+
+## 7. Settings the frame does not carry
+
+- Algicide flow rate: the app lists the algicide pump, but the value is not located in the frame.
+- Air temperature: shown in the Aseko Live app on HOME units, but bytes 23–24 were `0xFE70` (no probe marker) in every captured HOME frame.
+- Chlorine / OXY Pure port configuration: no routing byte found.
+
+## 8. Open questions
+
+1. **Per-pump bits in `byte[29]`** (chlorine, pH−, algicide, flocculant) are placeholders taken from OXY/NET. A capture with a single HOME pump running (e.g. algicide only) would pin each bit.
+2. **`heating_running`** (`byte[29]` `0x04`): needs a frame captured while the heat pump / electric heater is actually running.
+3. **`water_temperature_target`**: confirmed as heating setpoint on 110175608; a frame from a unit where the app actively shows a target temperature (not `---`) would validate it further.
+4. **Algicide flow rate location**: download diagnostics, change the algicide flow rate on the unit, download again.
+5. **`byte[37]` `0x40` (Waterlevel) and `0x02` (Flow detection) on HOME**: a HOME owner toggling each setting once, with a marked test case after each change.
+6. **`byte[22]` on the HOME VSP unit = `0x83`**: bits `0x01` and `0x02` both set (never on SALT) and `0x80` unknown; a HOME capture before/after changing the heating condition would explain them.
+7. **Manual OFF sub-flags**: in the `0x35` frame bytes 31, 38 and 65 each rise by about 1 (`0x00→0x02`, `0x02→0x03`, `0xa3→0xa4`). Single observation, no meaning assigned; repeated OFF/ON captures would tell.
+8. **HOME menu flag behaviour**: whether `byte[37]` `0x04` on HOME is a standing override or a menu session (as on SALT); a series of frames while someone is in the menu would settle it.
+9. **`byte[78]` `0x20`**: unknown; set on every HOME value.
+10. **`byte[112]` raw vs %**: the 110128063 frame has `0x0f` (15) at byte 112 while the app showed 5 %; Issue #139 frames confirm the byte tracks the setting. A frame with a known concentration on a CLF unit would clarify the encoding.
+11. **`max_refill_time`, `max_ph_doses`, refill start threshold**: a glance at the unit settings compared with bytes 76–77, 115 and 103.
+12. **REDOX variant values** (`redox`, `redox_target` on byte 53): no evidence recorded; a REDOX HOME dump with the app's REDOX value.
+
+## 9. History
+
+- **2026-09-13 — one HOME, not two firmwares.** HOME v7 was split into "firmware A" and "firmware B" by `byte[37]` bit `0x40` (with two HOME profiles in the decoder). Toggling settings on an ASIN AQUA Salt showed `0x40` is the Waterlevel setting; all former A/B values decode with one bit field, and one profile covers every HOME unit. Consequences versus the old firmware-A decoding: `0x53` is period 1 (was "period 1 and 2"); `0x47` / `0x57` decode to a schedule with the menu open (were "transitional edit states" with no schedule).
+- **`byte[103]`** was decoded as `algaecide_flow_rate` (Issues #110, #115, marked fixed); now the refill start threshold, algicide flow rate not located. Previously bit `0x20` counted algicide and flocculant for one running pump ("bit 5, HOME shared"); pump bits now follow OXY (algicide `0x10`, flocculant `0x20`).
+- **`max_refill_time`** was read from bytes 94–95 (`0x003c` = 60, overlapping the pH− flow rate on byte 95) before v1.9; moved to bytes 76–77 in seconds (verified on SALT against Aseko Live). Byte 94 is unknown again.
+- **Issue #133 fix:** bytes 60–63 were gated on `byte[37]` `0x20`, so existing period 2 entities flipped to unknown when the user switched from P1 & P2 to P1 only; now read unconditionally.
+- **Issue #115:** HOME `algaecide_pump_running` was missing; fixed by reading the pump ports independently of `byte[37]` (independent-pump-port branch).
+- **`byte[78]`** was an open item (brand ID or pump parameter); resolved as pump type group (Issue #137, SALT).
+- Early decoding used `UNIT_TYPE_HOME_CLF` for `byte[4]` = `0x02`, and field names such as `cl_free`, `start1`/`stop1`, `flowrate_*`; values are now named features in `decoding/features/`.
+- Working notes for Issues #133 and #135 were kept in `docs/temp/`.
+
+## 10. References
+
+- Issues: #100 (refilling bit), #110 (`byte[37]` `0x43` nonstop, representative frame, water level thresholds), #115 (HOME algicide pump / independent ports), #133 (period bits, period 2 bytes, manual OFF), #134 and #151 (dosing warnings/alarms), #135 (heating control, `byte[55]`), #136 (antifreeze), #137 (VS pump setting and type), #139 (pH− concentration).
+- Related analyses: [SALT](salt_device_analysis.md), [OXY](oxy_device_analysis.md) (shared byte layout, four pump ports), [NET](net_device_analysis.md), [NET v8](net_v8_device_analysis.md), [PROFI](profi_device_analysis.md).
+- Code: [`profiles/v7/home.py`](../../custom_components/aseko_local/decoding/profiles/v7/home.py), [`decoding/features/`](../../custom_components/aseko_local/decoding/features/) (one file per value).
+- Tests in `tests/test_decode_v7.py` and `tests/test_decoding_profiles.py`:
+  - `test_decode_home` (REDOX frame end-to-end, schedule, max_refill_time), `test_decode_home_clf_real_frame` and `test_home_issue_110_frame` (Issue #110: `0x53` → period 1, waterlevel enabled)
+  - `test_decode_home_independent_flowrates`, `test_decode_home_flowrates_unspecified` (`0xFF` → `None`), `test_decode_home_algicide_pump_running`, `test_decode_home_floc_pump_running_independent` (Issue #115)
+  - `test_filtration_schedule_new_encoding_24h` / `_p1` / `_p1_and_p2`, `test_service_menu_new_encoding_p1_and_p2`, `test_decode_filtration_period2_real_dtpugh_frames` (Issue #133)
+  - `test_filtration_schedule_old_encoding_24h` / `_timer`, `test_filtration_schedule_with_the_menu_open_is_read_from_the_bits` (Issue #110 values)
+  - `test_filtration_pump_running_off_when_manual_override`, `test_filtration_pump_running_on_when_not_override`, `test_filtration_pump_running_not_overridden_on_salt`, `test_home_menu_override_forces_the_pump_off`
+  - `test_every_home_frame_uses_the_one_home_profile`, `test_home_byte37_is_one_bit_field`

@@ -4,9 +4,11 @@ on:
   push:
     branches:
       - main
+      - feat/device-profiles
   pull_request:
     branches:
       - main
+      - feat/device-profiles
 
 permissions: {}
 

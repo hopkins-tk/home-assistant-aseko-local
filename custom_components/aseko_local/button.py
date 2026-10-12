@@ -5,13 +5,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from homeassistant.components.button import ButtonEntity, ButtonEntityDescription
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.const import Platform
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import AsekoLocalConfigEntry
-from .aseko_data import AsekoDevice
 from .coordinator import AsekoLocalDataUpdateCoordinator
-from .entity import AsekoLocalEntity
+from .entity import AsekoLocalEntity, async_setup_platform_entities
+from .models import AsekoDevice
+from .sensor import PUMP_RUNNING_ATTR, model_has_pump
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -67,36 +69,31 @@ async def async_setup_entry(
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     """Set up canister-reset button entities for each active chemical pump."""
-
-    coordinator = config_entry.runtime_data.coordinator
-    devices = coordinator.get_devices()
-    entities = _build_button_entities(devices, coordinator)
-    async_add_entities(entities)
-
-    @callback
-    def _async_add_new_device(device: AsekoDevice) -> None:
-        new_entities = _build_button_entities([device], coordinator)
-        if new_entities:
-            async_add_entities(new_entities)
-
-    config_entry.async_on_unload(
-        coordinator.async_add_new_device_listener(_async_add_new_device)
+    async_setup_platform_entities(
+        hass, config_entry, async_add_entities, Platform.BUTTON, _build_button_entities
     )
 
 
 def _build_button_entities(
     devices: list[AsekoDevice],
     coordinator: AsekoLocalDataUpdateCoordinator,
+    features: frozenset[str] | None = None,
 ) -> list[ButtonEntity]:
-    """Create button entities for the given list of devices."""
+    """Create button entities for the given devices.
+
+    With ``features`` given, only the buttons for pumps in that set are
+    built -- the ones a known device has just started showing.
+    """
     entities: list[ButtonEntity] = []
 
     for device in devices:
         for description in RESET_BUTTONS:
-            # Single source of truth: AsekoDevice.installed_pumps
-            # (populated by the v7 decoder from ACTUATOR_MASKS or by
-            # the v8 decoder from installed_pumps_from_fncs).
-            if description.pump_key not in device.installed_pumps:
+            if not model_has_pump(device, description.pump_key):
+                continue
+            if (
+                features is not None
+                and PUMP_RUNNING_ATTR[description.pump_key] not in features
+            ):
                 continue
             entities.append(AsekoResetButtonEntity(device, coordinator, description))
 
@@ -112,9 +109,20 @@ class AsekoResetButtonEntity(AsekoLocalEntity, ButtonEntity):
         coordinator: AsekoLocalDataUpdateCoordinator,
         description: AsekoResetButtonEntityDescription,
     ) -> None:
-        super().__init__(unit, coordinator, description)
+        """Set up the reset button of one pump counter of one unit."""
+        super().__init__(
+            unit,
+            coordinator,
+            description,
+            feature=PUMP_RUNNING_ATTR[description.pump_key],
+        )
         self._pump_key = description.pump_key
 
     async def async_press(self) -> None:
         """Reset the canister counter for this pump."""
-        self.coordinator.reset_consumption(pump_key=self._pump_key, counter="canister")
+        # this unit's canister only: other units in the entry keep theirs
+        self.coordinator.reset_consumption(
+            pump_key=self._pump_key,
+            counter="canister",
+            serial_number=self.device.serial_number,
+        )

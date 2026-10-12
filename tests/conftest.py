@@ -1,13 +1,14 @@
 """Common fixtures for the Aseko Local tests."""
 
+import asyncio
 from collections.abc import Generator
 from unittest.mock import AsyncMock, PropertyMock, patch
 
 import pytest
-
-from custom_components.aseko_local.aseko_server import ServerConnectionError
 from homeassistant.config_entries import ConfigEntry
+
 from custom_components.aseko_local.const import DOMAIN
+from custom_components.aseko_local.server import ServerConnectionError
 
 
 @pytest.fixture(autouse=True)
@@ -92,6 +93,36 @@ def api_server_running_fixture() -> Generator:
         return_value=True,
     ):
         yield
+
+
+class FakeListener:
+    """What ``asyncio.start_server`` returns, reporting whether it was closed."""
+
+    def __init__(self) -> None:
+        self.closed = False
+
+    def is_serving(self) -> bool:
+        return not self.closed
+
+    def close(self) -> None:
+        self.closed = True
+
+    async def wait_closed(self) -> None:
+        pass
+
+
+@pytest.fixture
+def listeners(monkeypatch) -> list[tuple[int, FakeListener]]:
+    """Every listener the integration opened, with its port; no real socket."""
+    opened: list[tuple[int, FakeListener]] = []
+
+    async def start_server(handler, host, port) -> FakeListener:
+        listener = FakeListener()
+        opened.append((port, listener))
+        return listener
+
+    monkeypatch.setattr(asyncio, "start_server", start_server)
+    return opened
 
 
 @pytest.fixture(name="api_server_not_running")

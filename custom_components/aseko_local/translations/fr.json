@@ -1,351 +1,431 @@
 {
-    "config": {
-        "abort": {
-            "already_configured": "L'appareil est déjà configuré",
-            "reconfigure_successful": "Reconfiguration réussie"
-        },
-        "error": {
-            "cannot_connect": "Échec de la connexion",
-            "unknown": "Erreur inattendue"
-        },
-        "step": {
-            "user": {
-                "data": {
-                    "host": "Lier à l'adresse IP",
-                    "port": "Port"
-                },
-                "description": "Veuillez saisir le numéro de port. L'adresse IP peut généralement rester sur 0.0.0.0"
-            },
-            "reconfigure": {
-                "data": {
-                    "host": "Lier à l'adresse IP",
-                    "port": "Port"
-                }
-            }
-        }
+  "config": {
+    "abort": {
+      "already_configured": "L'appareil est déjà configuré",
+      "reconfigure_successful": "Reconfiguration réussie"
     },
-    "options": {
-        "step": {
-            "options_init": {
-                "data": {
-                    "forwarder_enabled": "Activer la transmission",
-                    "forwarder_host": "Hôte de destination"
-                }
-            }
-        }
+    "error": {
+      "cannot_connect": "Échec de la connexion",
+      "unknown": "Erreur inattendue",
+      "invalid_port": "Saisissez un numéro de port entre 1 et 65535"
     },
-    "entity": {
-        "datetime": {
-            "last_scheduled_backwash": {
-                "name": "Dernier contre-lavage programmé"
-            }
+    "step": {
+      "user": {
+        "data": {
+          "host": "Lier à l'adresse IP",
+          "port": "Port"
         },
-        "binary_sensor": {
-            "electrolyzer_active": {
-                "name": "Électrolyseur actif"
-            },
-            "filtration_pump_running": {
-                "name": "Pompe de filtration en marche"
-            },
-            "heating_active": {
-                "name": "Chauffage actif"
-            },
-            "heating_control_enabled": {
-                "name": "Contrôle du chauffage"
-            },
-            "antifreeze_enabled": {
-                "name": "Antigel"
-            },
-            "vsp_pump_running": {
-                "name": "Pompe à vitesse variable"
-            },
-            "cl_pump_running": {
-                "name": "Pompe à chlore en marche"
-            },
-            "ph_minus_pump_running": {
-                "name": "Pompe pH- en marche"
-            },
-            "ph_plus_pump_running": {
-                "name": "Pompe pH+ en marche"
-            },
-            "algicide_pump_running": {
-                "name": "Pompe algicide en marche"
-            },
-            "floc_pump_running": {
-                "name": "Pompe floculant en marche"
-            },
-            "oxy_pump_running": {
-                "name": "Pompe OXY Pure en marche"
-            },
-            "water_flow_to_probes": {
-                "name": "Circulation d'eau vers les sondes"
-            },
-            "water_filling_active": {
-                "name": "Remplissage d'eau actif"
-            },
-            "alarm_ph_too_many_doses": {
-                "name": "Alarme pH : trop de doses"
-            },
-            "alarm_orp_too_many_doses": {
-                "name": "Alarme ORP/Chlore : trop de doses"
-            },
-            "alarm_no_flow_to_probes": {
-                "name": "Alarme : pas de flux vers les sondes"
-            },
-            "alarm_rapid_ph_change": {
-                "name": "Alarme : variation rapide du pH"
-            },
-            "backwash_active": {
-                "name": "Contre-lavage actif"
-            },
-            "service_menu": {
-                "name": "Menu de service"
-            }
-        },
-        "sensor": {
-            "filtration_1_start": {
-                "name": "Début filtration 1"
-            },
-            "filtration_1_stop": {
-                "name": "Fin filtration 1"
-            },
-            "filtration_2_start": {
-                "name": "Début filtration 2"
-            },
-            "filtration_2_stop": {
-                "name": "Fin filtration 2"
-            },
-            "pool_volume": {
-                "name": "Volume du bassin"
-            },
-            "delay_after_startup": {
-                "name": "Délai après démarrage"
-            },
-            "delay_after_dose": {
-                "name": "Délai après dosage"
-            },
-            "ph_minus_concentration": {
-                "name": "Concentration pH-"
-            },
-            "max_ph_doses": {
-                "name": "Nombre max. de doses de pH"
-            },
-            "air_temperature": {
-                "name": "Température de l'air"
-            },
-            "electrolyzer_power": {
-                "name": "Puissance de l'électrolyseur"
-            },
-            "electrolyzer_direction": {
-                "name": "Direction de l'électrolyseur",
-                "state": {
-                    "left": "Gauche",
-                    "right": "Droite",
-                    "waiting": "En attente"
-                }
-            },
-            "free_chlorine": {
-                "name": "Chlore libre"
-            },
-            "ph": {
-                "name": "pH"
-            },
-            "redox": {
-                "name": "Potentiel redox"
-            },
-            "required_free_chlorine": {
-                "name": "Chlore libre requis"
-            },
-            "required_ph": {
-                "name": "Valeur pH requise"
-            },
-            "required_redox": {
-                "name": "Potentiel redox requis"
-            },
-            "required_water_temperature": {
-                "name": "Température de l'eau requise"
-            },
-            "water_level": {
-                "name": "Niveau d'eau"
-            },
-            "water_level_low_alarm": {
-                "name": "Alarme niveau bas"
-            },
-            "water_level_filling_on": {
-                "name": "Seuil démarrage remplissage"
-            },
-            "water_level_filling_off": {
-                "name": "Seuil arrêt remplissage"
-            },
-            "water_level_high_alarm": {
-                "name": "Alarme niveau haut"
-            },
-            "max_filling_time": {
-                "name": "Durée maximale de remplissage"
-            },
-            "required_algicide": {
-                "name": "Dose algicide requise",
-                "unit_of_measurement": "ml/m³/jour"
-            },
-            "required_oxy_dose": {
-                "name": "Dose OXY Pure requise",
-                "unit_of_measurement": "ml/m³/jour"
-            },
-            "required_cl_dose": {
-                "name": "Dose chlore requise",
-                "unit_of_measurement": "ml/m³/h"
-            },
-            "required_floc": {
-                "name": "Dose floculant requise"
-            },
-            "salinity": {
-                "name": "Salinité"
-            },
-            "water_temperature": {
-                "name": "Température de l'eau"
-            },
-            "flowrate_chlor": {
-                "name": "Débit chlore"
-            },
-            "flowrate_ph_minus": {
-                "name": "Débit pH-"
-            },
-            "flowrate_ph_plus": {
-                "name": "Débit pH+"
-            },
-            "flowrate_algicide": {
-                "name": "Débit algicide"
-            },
-            "flowrate_floc": {
-                "name": "Débit floculant"
-            },
-            "flowrate_oxy": {
-                "name": "Débit OXY Pure"
-            },
-            "connection_status": {
-                "name": "État de la connexion",
-                "state": {
-                    "online": "En ligne",
-                    "offline": "Hors ligne"
-                }
-            },
-            "last_seen": {
-                "name": "Dernière mise à jour des données"
-            },
-            "last_backwash": {
-                "name": "Dernière contre-lavage"
-            },
-            "last_manual_backwash": {
-                "name": "Dernier contre-lavage manuel"
-            },
-            "next_scheduled_backwash": {
-                "name": "Prochain contre-lavage programmé (estimé)"
-            },
-            "backwash_every_n_days": {
-                "name": "Intervalle de contre-lavage"
-            },
-            "backwash_time": {
-                "name": "Heure de début du contre-lavage"
-            },
-            "backwash_duration": {
-                "name": "Durée du contre-lavage"
-            },
-            "chlor_consumed": {
-                "name": "Chlore consommé (depuis le remplissage)"
-            },
-            "chlor_total_consumed": {
-                "name": "Chlore consommé (total)"
-            },
-            "chlor_remaining": {
-                "name": "Chlore restant"
-            },
-            "ph_minus_consumed": {
-                "name": "pH- consommé (depuis le remplissage)"
-            },
-            "ph_minus_total_consumed": {
-                "name": "pH- consommé (total)"
-            },
-            "ph_minus_remaining": {
-                "name": "pH- restant"
-            },
-            "ph_plus_consumed": {
-                "name": "pH+ consommé (depuis le remplissage)"
-            },
-            "ph_plus_total_consumed": {
-                "name": "pH+ consommé (total)"
-            },
-            "ph_plus_remaining": {
-                "name": "pH+ restant"
-            },
-            "algicide_consumed": {
-                "name": "Algicide consommé (depuis le remplissage)"
-            },
-            "algicide_total_consumed": {
-                "name": "Algicide consommé (total)"
-            },
-            "algicide_remaining": {
-                "name": "Algicide restant"
-            },
-            "floc_consumed": {
-                "name": "Floculant consommé (depuis le remplissage)"
-            },
-            "floc_total_consumed": {
-                "name": "Floculant consommé (total)"
-            },
-            "floc_remaining": {
-                "name": "Floculant restant"
-            },
-            "oxy_consumed": {
-                "name": "OXY Pure consommé (depuis le remplissage)"
-            },
-            "oxy_total_consumed": {
-                "name": "OXY Pure consommé (total)"
-            },
-            "filtration_schedule": {
-                "name": "Programme de filtration",
-                "state": {
-                    "nonstop_24h": "24 h en continu",
-                    "timer_period_1": "Plage horaire 1",
-                    "timer_period_1_and_2": "Plages horaires 1 et 2"
-                }
-            }
-        },
-        "number": {
-            "chlor_last_filled_quantity": {
-                "name": "Dernière quantité de chlore ajoutée"
-            },
-            "ph_minus_last_filled_quantity": {
-                "name": "Dernière quantité de pH- ajoutée"
-            },
-            "ph_plus_last_filled_quantity": {
-                "name": "Dernière quantité de pH+ ajoutée"
-            },
-            "algicide_last_filled_quantity": {
-                "name": "Dernière quantité d'algicide ajoutée"
-            },
-            "floc_last_filled_quantity": {
-                "name": "Dernière quantité de floculant ajoutée"
-            }
-        },
-        "button": {
-            "chlor_refill_reset": {
-                "name": "Remplir chlore"
-            },
-            "ph_minus_refill_reset": {
-                "name": "Remplir pH-"
-            },
-            "ph_plus_refill_reset": {
-                "name": "Remplir pH+"
-            },
-            "algicide_refill_reset": {
-                "name": "Remplir algicide"
-            },
-            "floc_refill_reset": {
-                "name": "Remplir floculant"
-            },
-            "oxy_refill_reset": {
-                "name": "Remplir OXY Pure"
-            }
+        "description": "Veuillez saisir le numéro de port. L'adresse IP peut généralement rester sur 0.0.0.0",
+        "data_description": {
+          "port": "47524 pour le firmware 7.x et antérieur, 51050 pour le firmware 8.x — ou saisissez le port réglé sur l'appareil"
         }
+      },
+      "reconfigure": {
+        "data": {
+          "host": "Lier à l'adresse IP",
+          "port": "Port"
+        },
+        "data_description": {
+          "port": "47524 pour le firmware 7.x et antérieur, 51050 pour le firmware 8.x — ou saisissez le port réglé sur l'appareil"
+        }
+      }
     }
+  },
+  "options": {
+    "step": {
+      "options_init": {
+        "data": {
+          "forwarder_enabled": "Activer la transmission",
+          "forwarder_host": "Hôte de destination",
+          "clock_alert_minutes": "Alerter quand l'horloge de l'unité s'écarte de (minutes)"
+        }
+      }
+    }
+  },
+  "entity": {
+    "datetime": {
+      "last_scheduled_backwash": {
+        "name": "Dernier contre-lavage programmé"
+      }
+    },
+    "binary_sensor": {
+      "electrolysis_running": {
+        "name": "Électrolyseur actif"
+      },
+      "filtration_running": {
+        "name": "Pompe de filtration en marche"
+      },
+      "filtration_relay": {
+        "name": "Relais de filtration"
+      },
+      "heating_running": {
+        "name": "Chauffage actif"
+      },
+      "heating_control_enabled": {
+        "name": "Contrôle du chauffage"
+      },
+      "heating_linked_to_filtration": {
+        "name": "Chauffage lié à la filtration"
+      },
+      "freeze_protection_enabled": {
+        "name": "Antigel"
+      },
+      "variable_speed_pump_enabled": {
+        "name": "Pompe à vitesse variable"
+      },
+      "chlorine_pump_running": {
+        "name": "Pompe à chlore en marche"
+      },
+      "ph_minus_pump_running": {
+        "name": "Pompe pH- en marche"
+      },
+      "ph_plus_pump_running": {
+        "name": "Pompe pH+ en marche"
+      },
+      "algaecide_pump_running": {
+        "name": "Pompe algicide en marche"
+      },
+      "algaecide_pump_running_or_aco": {
+        "name": "Pompe algicide / ACO en marche"
+      },
+      "flocculant_pump_running": {
+        "name": "Pompe floculant en marche"
+      },
+      "oxygen_pump_running": {
+        "name": "Pompe OXY Pure en marche"
+      },
+      "water_flow_to_probes": {
+        "name": "Circulation d'eau vers les sondes"
+      },
+      "refilling": {
+        "name": "Remplissage d'eau actif"
+      },
+      "alarm_ph_dosing_ineffective": {
+        "name": "Alarme pH : trop de doses"
+      },
+      "alarm_max_disinfection_dose": {
+        "name": "Alarme ORP/Chlore : trop de doses"
+      },
+      "alarm_no_flow_to_probes": {
+        "name": "Alarme : pas de flux vers les sondes"
+      },
+      "alarm_rapid_ph_change": {
+        "name": "Alarme : variation rapide du pH"
+      },
+      "backwash_running": {
+        "name": "Contre-lavage actif"
+      },
+      "service_menu": {
+        "name": "Menu de service"
+      },
+      "water_level_sensor_enabled": {
+        "name": "Capteur de niveau"
+      },
+      "flow_detection_enabled": {
+        "name": "Détection de débit"
+      },
+      "backwash_schedule_enabled": {
+        "name": "Programme de contre-lavage"
+      },
+      "heating_allowed": {
+        "name": "Chauffage autorisé"
+      },
+      "heating_condition_met": {
+        "name": "Condition de chauffage remplie"
+      },
+      "clock_out_of_sync": {
+        "name": "Horloge désynchronisée"
+      }
+    },
+    "sensor": {
+      "filtration_period_1_start": {
+        "name": "Début filtration 1"
+      },
+      "filtration_period_1_end": {
+        "name": "Fin filtration 1"
+      },
+      "filtration_period_2_start": {
+        "name": "Début filtration 2"
+      },
+      "filtration_period_2_end": {
+        "name": "Fin filtration 2"
+      },
+      "filtration_schedule": {
+        "name": "Programme de filtration",
+        "state": {
+          "nonstop_24h": "24 h en continu",
+          "timer_period_1": "Plage horaire 1",
+          "timer_period_1_and_2": "Plages horaires 1 et 2"
+        }
+      },
+      "pool_volume": {
+        "name": "Volume du bassin"
+      },
+      "startup_delay": {
+        "name": "Délai après démarrage"
+      },
+      "dosing_delay": {
+        "name": "Délai après dosage"
+      },
+      "ph_minus_concentration": {
+        "name": "Concentration pH-"
+      },
+      "air_temperature": {
+        "name": "Température de l'air"
+      },
+      "chlorine_production": {
+        "name": "Puissance de l'électrolyseur"
+      },
+      "chlorine_production_measured": {
+        "name": "Puissance de l'électrolyseur (mesurée)"
+      },
+      "electrode_polarity": {
+        "name": "Direction de l'électrolyseur",
+        "state": {
+          "left": "Gauche",
+          "right": "Droite",
+          "waiting": "En attente"
+        }
+      },
+      "free_chlorine": {
+        "name": "Chlore libre"
+      },
+      "ph": {
+        "name": "pH"
+      },
+      "redox": {
+        "name": "Potentiel redox"
+      },
+      "free_chlorine_target": {
+        "name": "Chlore libre requis"
+      },
+      "ph_target": {
+        "name": "Valeur pH requise"
+      },
+      "redox_target": {
+        "name": "Potentiel redox requis"
+      },
+      "water_temperature_target": {
+        "name": "Température de l'eau requise"
+      },
+      "water_level": {
+        "name": "Niveau d'eau"
+      },
+      "water_level_low_alarm": {
+        "name": "Alarme niveau bas"
+      },
+      "water_level_refill_start": {
+        "name": "Seuil démarrage remplissage"
+      },
+      "water_level_refill_stop": {
+        "name": "Seuil arrêt remplissage"
+      },
+      "water_level_high_alarm": {
+        "name": "Alarme niveau haut"
+      },
+      "max_refill_time": {
+        "name": "Durée maximale de remplissage"
+      },
+      "max_ph_doses": {
+        "name": "Nombre max. de doses de pH"
+      },
+      "algaecide_dose_target": {
+        "name": "Dose algicide requise",
+        "unit_of_measurement": "ml/m³/jour"
+      },
+      "algaecide_dose_target_or_aco": {
+        "name": "Dose algicide / ACO requise",
+        "unit_of_measurement": "ml/m³/jour"
+      },
+      "oxygen_dose_target": {
+        "name": "Dose OXY Pure requise",
+        "unit_of_measurement": "ml/m³/jour"
+      },
+      "chlorine_dose_target": {
+        "name": "Dose chlore requise",
+        "unit_of_measurement": "ml/m³/h"
+      },
+      "flocculant_dose_target": {
+        "name": "Dose floculant requise"
+      },
+      "salinity": {
+        "name": "Salinité"
+      },
+      "water_temperature": {
+        "name": "Température de l'eau"
+      },
+      "chlorine_flow_rate": {
+        "name": "Débit chlore"
+      },
+      "ph_minus_flow_rate": {
+        "name": "Débit pH-"
+      },
+      "ph_plus_flow_rate": {
+        "name": "Débit pH+"
+      },
+      "algaecide_flow_rate": {
+        "name": "Débit algicide"
+      },
+      "flocculant_flow_rate": {
+        "name": "Débit floculant"
+      },
+      "oxygen_flow_rate": {
+        "name": "Débit OXY Pure"
+      },
+      "connection_status": {
+        "name": "État de la connexion",
+        "state": {
+          "online": "En ligne",
+          "offline": "Hors ligne",
+          "service_menu": "Menu de service ouvert"
+        }
+      },
+      "last_seen": {
+        "name": "Dernière mise à jour des données"
+      },
+      "last_backwash": {
+        "name": "Dernière contre-lavage"
+      },
+      "last_manual_backwash": {
+        "name": "Dernier contre-lavage manuel"
+      },
+      "next_scheduled_backwash": {
+        "name": "Prochain contre-lavage programmé (estimé)"
+      },
+      "backwash_interval": {
+        "name": "Intervalle de contre-lavage"
+      },
+      "backwash_start_time": {
+        "name": "Heure de début du contre-lavage"
+      },
+      "backwash_duration": {
+        "name": "Durée du contre-lavage"
+      },
+      "chlor_consumed": {
+        "name": "Chlore consommé (depuis le remplissage)"
+      },
+      "chlor_total_consumed": {
+        "name": "Chlore consommé (total)"
+      },
+      "chlor_remaining": {
+        "name": "Chlore restant"
+      },
+      "ph_minus_consumed": {
+        "name": "pH- consommé (depuis le remplissage)"
+      },
+      "ph_minus_total_consumed": {
+        "name": "pH- consommé (total)"
+      },
+      "ph_minus_remaining": {
+        "name": "pH- restant"
+      },
+      "ph_plus_consumed": {
+        "name": "pH+ consommé (depuis le remplissage)"
+      },
+      "ph_plus_total_consumed": {
+        "name": "pH+ consommé (total)"
+      },
+      "ph_plus_remaining": {
+        "name": "pH+ restant"
+      },
+      "algicide_consumed": {
+        "name": "Algicide consommé (depuis le remplissage)"
+      },
+      "algicide_consumed_or_aco": {
+        "name": "Algicide / ACO consommé (depuis le remplissage)"
+      },
+      "algicide_total_consumed": {
+        "name": "Algicide consommé (total)"
+      },
+      "algicide_total_consumed_or_aco": {
+        "name": "Algicide / ACO consommé (total)"
+      },
+      "algicide_remaining": {
+        "name": "Algicide restant"
+      },
+      "floc_consumed": {
+        "name": "Floculant consommé (depuis le remplissage)"
+      },
+      "floc_total_consumed": {
+        "name": "Floculant consommé (total)"
+      },
+      "floc_remaining": {
+        "name": "Floculant restant"
+      },
+      "oxy_consumed": {
+        "name": "OXY Pure consommé (depuis le remplissage)"
+      },
+      "oxy_total_consumed": {
+        "name": "OXY Pure consommé (total)"
+      },
+      "heating_condition": {
+        "name": "Condition de chauffage",
+        "state": {
+          "always": "Toujours",
+          "time_window": "Plage horaire",
+          "outside_temperature_above": "Température extérieure au-dessus",
+          "outside_temperature_below": "Température extérieure en dessous"
+        }
+      },
+      "variable_speed_pump_type": {
+        "name": "Type de pompe à vitesse variable",
+        "state": {
+          "speck_uwe": "Speck / Uwe",
+          "pentair_dab": "Pentair / Dab",
+          "hayward": "Hayward"
+        }
+      },
+      "clock_offset": {
+        "name": "Décalage de l'horloge"
+      }
+    },
+    "number": {
+      "chlor_last_filled_quantity": {
+        "name": "Dernière quantité de chlore ajoutée"
+      },
+      "ph_minus_last_filled_quantity": {
+        "name": "Dernière quantité de pH- ajoutée"
+      },
+      "ph_plus_last_filled_quantity": {
+        "name": "Dernière quantité de pH+ ajoutée"
+      },
+      "algicide_last_filled_quantity": {
+        "name": "Dernière quantité d'algicide ajoutée"
+      },
+      "floc_last_filled_quantity": {
+        "name": "Dernière quantité de floculant ajoutée"
+      }
+    },
+    "button": {
+      "chlor_refill_reset": {
+        "name": "Remplir chlore"
+      },
+      "ph_minus_refill_reset": {
+        "name": "Remplir pH-"
+      },
+      "ph_plus_refill_reset": {
+        "name": "Remplir pH+"
+      },
+      "algicide_refill_reset": {
+        "name": "Remplir algicide"
+      },
+      "algicide_refill_reset_or_aco": {
+        "name": "Remplir algicide / ACO"
+      },
+      "floc_refill_reset": {
+        "name": "Remplir floculant"
+      },
+      "oxy_refill_reset": {
+        "name": "Remplir OXY Pure"
+      }
+    }
+  },
+  "selector": {
+    "port": {
+      "options": {
+        "47524": "47524 — firmware 7.x et antérieur",
+        "51050": "51050 — firmware 8.x"
+      }
+    }
+  }
 }

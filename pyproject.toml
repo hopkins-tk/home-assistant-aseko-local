@@ -1,17 +1,69 @@
 # The contents of this file is based on https://github.com/home-assistant/core/blob/dev/pyproject.toml
 
-target-version = "py314"
+[tool.ruff]
+target-version = "py313"  # the oldest Python a supported Home Assistant runs on
 
-[lint]
+[tool.ruff.lint]
+# Turned on a few groups at a time, each with its findings fixed; "ALL"
+# (Home Assistant core's setting) is where this is heading.
 select = [
-    "ALL"
+    "A",    # flake8-builtins
+    "ANN",  # type annotations
+    "ARG",  # unused arguments
+    "ASYNC", # async
+    "B",    # flake8-bugbear
+    "BLE",  # blind except
+    "C4",   # flake8-comprehensions
+    "C90",  # mccabe complexity, max-complexity below
+    "D",    # docstrings
+    "DTZ",  # datetimes with a time zone
+    "E",    # pycodestyle errors
+    "EM",   # exception messages
+    "ERA",  # commented-out code
+    "EXE",  # executable files
+    "FLY",  # f-strings
+    "FURB", # refurb
+    "F",    # pyflakes
+    "FBT",  # boolean positional arguments
+    "G",    # logging format
+    "I",    # isort
+    "ICN",  # import conventions
+    "INP",  # implicit namespace packages
+    "ISC",  # implicit string concatenation
+    "LOG",  # logging
+    "N",    # pep8-naming
+    "PERF", # performance
+    "PGH",  # pygrep hooks
+    "PIE",  # flake8-pie
+    # pylint
+    "PLC",
+    "PLE",
+    "PLR",
+    "PLW",
+    "PT",   # pytest style
+    "PTH",  # pathlib
+    "RET",  # return
+    "RUF",  # ruff
+    "S",    # bandit
+    "SIM",  # flake8-simplify
+    "SLF",  # private member access
+    "T20",  # print
+    "TRY",  # tryceratops
+    "TID",  # tidy imports
+    "UP",   # pyupgrade
+    "W",    # pycodestyle warnings
+    "YTT",  # sys.version
 ]
 
 ignore = [
+    # Home Assistant integrations import their own modules relatively
+    "TID252",
+    # Arrows, dashes and multiplication signs in text are written on purpose
+    "RUF001", "RUF002", "RUF003",
     "ARG001", # "unused-argument"
     "D202", # no-blank-line-after-function
     "D203", # no-blank-line-before-class (incompatible with formatter)
-    "D212", # multi-line-summary-first-line (incompatible with formatter)
+    "D213", # the summary sits on the first line (D212), as in Home Assistant core
     "E501",   # line too long
     "COM812", # incompatible with formatter
     "ISC001", # incompatible with formatter
@@ -22,8 +74,6 @@ ignore = [
 
     "TRY003", # Avoid specifying long messages outside the exception class
     "TRY400", # Use `logging.exception` instead of `logging.error`
-    # Ignored due to performance: https://github.com/charliermarsh/ruff/issues/2923
-    "UP038", # Use `X | Y` in `isinstance` call instead of `(X, Y)`
 
     # May conflict with the formatter, https://docs.astral.sh/ruff/formatter/#conflicting-lint-rules
     "W191",
@@ -40,16 +90,24 @@ ignore = [
     "PLE0605"
 ]
 
-[lint.flake8-pytest-style]
+[tool.ruff.lint.flake8-pytest-style]
 fixture-parentheses = false
 
-[lint.pyupgrade]
+[tool.ruff.lint.pyupgrade]
 keep-runtime-typing = true
 
-[lint.mccabe]
+[tool.ruff.lint.mccabe]
 max-complexity = 25
 
-[lint.per-file-ignores]
+[tool.ruff.lint.per-file-ignores]
+"custom_components/aseko_local/decoding/{feature.py,features/*.py}" = [
+    # every reading takes the frame and the device, whether it needs both or not
+    "ARG002",
+]
+"scripts/**/*.py" = [
+    "T201", # command-line tools print their output
+    "INP001", # standalone scripts, not a package
+]
 "tests/**/*.py" = [
     # at least this three should be fine in tests:
     "S101", # asserts allowed in tests...
@@ -58,5 +116,11 @@ max-complexity = 25
     "FBT", # Don't care about booleans as positional arguments in tests, e.g. via @pytest.mark.parametrize()
     # The below are debateable
     "PLR2004", # Magic value used in comparison, ...
-    "S311" # Standard pseudo-random generators are not suitable for cryptographic purposes
+    "S311", # Standard pseudo-random generators are not suitable for cryptographic purposes
+    "SLF001", # tests look at the private state they check
+    "DTZ001", # tests build the unit's zone-less wall-clock readings on purpose
+    "D100", "D101", "D102", "D103", "D104", "D105", "D106", "D107", # test names say what they check
+    "S104", # tests bind servers to 0.0.0.0 as the integration does
+    "S108", # /tmp paths in mocks are never written
+    "S603", # tests run the repository's own scripts
 ]

@@ -1,386 +1,207 @@
-# ASIN AQUA Profi — Device Analysis
+# ASIN AQUA Profi (v7) — Device Analysis
 
-> **Status: inferred from the Aseko Profi manual and the `_make_profi_clf_redox_bytes`
-> test fixture. No live capture from a real PROFI device is available yet — every byte
-> position below is a hypothesis that must be confirmed against a real frame before
-> being treated as fact.**
+[Documentation](../README.md) / [Device analyses](README.md)
 
-| Field | Value |
-|---|---|
-| Model | ASIN AQUA Profi |
-| Source | Aseko Profi manual (hardware description); test fixture in `tests/test_sensor.py` |
-| byte[4] | `0x10` → `UNIT_TYPE_PROFI` → `AsekoDeviceType.PROFI` |
-| `byte37_routes_pump_type` | **False** (PROFI has 5 independent pump ports: CL, pH−, pH+, algicide, flocculant) |
+> **Status:** no real PROFI frame captured yet; everything except the serial number is assumed from the Aseko Profi manuals, the other v7 models and a synthetic test fixture.
+> **Profile:** [`profiles/v7/profi.py`](../../custom_components/aseko_local/decoding/profiles/v7/profi.py) · **Support:** [support matrix](../support_matrix.md)
+> **Evidence words** (`confirmed`, `confirmed on X`, `observed`, `assumed`, `not located`): see [evidence rules](../evidence-rules.md).
 
-> **Note on PROFI identification** (`aseko_decoder.py`):
->
-> ```python
-> if data[4] == UNIT_TYPE_PROFI:  # Uncertain
->     return AsekoDeviceType.PROFI
-> ```
->
-> The `0x10` match is the only fixed identifier today. Probe bits in byte[4] are **not**
-> used for PROFI in the way they are for SALT/NET (no `& 0x0C`, no `& 0x08` mask) — the
-> PROFI branch in `_configuration` falls through to the generic `probe_info = data[4]`
-> path and applies the standard SALT-style PROBE_REDOX_MISSING / PROBE_CLF_MISSING /
-> PROBE_DOSE_MISSING bits. This works because the same convention happens to be encoded
-> identically in the high nibble (`0x1?` is what real PROFI devices appear to use), but
-> the inheritance has not been validated against a real frame.
+## 1. Device
 
----
+PROFI is the largest ASIN AQUA pool controller. Per the Aseko Profi manuals it has:
 
-## Hardware Overview (per Aseko Profi manual)
+- **Probe inputs** for pH, CLF (free chlorine) **and** REDOX, which can be installed at the same time.
+- **Dosing outputs** documented in the manual: chlorine (ml/m³/h, or OXY Pure), pH−, pH+, algicide (ml/m³/day) and flocculant (ml/h). The older analysis treated these as five independent pump ports; the profile follows the Aseko Live app and the manuals' setpoints, where flocculant and algicide share one output (see §5).
+- **Water-level input** (capacitive probe) and a **refill valve** output, same function as HOME/SALT/OXY. The hardware was confirmed in the PR #120 review against the manual; the byte positions are not.
+- **Heating relay output** (heat pump or electric heater demand).
+- **Backwash valve**.
+- A **max. filling time** setting (2021 PROFI manual).
 
-PROFI is the largest of the ASIN AQUA pool controllers. It has **5 independent pump
-ports** (no shared/3-port routing like SALT):
+**Identification on the wire:** v7 `byte[4]` = `0x10` (`UNIT_TYPE_PROFI` in `const.py`) → `AsekoDeviceType.PROFI`. The low bits of `byte[4]` are read as missing-probe bits (0x01 REDOX, 0x02 CLF) like SALT/NET, but without a DOSE bit (`decode_v7_without_dose`).
 
-| Port | Connected chemical | Setpoint byte | Flowrate byte | pump_running bit in `byte[29]` |
-|---|---|---|---|---|
-| CL pump | Chlorine (ml/m³/h) or OXY Pure | `byte[53]` | `byte[99]` | `0x40` ⚠️ unconfirmed |
-| pH− pump | pH Minus | not yet mapped | `byte[95]` | `0x80` ⚠️ unconfirmed |
-| pH+ pump | pH Plus | not yet mapped | `byte[97]` | not yet mapped |
-| Algicide pump | Algicide (ml/m³/day) | not yet mapped | not yet mapped | not yet mapped |
-| Flocculant pump | Flocculant (ml/h) | not yet mapped | `byte[101]` | `0x20` ⚠️ unconfirmed |
+**Sources:** Aseko Profi manuals (hardware description, 2021 manual for the filling relay), the synthetic fixture `_make_profi_clf_redox_bytes` in `tests/test_sensor.py`, and PR #120. No units or real frames.
 
-Other notable PROFI hardware (per manual):
+## 2. Frame structure
 
-- **Water-level input** (capactive probe) — the Aseko Profi manual documents a
-  water-level sensor and refill-valve control identical in function to the HOME/SALT/OXY
-  implementation. Until a live PROFI frame is captured, the assumption is that the
-  byte positions documented in [`water_level_backwash_analysis.md`](../temp/water_level_backwash_analysis.md)
-  (bytes 27, 102, 103, 104, 105) are reused 1:1.
-- **Heating relay output** (heat-pump or electric-heater demand) — same `byte[29]` bit
-  0x04 used by HOME/SALT/OXY.
-- **Backwash valve** — same byte positions as HOME/SALT/OXY (bytes 68/69/70/71).
-- **5+ probe inputs** — PROFI supports both CLF **and** REDOX probes simultaneously
-  (per manual). The current decoder reads `byte[18:20]` for REDOX **only if** the
-  `byte[16:18]` value is `0xFFFF` (UNSPECIFIED) — see `_fill_redox_data`.
+Assumed to be the common v7 layout: 120 bytes, three 40-byte segments.
 
----
-
-## Frame Structure (assumed, same as other ASIN AQUA units)
-
-All PROFI frames are 120 bytes, split into three 40-byte sub-frames:
-
-| Sub-frame | Type byte | Content |
+| Segment | Type byte | Content |
 |---|---|---|
 | 0–39 | `0x01` | Live sensor data |
-| 40–79 | `0x03` | Configuration / setpoints |
-| 80–119 | `0x02` | Flow rates / dosing |
+| 40–79 | `0x03` | Setpoints and schedule |
+| 80–119 | `0x02` | Parameters and flow rates |
 
----
+No representative frame exists. The test fixture (CLF + REDOX, synthetic) sets `byte[4]` = `0x10`, `byte[29]` = `0x08`, `byte[37]` = `0x00` (flocculant routing), `byte[101]` = 60, bytes 76-77 = 3600 s and all water-level bytes = `0xFF`.
 
-## Byte Map – Sub-frame 1 (live sensor data, assumed)
+## 3. Byte map
 
-| Byte(s) | Decoded | Confidence | Notes |
+### Bytes 0–39 — live data
+
+| Byte | Field | Decoding | Evidence | Notes |
+|---|---|---|---|---|
+| 0–3 | `serial_number` | big-endian | derived | Repeated in every segment header — the v7 layout every unit shares; no PROFI frame captured |
+| 4 | unit type / `configuration` | `0x10`; missing-probe bits, no DOSE bit | assumed | See §4 |
+| 5 | segment type | `0x01` | assumed | |
+| 6–11 | `timestamp` | year offset 2000 | assumed | |
+| 12 | dosing warnings | bitmask | assumed | See §4 |
+| 13 | alarms | bitmask | assumed | See §4 |
+| 14–15 | `ph` | / 100, with a pH probe | assumed | |
+| 16–17 | `free_chlorine` | / 100, with a CLF probe | assumed | |
+| 18–19 | `redox` | mV; bytes 16-17 when 18-19 are `0xFFFF` | assumed | PROFI can carry CLF and REDOX together |
+| 20–21 | `free_chlorine_mv` | big-endian mV, with a CLF probe | assumed | |
+| 25–26 | `water_temperature` | / 10 | assumed | |
+| 27 | `water_level` | cm; `0xFE` = sensor disconnected | assumed | |
+| 28 | `water_flow_to_probes` | `0xAA` = flowing | assumed | |
+| 29 | actuators | bitmask | assumed | See §4 |
+| 37 | settings / routing | bitmask | assumed | See §4 |
+
+### Bytes 40–79 — setpoints and schedule
+
+| Byte | Field | Decoding | Evidence | Notes |
+|---|---|---|---|---|
+| 52 | `ph_target` | / 10 | assumed | |
+| 53 | `free_chlorine_target` / `chlorine_dose_target` | / 10 with CLF | assumed | the DOSE reading of `chlorine_dose_target` is not reachable today: the PROFI configuration has no DOSE bit (`decode_v7_without_dose`); `redox_target` is not read on PROFI (see §5) |
+| 54 | `flocculant_dose_target` | only while `byte[37]` routes the shared output to flocculant | assumed | unit unresolved: the manual's setpoints read ml/24 h m³, its dosing outputs ml/h — see §8 |
+| 55 | `water_temperature_target` | °C | assumed | |
+| 56–57 | `filtration_period_1_start` | HH:MM | assumed | |
+| 58–59 | `filtration_period_1_end` | HH:MM | assumed | |
+| 60–61 | `filtration_period_2_start` | HH:MM, read unconditionally | assumed | See §5 (Issue #133) |
+| 62–63 | `filtration_period_2_end` | HH:MM, read unconditionally | assumed | See §5 (Issue #133) |
+| 68 | `backwash_interval` | days, `0` = disabled | assumed | |
+| 69–70 | `backwash_start_time` | HH:MM | assumed | |
+| 71 | `backwash_duration` | × 10 s | assumed | |
+| 72 | algicide dose (other models) | — | not located | Not read on PROFI; see §8 |
+| 74–75 | `startup_delay` | s | assumed | |
+| 76–77 | `max_refill_time` | s, `0xFFFF` = not implemented | assumed | 2021 manual lists a max. filling time |
+
+### Bytes 80–119 — parameters and flow rates
+
+| Byte | Field | Decoding | Evidence | Notes |
+|---|---|---|---|---|
+| 92–93 | `pool_volume` | m³ | assumed | |
+| 95 | `ph_minus_flow_rate` | raw | assumed | |
+| 97 | pH+ flow rate | — | not located | Old hypothesis; `ph_plus_*` is not mapped on any protocol |
+| 99 | `chlorine_flow_rate` | raw | assumed | |
+| 101 | `flocculant_flow_rate` | only while `byte[37]` routes the shared output to flocculant | assumed | |
+| 102 | `water_level_low_alarm` | cm | assumed | |
+| 103 | `water_level_refill_start` | cm | assumed | |
+| 104 | `water_level_refill_stop` | cm | assumed | |
+| 105 | `water_level_high_alarm` | cm | assumed | |
+| 106–107 | `dosing_delay` | s | assumed | |
+| 112 | `ph_minus_concentration` | raw | assumed | |
+| 115 | `max_ph_doses` | `0xFF` = not set | assumed | |
+
+## 4. Bit fields
+
+### `byte[4]` — unit type and probes
+
+| Bit / mask | Meaning | Evidence | Notes |
 |---|---|---|---|
-| `[0:4]` | Serial number (big-endian) | ✅ certain | |
-| `[4]` | Unit type = `0x10` | ✅ certain | See note on PROFI identification above |
-| `[5]` | Sub-frame type `0x01` | assumed | Not validated against a real PROFI frame |
-| `[6:12]` | Timestamp | assumed | |
-| `[12]` | Dosing-warning bitmask | assumed | See [`home_device_analysis.md`](home_device_analysis.md) §"Dosing warnings & alarms" |
-| `[13]` | Alarm bitmask (`0x01`=disinfection, `0x02`=pH, `0x04`=no flow) | assumed | See § above |
-| `[14:16]` | pH = value / 100 | assumed | PROFI has a pH probe (per manual) |
-| `[16:18]` | CLF free chlorine (mg/L) if CLF probe present | assumed | PROFI supports CLF |
-| `[18:20]` | REDOX (mV) — same byte on PROFI when both CLF and REDOX are installed | assumed | `_fill_redox_data` already special-cases this (reads 16:18 if 18:19 is `0xFFFF`, else 18:20) |
-| `[20:22]` | Cl free mV (big-endian) if CLF probe present | assumed | |
-| `[25:27]` | Water temperature = value / 10 | assumed | |
-| `[27]` | **Water level (cm)** | ⚠️ hypothesis | See §"Water level & refill valve" below |
-| `[28]` | Water flow to probes (`0xAA` = flowing) | assumed | |
-| `[29]` | Actuator bitmask | assumed structure | See §"byte[29] – Actuator Bitmask" below |
-| `[37]` | **Not used for routing on PROFI** (`byte37_routes_pump_type = False`); also carries the filtration-mode flag since Issue #133 | ✅ certain (routing); ⚠️ assumed (filtration mode) | PROFI has 5 independent pump ports; no live PROFI frame captured yet |
+| value `0x10` | PROFI unit type | assumed | Only fixed identifier; was marked "Uncertain" in the old decoder |
+| `0x01` | REDOX probe missing | assumed | Same convention as SALT/NET, not validated on a real frame |
+| `0x02` | CLF probe missing | assumed | |
+| `0x04` | DOSE missing | — | Not read on PROFI (`decode_v7_without_dose`) |
 
----
+### `byte[12]` — dosing warnings
 
-## Byte Map – Sub-frame 2 (config / setpoints, assumed)
-
-> **All byte positions below are assumed to match HOME/SALT/OXY until a real PROFI
-> frame is captured.** The assumption is based on the Aseko Profi manual
-> describing identical filtration + backwash + dosing functions and on the
-> fact that all other ASIN AQUA v7 units share this byte layout. No live
-> PROFI frame has been decoded against this table.
-
-| Byte(s) | Decoded | Confidence | Notes |
+| Bit / mask | Meaning | Evidence | Notes |
 |---|---|---|---|
-| `[52]` | Required pH = value / 10 | assumed | Same as SALT |
-| `[53]` | Required CLF (mg/L ÷10) or REDOX (raw mV) | assumed | Depends on active probe (see PROFI `required_*` table below) |
-| `[54]` | Required algicide / floc setpoint | assumed | PROFI has 5 independent pump ports — the OXY/HOME byte[72] layout may or may not apply; see Open Question #3 |
-| `[55]` | Required water temperature (°C) | assumed | Same as HOME |
-| `[56:58]` | Filtration start1 | assumed | HH:MM; gated on `FILTRATION_TYPES` |
-| `[58:60]` | Filtration stop1 | assumed | HH:MM; gated on `FILTRATION_TYPES` |
-| `[60:62]` | Filtration start2 | assumed | HH:MM; always populated — see Issue #133 below |
-| `[62:64]` | Filtration stop2 | assumed | HH:MM; always populated — see Issue #133 below |
-| `[68]` | Backwash every N days | assumed | `0` = disabled (matches HOME/SALT/OXY) |
-| `[69:71]` | Backwash time | assumed | HH:MM |
-| `[71]` | Backwash duration | assumed | ×10 seconds |
-| `[72]` | Required algicide (ml/m³/day) | ⚠️ hypothesis | May match OXY/HOME layout — see Open Question #3 |
+| `0x20` | `alarm_max_disinfection_dose` | assumed | Confirmed on HOME (Issue #134) |
+| `0x40` | `alarm_ph_dosing_ineffective` | assumed | Confirmed on HOME (Issue #134) |
 
----
+Not the backwash flag.
 
-## Period 2 schedule bytes (Issue #133)
+### `byte[13]` — alarms
 
-Like SALT, HOME, and OXY, the PROFI controller is expected to keep sending
-the last-configured `start2`/`stop2` times in bytes 60-63 even after the
-user disables Period 2 in the controller UI.  This was first verified on
-SALT (PR #122 frame diff) and on HOME (Issue #133 diagnostic files from
-@dtpugh, serial 110169464, firmware B).  The same protocol behaviour is
-**assumed** for PROFI because:
-
-1.  PROFI shares the SALT/HOME byte layout for the filtration schedule
-    (bytes 56-63) per the Aseko Profi manual.
-2.  There is no protocol-level reason to believe the PROFI firmware
-    clears the bytes when Period 2 is disabled.
-3.  No live PROFI frame has been captured that toggles Period 2 on/off;
-    the assumption can be re-verified once a real frame is available.
-
-**Decoder behaviour** (post Issue #133 fix): the decoder reads bytes 60-63
-unconditionally for any device in `FILTRATION_TYPES` (which includes PROFI
-since it exposes a filtration output).  The lazy-creation guard in
-`sensor.py` skips the `filtration_2_start` / `filtration_2_stop` entities
-only if the bytes are `0xFF` (the bytes have never been configured on the
-controller).  Once the entity is registered, it stays populated with the
-last-configured time even when the user disables Period 2 — the
-`filtration_schedule` sensor (decoded from the `byte[37]` schedule bits)
-separately reports `TIMER_PERIOD_1` so the user knows the schedule is
-inactive.
-
-NET is excluded because it has no filtration output at all and is not in
-`FILTRATION_TYPES`.
-
-See [`home_device_analysis.md`](home_device_analysis.md) §"Note on Period 2
-schedule bytes (Issue #133)" for the full discussion and the diagnostic
-files that proved the behaviour on HOME.
-
----
-
-## byte[29] – Actuator Bitmask (assumed)
-
-> **All masks below are placeholders — copied from HOME/OXY because no PROFI frame
-> has been captured with individual pumps running.** Each must be confirmed by a
-> real frame where only the pump in question is active.
-
-```python
-AsekoDeviceType.PROFI: AsekoActuatorMasks(
-    filtration=0x08,  # uncertain
-    cl=0x40,          # uncertain
-    ph_minus=0x80,    # uncertain
-    flocculant=0x20,  # uncertain
-    byte37_routes_pump_type=False,  # PROFI has 5 independent pump ports
-)
-```
-
-| Bit candidate | Mask | Hypothesis | Status |
+| Bit / mask | Meaning | Evidence | Notes |
 |---|---|---|---|
-| 3 | `0x08` | `filtration_pump_running` | ⏳ unconfirmed – assumed same as SALT/HOME/OXY |
-| 6 | `0x40` | `cl_pump_running` | ⏳ unconfirmed – assumed same as HOME |
-| 7 | `0x80` | `ph_minus_pump_running` | ⏳ unconfirmed – assumed same as HOME |
-| 5 | `0x20` | `floc_pump_running` | ⏳ unconfirmed – assumed same as SALT flocculant bit |
-| 2 | `0x04` | `heating_active` | ⚠️ partially confirmed – see §"Heating demand" below |
-| 1 | `0x02` | `water_filling_active` | ⚠️ partially confirmed – see §"Water level & refill valve" below |
+| `0x01` | `alarm_max_disinfection_dose` | assumed | |
+| `0x02` | `alarm_ph_dosing_ineffective` | assumed | |
+| `0x04` | `alarm_no_flow_to_probes` | assumed | Confirmed on NET |
+| `0x08` | `alarm_rapid_ph_change` | assumed | |
 
-**Open**: `algicide_pump_running` and `ph_plus_pump_running` have no mask assigned yet
-on PROFI. They are listed in `AsekoActuatorMasks` as defaults (`0x00`), which means the
-corresponding binary sensor entity will be registered but always report `False` until a
-real mask is discovered.
+### `byte[29]` — actuators
 
----
-
-## Water level & refill valve
-
-> **Confirmed: PROFI has a water-level input and refill-valve output.** This was
-> confirmed in PR [#120](https://github.com/hopkins-tk/home-assistant-aseko-local/pull/120)
-> review by `@hopkins-tk` and verified against the Aseko Profi manual: PROFI exposes
-> the same water-level hardware as HOME/SALT/OXY.
-
-**Before PR #120**: the decoder's `_fill_home_water_level_data` only ran for
-`{HOME, SALT, OXY}` (whitelist). PROFI was silently skipped, so the `water_level*` and
-`water_filling_active` fields stayed `None` on PROFI devices.
-
-**After PR #120** (commit `34957ea` by `Enrica`, co-authored by `@hopkins-tk`): the
-whitelist was replaced with a **blacklist** for `NET` only:
-
-```python
-# aseko_decoder.py → _fill_home_water_level_data
-if unit.device_type == AsekoDeviceType.NET:
-    return  # bytes 102..104 contain unrelated non-FF data on NET devices
-```
-
-`NET` is still excluded because real NET captures (see
-[`net_device_analysis.md`](net_device_analysis.md)) show:
-
-| Byte | Real NET value | Would-be mis-decoding |
-|---|---|---|
-| `byte[102]` | `0x01` | `water_level_low_alarm = 1 cm` (false) |
-| `byte[103]` | `0x03` | `water_level_filling_on = 3 cm` (false) |
-| `byte[104]` | `0x83` | `water_level_filling_off = 131 cm` (false) |
-| `byte[105]` | `0xFF` | correctly decoded as `None` |
-
-…so NET really does need the exclusion. PROFI shares the HOME/SALT/OXY byte layout
-(per the manual), so it is safe to enable the decoder for PROFI.
-
-**Test impact** (`tests/test_sensor.py::test_async_setup_profi_clf_redox`): one
-additional binary sensor — `water_filling_active` — is now registered for PROFI.
-The test was updated from `assert == 34` to `assert == 35`, with the comment block
-updated to list `water_filling_active` explicitly under "Binary sensors (6)".
-
-**Live confirmation pending**: the current test fixture
-(`_make_profi_clf_redox_bytes`) sets `data[29] = 0x08` and all water-level bytes to
-`0xFF`, so `water_filling_active = False` and all `water_level_*` fields are `None`.
-A real PROFI frame with non-`0xFF` water-level bytes (or a non-zero `0x02` bit in
-`byte[29]`) is needed to confirm the entity reports correct values.
-
----
-
-## Heating demand (assumed same as HOME/SALT/OXY)
-
-`_fill_heating_demand` reads `byte[29]` bit `0x04` for `heating_active`. This is the
-same bit position used by HOME/SALT/OXY (see `_fill_heating_demand` in
-`aseko_decoder.py`). PROFI exposes a heating relay output per the manual, so the
-mapping is expected to be the same.
-
-**Live confirmation pending**.
-
----
-
-## Backwash & backwash schedule (assumed same as HOME/SALT/OXY)
-
-PROFI is documented in the manual to have a backwash valve. The decoder fills the
-backwash fields in `_fill_backwash_active` and in `decode()` with the same byte
-positions as HOME/SALT/OXY:
-
-- `byte[68]` = backwash every N days
-- `byte[69:71]` = backwash time (HH:MM)
-- `byte[71]` = backwash duration (× 10 s)
-- `byte[29]` bit `0x01` = backwash relay active (combined with `byte[29]` bit `0x02`
-  for the water-filling state — see [`backwash_tracker.py`](../../custom_components/aseko_local/backwash_tracker.py)).
-  Note: byte[12] is **not** the backwash flag — it is the dosing-warning bitmask
-  (see [`home_device_analysis.md`](home_device_analysis.md) §"Dosing warnings & alarms").
-
-`last_backwash` and `next_backwash` are derived (not from raw bytes) and depend on the
-[`BackwashTracker`](../../custom_components/aseko_local/backwash_tracker.py) state
-across coordinator updates.
-
-**Live confirmation pending**.
-
----
-
-## Confirmed `ACTUATOR_MASKS` for PROFI (current state)
-
-```python
-AsekoDeviceType.PROFI: AsekoActuatorMasks(
-    filtration=0x08,             # uncertain – assumed same as HOME/SALT/OXY
-    cl=0x40,                    # uncertain – assumed same as HOME
-    ph_minus=0x80,              # uncertain – assumed same as HOME
-    flocculant=0x20,            # uncertain – assumed same as SALT flocculant bit
-    # algicide, ph_plus, oxy, electrolyzer_*: all 0x00 (no mask assigned yet)
-    byte37_routes_pump_type=False,  # ✅ certain – PROFI has 5 independent pump ports
-)
-```
-
-> **The masks above should be treated as best-guess placeholders, not as confirmed
-> facts.** Until a real PROFI frame is captured with each pump running individually,
-> `cl_pump_running`, `ph_minus_pump_running`, and `floc_pump_running` may report
-> incorrectly when the corresponding pump is active.
-
----
-
-## `required_*` setpoint bytes on PROFI
-
-`_fill_required_data` (`aseko_decoder.py`):
-
-| Field | Byte | PROFI behaviour | Confidence |
+| Bit / mask | Meaning | Evidence | Notes |
 |---|---|---|---|
-| `required_ph` | `byte[52]` | Set if pH probe present | assumed |
-| `required_cl_free` | `byte[53]` | Set if CLF probe present (`/10`) | assumed |
-| `required_redox` | `byte[53]` | **Skipped on PROFI** (not `× 10`) | ✅ certain — `_fill_required_data` has an explicit `unit.device_type != AsekoDeviceType.PROFI` guard. PROFI's REDOX setpoint uses a different scaling (raw mV, not × 10); the decoder does not expose it today. |
-| `required_algicide` | `byte[54]` | Not assigned on PROFI (no byte[37] routing, and the OXY/HOME branch that reads `byte[72]` is not entered for PROFI) | ✅ certain by code inspection, ⚠️ byte position **unconfirmed** — see Open Questions |
-| `required_floc` | `byte[54]` | Not assigned on PROFI (same reason as above) | ✅ certain by code inspection, ⚠️ byte position **unconfirmed** |
+| `0x01` | `backwash_running` | assumed | Confirmed on SALT |
+| `0x02` | `refilling` | assumed | Confirmed on HOME and SALT |
+| `0x04` | `heating_running` | assumed | Same bit as HOME/SALT/OXY |
+| `0x08` | `filtration_relay` (→ `filtration_running`) | assumed | |
+| `0x20` | `flocculant_pump_running` | assumed | Only while a flocculant flow rate is configured |
+| `0x40` | `chlorine_pump_running` | assumed | Port may be chlorine or OXY Pure |
+| `0x80` | `ph_minus_pump_running` | assumed | |
+| — | algicide pump, pH+ pump | not located | Not listed in the profile |
 
-The test `test_async_setup_profi_clf_redox` explicitly asserts
-`not any(... == "required_floc" ...)` to document the gap.
+### `byte[37]` — settings and routing
 
----
-
-## `flowrate_*` bytes on PROFI
-
-`_fill_flowrate_data` falls through to the **SALT/NET/PROFI** branch on PROFI:
-
-```python
-# SALT / NET / PROFI: byte[99] = chlorine pump flowrate.
-unit.flowrate_chlor = AsekoDecoder._normalize_value(data[99], int)
-
-# byte[101]: shared "third pump slot" — algicide OR flocculant per byte[37].
-# 0xFF (UNSPECIFIED) → leave both as None.
-if data[37] != UNSPECIFIED_VALUE and bool(
-    data[37] & AsekoThirdPumpSlot.SALT_ALGICIDE_ROUTING
-):
-    unit.flowrate_algicide = AsekoDecoder._normalize_value(data[101], int)
-elif data[37] != UNSPECIFIED_VALUE:
-    unit.flowrate_floc = AsekoDecoder._normalize_value(data[101], int)
-```
-
-**Implication for PROFI**: PROFI has 5 independent pump ports but the decoder currently
-treats `byte[101]` as a shared slot routed by `byte[37]`. With the test fixture's
-`byte[37] = 0x00` (flocculant mode), this populates `flowrate_floc` correctly **by
-accident**. The PROFI branch in `_fill_flowrate_data` should be split out into its own
-early-return (like OXY and HOME) once the correct byte positions are confirmed.
-
-**Byte positions assumed but unconfirmed**:
-
-| Field | Byte | Status |
-|---|---|---|
-| `flowrate_chlor` | `byte[99]` | assumed (shared with SALT/NET) |
-| `flowrate_ph_minus` | `byte[95]` | assumed (shared with SALT/NET/HOME/OXY) |
-| `flowrate_ph_plus` | `byte[97]` | assumed (no decoder branch reads it today) |
-| `flowrate_algicide` | `byte[101]` if `byte[37] & 0x80` | ⛔ wrong on PROFI — should be its own byte |
-| `flowrate_floc` | `byte[101]` if `byte[37] & 0x80 == 0` | ⛔ wrong on PROFI — should be its own byte |
-
----
-
-## Open Questions (all require a real PROFI frame to resolve)
-
-| # | Question | Status | Action |
+| Bit / mask | Meaning | Evidence | Notes |
 |---|---|---|---|
-| 1 | PROFI probe bits in `byte[4]` (CLF-missing, REDOX-missing, DOSE-missing) — same convention as SALT? | ⏳ unconfirmed | Capture a real PROFI frame and compare |
-| 2 | PROFI `byte[29]` bit masks for each of the 5 pump ports | ⏳ all unconfirmed | Capture frames with each pump running individually |
-| 3 | PROFI `required_algicide` / `required_floc` setpoint bytes (the OXY/HOME byte[54] + byte[72] layout may or may not apply) | ⏳ unconfirmed | Capture a frame with both algicide and flocculant configured and look for non-zero values in byte[54] and byte[72] |
-| 4 | PROFI `flowrate_algicide` and `flowrate_floc` are independent bytes on PROFI (not the shared `byte[101]` slot used by SALT) | ⏳ unconfirmed | Capture a frame and look for two non-zero flowrate values |
-| 5 | PROFI `required_redox` scaling — confirmed **not** `× 10` (guard in `_fill_required_data`); is it `× 1` (raw mV) or some other scaling? | ⏳ unconfirmed | Capture a frame and compare with the Aseko Live app |
-| 6 | PROFI `pH+` pump — does it exist on PROFI hardware (per manual: yes) and which byte/bit carries the setpoint + flowrate + running state? | ⏳ unconfirmed | Capture a frame with pH+ pump running |
-| 7 | PROFI water-level byte positions — assumed identical to HOME/SALT/OXY (bytes 27, 102, 103, 104, 105) | ⚠️ assumed | Capture a frame with a non-`0xFF` water level and confirm the thresholds match the app |
-| 8 | PROFI heating relay — assumed `byte[29]` bit `0x04` (same as HOME/SALT/OXY) | ⚠️ assumed | Capture a frame while the heat pump is running |
-| 9 | PROFI backwash valve — assumed same bytes as HOME/SALT/OXY (68/69/70/71) | ⚠️ assumed | Capture a frame while backwash is active |
+| `0x04` | `service_menu_open` | assumed | |
+| `0x10` / `0x20` | `filtration_schedule` | assumed | Since Issue #133 |
+| `0x80` | shared output routed to algicide (clear = flocculant) | assumed | Same as SALT; PROFI reads only the flocculant side |
 
----
+## 5. Model-specific behaviour
 
-## How to capture a real PROFI frame
+### Shared flocculant / algicide output
 
-1. Identify a user with an ASIN AQUA Profi unit and ask them to enable Aseko Live /
-   Home Assistant logging while the pool is running normally.
-2. Capture at least one full 120-byte frame per pump state:
-   - All pumps off
-   - Filtration only
-   - pH− pump only
-   - CL pump only
-   - Floc pump only
-   - Algicide pump only
-   - Water refill active (water filling valve open)
-   - Heat pump running
-   - Backwash active
-3. Cross-check decoded values against the Aseko Live app screenshots.
-4. Update the `ACTUATOR_MASKS` entry and any `flowrate_*` / `required_*` branches that
-   turn out to be wrong.
+The profile follows the Aseko Live app and the PROFI manuals: the setpoints show a flocculant dose (ml/24 h m³) on a shared flocculant / algicide output. `flocculant_dose_target` (`byte[54]`) and `flocculant_flow_rate` (`byte[101]`) use `decode_v7_routed_by_byte37`, as on SALT. The profile lists **no** algicide values.
 
----
+### Disinfection setpoint
 
-## Cross-References
+`byte[53]` is read as free chlorine target (CLF). The chlorine dose target reading needs a DOSE configuration, which the PROFI profile does not have, so it is never reached. `redox_target` is not in the profile: the old decoder skipped it on PROFI because the REDOX setpoint was believed to use a different scaling (raw mV, not × 10). Neither scaling is verified.
 
-- Decoder file: `custom_components/aseko_local/aseko_decoder.py`
-- Actuator masks: `custom_components/aseko_local/aseko_data.py` → `ACTUATOR_MASKS[AsekoDeviceType.PROFI]`
-- Unit-type constant: `custom_components/aseko_local/const.py` → `UNIT_TYPE_PROFI = 0x10`
-- Test fixture: `tests/test_sensor.py` → `_make_profi_clf_redox_bytes`
-- Test: `tests/test_sensor.py` → `test_async_setup_profi_clf_redox` (asserts 35 entities
-  after PR #120; was 34 before, then 35 after the water-level blacklist fix)
-- Related water-level analysis: [`water_level_backwash_analysis.md`](../temp/water_level_backwash_analysis.md)
-- Sibling device analyses: [`home_device_analysis.md`](home_device_analysis.md), [`salt_device_analysis.md`](salt_device_analysis.md), [`net_device_analysis.md`](net_device_analysis.md), [`oxy_device_analysis.md`](oxy_device_analysis.md)
-- Issue #133: Period 2 schedule bytes (60-63) are now read unconditionally for any device in `FILTRATION_TYPES` (SALT, HOME, OXY, PROFI) to avoid "unknown" entities when the user toggles the controller.  Same fix applies to PROFI per the assumption above.  See [`home_device_analysis.md`](home_device_analysis.md) §"Note on Period 2 schedule bytes (Issue #133)" for the full discussion.
+### Filtration period 2 (Issue #133)
+
+Like SALT (PR #122 frame diff) and HOME (Issue #133 diagnostics), PROFI is assumed to keep sending the last-configured period 2 times in bytes 60-63 after period 2 is disabled on the controller. Reasons: the manual describes the same filtration schedule, and there is no reason the firmware would clear the bytes. The bytes are read unconditionally; while they are `0xFF` (never configured) the value is not present, so the entity stays disabled or unavailable rather than showing a time. `filtration_schedule` (from `byte[37]`) reports when the second period is inactive. See [`home_device_analysis.md`](home_device_analysis.md) for the proof on HOME.
+
+### Water level and refill
+
+PROFI has the water-level input and refill valve (PR #120 review, manual), so the water-level values are decoded with the HOME/SALT/OXY bytes 27 and 102-105 plus `byte[29]` `0x02`. NET stays excluded because its bytes 102-104 carry unrelated data (`0x01`, `0x03`, `0x83`; see [`net_device_analysis.md`](net_device_analysis.md)).
+
+### Backwash
+
+Backwash settings use bytes 68-71; the relay is `byte[29]` `0x01` (`backwash_running`), which [`trackers/backwash.py`](../../custom_components/aseko_local/trackers/backwash.py) watches. `last_backwash` and `next_scheduled_backwash` are derived by the `BackwashTracker` across coordinator updates, not read from the frame.
+
+## 6. Ground truth
+
+Nothing known yet.
+
+## 7. Settings the frame does not carry
+
+Nothing known yet.
+
+## 8. Open questions
+
+All need a real PROFI frame. A useful capture set: all pumps off, filtration only, each pump alone (pH−, chlorine, flocculant, algicide), refill valve open, heat pump running, backwash active; each compared with the Aseko Live app.
+
+1. Are the `byte[4]` missing-probe bits (CLF, REDOX) the SALT convention? — any real frame with a known probe set.
+2. `byte[29]` masks for each pump. — frames with each pump running alone.
+3. Algicide and flocculant setpoints: is the shared output routed by `byte[37]` `0x80`, or are there independent bytes (`byte[54]` and `byte[72]` as on OXY/HOME)? — a frame with both algicide and flocculant configured.
+4. Algicide and flocculant flow rates: shared `byte[101]` or two separate bytes? — a frame showing two non-zero flow rates.
+5. REDOX setpoint scaling on `byte[53]`: raw mV or something else? — a REDOX frame compared with the app.
+6. pH+ pump: setpoint, flow rate (`byte[97]`?) and running bit. — a frame with the pH+ pump running.
+7. Water-level bytes 27 and 102-105. — a frame with a non-`0xFF` level, thresholds compared with the app.
+8. Heating relay `byte[29]` `0x04`. — a frame while the heat pump runs.
+9. Backwash bytes 68-71 and `byte[29]` `0x01`. — a frame while backwash is active.
+10. **Flocculant dose unit** — the PROFI manual gives ml/24 h m³ for the flocculant setpoint and ml/h for the flocculant output; a frame with a known setpoint on a real PROFI would settle what `byte[54]` carries.
+
+## 9. History
+
+- **Profile split:** the decoder was split into device profiles; `profiles/v7/profi.py` replaced the `_fill_*` methods, `ACTUATOR_MASKS` and `FILTRATION_TYPES` of `aseko_decoder.py`. The profile now lists `flocculant_dose_target` and `max_refill_time` from the manuals.
+- **Older claim, superseded:** the old decoder set `byte37_routes_pump_type = False` ("5 independent pump ports", marked certain), yet `_fill_flowrate_data` still read `byte[101]` as the SALT-style shared slot, giving the flocculant flow rate right "by accident" with the fixture's `byte[37]` = `0x00`. The plan was a PROFI-only branch once positions were known; the profile instead routes flocculant by `byte[37]` `0x80`.
+- **Older claim, superseded:** `_fill_required_data` did not assign `algaecide_dose_target` or `flocculant_dose_target` on PROFI, and `test_async_setup_profi_clf_redox` asserted `flocculant_dose_target` was absent. The profile and test now include it.
+- **Old actuator masks:** `filtration=0x08`, `cl=0x40`, `ph_minus=0x80`, `flocculant=0x20` were placeholders copied from HOME/SALT/OXY; algicide, pH+, OXY and electrolyser masks were `0x00`, so their binary sensors registered but always read off. Heating and refilling bits were called "partially confirmed"; the profile marks them assumed.
+- **Identification:** the old decoder matched `data[4] == UNIT_TYPE_PROFI` with an "Uncertain" comment and fell through to the generic `probe_info = data[4]` path with the SALT-style REDOX/CLF/DOSE missing bits.
+- **PR #120** (commit `34957ea`): `_fill_home_water_level_data` changed from a `{HOME, SALT, OXY}` whitelist to a NET-only blacklist, so PROFI got water-level values and a `refilling` binary sensor; the PROFI test count went from 34 to 35 entities.
+- **Issue #133:** bytes 60-63 read unconditionally for every model with filtration (SALT, HOME, OXY, PROFI).
+- The water-level byte positions were first documented in `docs/temp/water_level_backwash_analysis.md`, no longer in the repository.
+
+## 10. References
+
+- Profile: [`profiles/v7/profi.py`](../../custom_components/aseko_local/decoding/profiles/v7/profi.py); feature files in [`decoding/features/`](../../custom_components/aseko_local/decoding/features/)
+- Unit type constant: `custom_components/aseko_local/const.py` → `UNIT_TYPE_PROFI = 0x10`
+- Tests: `tests/test_sensor.py` (`_make_profi_clf_redox_bytes`, `test_async_setup_profi_clf_redox`), `tests/test_decode_v7.py` (`test_decode_profi`)
+- PR #120 (water level on PROFI), PR #122 (SALT period 2 frame diff), Issue #133 (period 2 bytes), Issue #134 (HOME dosing warnings)
+- Sibling analyses: [`home_device_analysis.md`](home_device_analysis.md), [`salt_device_analysis.md`](salt_device_analysis.md), [`net_device_analysis.md`](net_device_analysis.md), [`oxy_device_analysis.md`](oxy_device_analysis.md)
+- [Support matrix](../support_matrix.md), [evidence rules](../evidence-rules.md)

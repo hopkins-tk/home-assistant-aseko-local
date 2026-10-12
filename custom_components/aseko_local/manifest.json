@@ -1,13 +1,20 @@
 {
   "domain": "aseko_local",
   "name": "Aseko Local",
+  "after_dependencies": [
+    "frontend",
+    "http"
+  ],
   "codeowners": [
     "@hopkins-tk"
   ],
   "config_flow": true,
+  "dependencies": [
+    "persistent_notification"
+  ],
   "documentation": "https://github.com/hopkins-tk/home-assistant-aseko-local",
   "iot_class": "local_push",
   "issue_tracker": "https://github.com/hopkins-tk/home-assistant-aseko-local/issues",
   "requirements": [],
-  "version": "v1.9.2"
+  "version": "v2.0.0"
 }

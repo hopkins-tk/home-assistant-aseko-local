@@ -1,231 +1,139 @@
-def print_hex_table(data: bytes) -> None:
-    """Prints a table of byte index and hex value."""
-    print("Byte Nr | HEX")
-    print("--------|-----")
-    for i, b in enumerate(data):
-        print(f"{i:03d}     | {b:02x}")
+#!/usr/bin/env python3
+"""Look at a firmware v7 (binary, 120 bytes) Aseko frame byte by byte.
+
+Usage:
+    python scripts/hex_tools.py HEX --table
+    python scripts/hex_tools.py HEX --tablewrite hex_table.md
+    python scripts/hex_tools.py HEX --byteinfo 14
+    python scripts/hex_tools.py HEX --generate-test
+
+HEX is the frame as hex, spaces allowed (e.g. ``raw_frame_v7.hex_dump`` from a
+diagnostics download).  What a byte means is the profile's business (see
+docs/support_matrix.md and docs/decoding-by-device-profile.md); this tool only
+shows the bytes, so it never repeats an outdated byte map.
+"""
+
+from __future__ import annotations
+
+import argparse
+import sys
+from pathlib import Path
+
+FRAME_SIZE = 120
 
 
-def print_hex_table_full(data: bytes) -> None:
-    """Prints a table of byte index and hex value."""
-    print("Byte Nr | HEX  | Dec Byte | Dec Word")
-    print("--------|-----")
-    for i, b in enumerate(data):
-        print(
-            f"{i:03d}     | {b:02x}  | {b:3d}     | {int.from_bytes(data[i : i + 2], 'big') if i + 1 < len(data) else 'N/A':6}"
-        )
+def parse_hex(text: str) -> bytes:
+    """Return the frame bytes from a hex string; spaces and a ``0x`` prefix allowed."""
+    cleaned = text.replace(" ", "").replace("\n", "").removeprefix("0x")
+    try:
+        return bytes.fromhex(cleaned)
+    except ValueError as exc:
+        msg = f"not a hex string: {exc}"
+        raise SystemExit(msg) from exc
 
 
-def write_hex_table_md(data: bytes, filename: str) -> None:
-    """Writes the hex table to a markdown file."""
-    with open(filename, "w") as f:
-        f.write("| Byte Nr | HEX | Dec Byte | Dec Word |\n")
-        f.write("|---------|-----|----------|----------|\n")
-        for i, b in enumerate(data):
-            if i + 1 < len(data):
-                word = f"{int.from_bytes(data[i : i + 2], 'big'):6}"
-            else:
-                word = "N/A"
-            f.write(f"| {i:03d} | {b:02x} | {b:3d} | {word} |\n")
-
-
-def print_byte_info(data: bytes, byte_index: int) -> None:
-    """Prints the hex value and big-endian integer value for a given byte index and length."""
-    byte_value = data[byte_index:byte_index].hex()
-    word_value = int.from_bytes(data[byte_index : byte_index + 2], "big")
-    print(f"byte value = 0x{byte_value} / word value: {word_value})")
-
-
-def generate_bytearray(data: bytes) -> None:
-    """
-    Generates a Python function that fills a bytearray with values from a hexstring,
-    using a mapping of byte positions and names.
-    byte_map: List of dicts with keys: 'name', 'start', 'end', 'type'
-    type: 'byte' or 'word'
-    """
-
-    byte_map = [
-        {"name": "serial_number", "byte": "0:3", "comment": ""},
-        {"name": "probe info", "byte": "4", "comment": ""},
-        {"name": "year", "byte": "6", "comment": "eg 25 (2000+year), NET = FF always"},
-        {"name": "month", "byte": "7", "comment": ""},
-        {"name": "day", "byte": "8", "comment": ""},
-        {"name": "hour", "byte": "9", "comment": ""},
-        {"name": "minute", "byte": "10", "comment": ""},
-        {"name": "second", "byte": "11", "comment": ""},
-        {"name": "ph_value", "byte": "14:15", "comment": ""},
-        {"name": "cl_free or redox", "byte": "16:17", "comment": ""},
-        {
-            "name": "redox",
-            "byte": "18:19",
-            "comment": "Aqua Pro only clf and redox probes",
-        },
-        {"name": "salinity", "byte": "20", "comment": "Aqua Salt only"},
-        {"name": "electrolyzer_power", "byte": "21", "comment": "Aqua Salt only"},
-        {
-            "name": "cl_free_mv",
-            "byte": "20:21",
-            "comment": "Aqua Net if clf probe, others?",
-        },
-        {"name": "water_temperature", "byte": "25:26", "comment": ""},
-        {"name": "water_flow_probe", "byte": "28", "comment": ""},
-        {"name": "pump_or_electrolizer", "byte": "29", "comment": ""},
-        {
-            "name": "pump_definition",
-            "byte": "37",
-            "comment": "algicide/floc based on mask 0x80 or 0xff for NET",
-        },
-        {"name": "required_ph", "byte": "52", "comment": ""},
-        {
-            "name": "required_cl_free_or_redox",
-            "byte": "53",
-            "comment": "if clf and redox probe then required clf, with oxy dose ml/m3/day",
-        },
-        {"name": "required_flocc", "byte": "54", "comment": "ml/h"},
-        {"name": "required_water_temperature", "byte": "55", "comment": ""},
-        {"name": "start_1_time", "byte": "56:57", "comment": ""},
-        {"name": "stop_1_time", "byte": "58:59", "comment": ""},
-        {"name": "start_2_time", "byte": "60:61", "comment": ""},
-        {"name": "stop_2_time", "byte": "62:63", "comment": ""},
-        {"name": "backwash_every_n_days", "byte": "68", "comment": ""},
-        {"name": "backwash_time", "byte": "69:70", "comment": ""},
-        {"name": "backwash_duration", "byte": "71", "comment": ""},
-        {"name": "required_algicide", "byte": "71", "comment": "ml/m3/day"},
-        {"name": "delay_after_startup", "byte": "74:75", "comment": ""},
-        {"name": "pool_volume", "byte": "92:93", "comment": ""},
-        {"name": "max_filling_time", "byte": "94:95", "comment": "! Duplicate Byte 95"},
-        {"name": "flowrate_ph_mins", "byte": "95", "comment": ""},
-        {"name": "flowrate_ph_plus", "byte": "97", "comment": ""},
-        {"name": "flowrate_ph_chlor", "byte": "99", "comment": ""},
-        {
-            "name": "flowrate_floc",
-            "byte": "101",
-            "comment": "evt. depending on byte 37 mask 0x??",
-        },
-        {
-            "name": "aglicide",
-            "byte": "103",
-            "comment": "evt. depending on byte 37 mask 0x80",
-        },
-        {"name": "delay_after_dose", "byte": "106:107", "comment": ""},
+def table_rows(data: bytes) -> list[tuple[int, int, int | None]]:
+    """(index, byte, big-endian word of this and the next byte or None)."""
+    return [
+        (i, b, int.from_bytes(data[i : i + 2], "big") if i + 1 < len(data) else None)
+        for i, b in enumerate(data)
     ]
 
-    print("def _make_from_hex_dump() -> bytearray:")
-    print('    """Create a base bytearray from hex dump."""')
-    print("    data = bytearray([0xFF] * 120)")
-    for entry in byte_map:
-        name = entry["name"]
 
-        if ":" not in entry["byte"]:
-            start = int(entry["byte"])
-            end = start
-            typ = "byte"
-        else:
-            start, end = map(int, entry["byte"].split(":"))
-            end += 1
-            typ = "word"
-
-        if typ == "byte":
-            value = data[start]
-            print(f"    data[{start}] = {value}  # {name} / HEX: 0x{value:02x}")
-        elif typ == "word":
-            value = int.from_bytes(data[start:end], "big")
-            hex_str = data[start:end].hex()
-            print(
-                f"    data[{start}:{end}] = ({value}).to_bytes({end - start}, 'big')  # {name} / HEX: 0x{hex_str}"
-            )
-    print("    return data")
+def print_hex_table(data: bytes) -> None:
+    """Print every byte: index, hex, decimal and the word starting there."""
+    print("Byte | HEX | Dec | Word (BE)")
+    print("-----|-----|-----|----------")
+    for i, b, word in table_rows(data):
+        print(f"{i:03d}  | {b:02x}  | {b:3d} | {'N/A' if word is None else word}")
 
 
-# Beispiel-Mapping für die wichtigsten Felder
+def write_hex_table_md(data: bytes, path: Path) -> None:
+    """Write the same table as Markdown."""
+    lines = ["| Byte | HEX | Dec | Word (BE) |", "|---|---|---|---|"]
+    lines += [
+        f"| {i:03d} | {b:02x} | {b} | {'N/A' if word is None else word} |"
+        for i, b, word in table_rows(data)
+    ]
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def byte_info(data: bytes, index: int) -> str:
+    """One byte in hex and decimal, and the big-endian word starting at it."""
+    if not 0 <= index < len(data):
+        msg = f"byte index {index} is outside the frame (0-{len(data) - 1})"
+        raise SystemExit(msg)
+    b = data[index]
+    text = f"byte[{index}] = 0x{b:02x} = {b} = 0b{b:08b}"
+    if index + 1 < len(data):
+        word = int.from_bytes(data[index : index + 2], "big")
+        text += f" / word[{index}-{index + 1}] = 0x{word:04x} = {word}"
+    return text
+
+
+def generate_test(data: bytes) -> str:
+    """Return a pytest skeleton for this frame.
+
+    The expected values are left as TODOs on purpose: they must come from
+    what the unit showed when the frame was sent, not from the decoder under
+    test.
+    """
+    hex_lines = [data[i : i + 20].hex(" ") for i in range(0, len(data), 20)]
+    out = [
+        "# --- generated by scripts/hex_tools.py --generate-test ---",
+        "# Fill in the expected values from the unit's display or the Aseko app",
+        "# at the moment the frame was sent.",
+        "",
+        "from custom_components.aseko_local.decoding import decode",
+        "",
+        "FRAME = bytes.fromhex(",
+        *(f'    "{line} "' for line in hex_lines),
+        ")",
+        "",
+        "",
+        "def test_decoded_frame():",
+        "    device = decode(FRAME)",
+        "",
+        f"    assert device.serial_number == {int.from_bytes(data[0:4], 'big')}",
+        "    # TODO: assert the values the unit showed, e.g.",
+        "    # assert device.ph == pytest.approx(7.2)",
+    ]
+    return "\n".join(out) + "\n"
+
+
+def main(argv: list[str] | None = None) -> None:
+    """Run the command line."""
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("hex", help="the frame as hex (spaces allowed)")
+    action = parser.add_mutually_exclusive_group(required=True)
+    action.add_argument("--table", action="store_true", help="print every byte")
+    action.add_argument(
+        "--tablewrite", type=Path, metavar="FILE", help="write the table as Markdown"
+    )
+    action.add_argument(
+        "--byteinfo", type=int, metavar="N", help="one byte and the word starting at it"
+    )
+    action.add_argument(
+        "--generate-test", action="store_true", help="print a pytest skeleton"
+    )
+    args = parser.parse_args(argv)
+
+    data = parse_hex(args.hex)
+    if len(data) != FRAME_SIZE:
+        print(
+            f"warning: {len(data)} bytes, a v7 frame has {FRAME_SIZE}", file=sys.stderr
+        )
+
+    if args.table:
+        print_hex_table(data)
+    elif args.tablewrite is not None:
+        write_hex_table_md(data, args.tablewrite)
+        print(f"wrote {args.tablewrite}")
+    elif args.byteinfo is not None:
+        print(byte_info(data, args.byteinfo))
+    else:
+        print(generate_test(data), end="")
 
 
 if __name__ == "__main__":
-    import sys
-    import os
-
-    # Example usage:
-    # python3 hex_dump.py <function> <hexstring> [byte_index]
-    # functions: --table, --tablewrite, --byteinfo
-    # Example: python3 hex_dump.py 06918724ff... 10
-
-    if len(sys.argv) < 2:
-        print("Usage: python3 hex_dump.py <function> <hexstring> [byte_index]")
-        print("Functions: --table, --tablewrite, --byteinfo, --generateTest")
-        sys.exit(1)
-
-    # find option position in parameters
-    if "--" in sys.argv[1]:
-        option_pos = 1
-    elif "--" in sys.argv[2]:
-        option_pos = 2
-    elif len(sys.argv) > 3 and "--" in sys.argv[3]:
-        option_pos = 3
-    else:
-        print("Usage: python3 hex_dump.py <function> <hexstring> [byte_index]")
-        print("Functions: --table, --tablewrite, --byteinfo, --generateTest")
-        sys.exit(1)
-
-    # find hex dump position in parameters
-    if len(sys.argv[1]) / 2 >= 120:
-        hex_string = sys.argv[1].replace(" ", "")
-        data = bytearray.fromhex(hex_string)
-        hex_pos = 1
-    elif len(sys.argv[2]) / 2 >= 120:
-        hex_string = sys.argv[2].replace(" ", "")
-        data = bytearray.fromhex(hex_string)
-        hex_pos = 2
-    elif len(sys.argv) > 3 and len(sys.argv[3]) / 2 >= 120:
-        hex_string = sys.argv[3].replace(" ", "")
-        data = bytearray.fromhex(hex_string)
-        hex_pos = 3
-    else:
-        print("Invalid HEX dump. More or less 120 Bytes.")
-        print("Usage: python3 hex_tools.py <function> <hexstring> [byte_index]")
-        print("Functions: --table, --tablewrite, --byteinfo, --generateTest")
-        sys.exit(1)
-
-    # find byte index position in parameters
-    if len(sys.argv) > 3:
-        if (option_pos == 1 and hex_pos == 2) or (option_pos == 2 and hex_pos == 1):
-            index_pos = 3
-            byte_index = int(sys.argv[3])
-        elif (option_pos == 1 and hex_pos == 3) or (option_pos == 3 and hex_pos == 1):
-            index_pos = 2
-            byte_index = int(sys.argv[2])
-
-        elif (option_pos == 2 and hex_pos == 3) or (option_pos == 3 and hex_pos == 2):
-            index_pos = 1
-            byte_index = int(sys.argv[1])
-        else:
-            index_pos = None
-
-    # Write hex table to hex_table.md in the same directory
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    md_path = os.path.join(script_dir, "hex_table.md")
-
-    funct = sys.argv[option_pos]
-    if funct.startswith("--"):
-        print(funct)
-        if funct == "--table":
-            print_hex_table_full(data)
-        elif funct == "--tablewrite":
-            write_hex_table_md(data, md_path)
-            print(f"\nHex table written to {md_path}")
-        elif funct == "--byteinfo":
-            if len(sys.argv) != 3 and index_pos is None:
-                print("Usage: python3 hex_tools.py --byteinfo <hexstring> <byte_index>")
-                sys.exit(1)
-            print_byte_info(data, byte_index)
-        elif funct == "--generateTest":
-            generate_bytearray(data)
-        elif funct == "--hex":
-            print(len(hex_string) / 2)
-            print(hex_string)
-        elif funct == "--help":
-            print("Available functions: --table, --tablewrite, --byteinfo")
-            print("Functions: --table, --tablewrite, --byteinfo, --generateTest")
-        else:
-            print("Usage: python3 hex_tools.py <function> <hexstring> [byte_index]")
-            print("Functions: --table, --tablewrite, --byteinfo, --generateTest")
-            sys.exit(1)
+    main()

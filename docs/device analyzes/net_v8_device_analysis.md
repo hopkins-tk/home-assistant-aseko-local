@@ -1,17 +1,33 @@
-# ASIN AQUA NET fw v8 – Reverse Engineering & Field Mapping Notes
+# ASIN AQUA NET (v8) — Device Analysis
 
-## Device
+[Documentation](../README.md) / [Device analyses](README.md)
+
+> **Status:** core readings confirmed against the Aseko Live app from two frames of one unit (Sep 2025, Apr 2026); pump outputs and most `areqs`/`reqs`/`fncs`/`mods`/`flags` slots still unknown.
+> **Profile:** [`profiles/v8/net.py`](../../custom_components/aseko_local/decoding/profiles/v8/net.py) (Salt NET: [`profiles/v8/salt.py`](../../custom_components/aseko_local/decoding/profiles/v8/salt.py)) · **Support:** [support matrix](../support_matrix.md)
+> **Evidence words** (`confirmed`, `confirmed on X`, `observed`, `assumed`, `not located`): see [evidence rules](../evidence-rules.md).
+
+## 1. Device
 
 | Field | Value |
 |---|---|
 | Model | ASIN AQUA NET |
-| Firmware | 8.x (text frame) |
-| Source | Two production frames (Sep 16 2025, Apr 13 2026) + Aseko Pool Live app screenshots |
-| Decoded by | `AsekoV8Decoder` in `aseko_decoder_v8.py` |
+| Firmware | 8.x (text frame, port 51050) |
+| Identification | v8 header type field: 8xx = NET (804, 805, 812 — 812 came with firmware 8.12, PR #119); 1xx = ASIN AQUA Salt NET (105) |
+| Sources | Two production frames of one unit (2025-09-16, 2026-04-13) from Issue #49, compared with the Aseko Live app |
+| Decoded by | `decoding.decode()` with the profile in `decoding/profiles/v8/net.py` |
 
----
+The header type reads like the firmware version of a product line. The firmware
+version does not select a layout; only the line picks the model (see
+`decoding/profiles/v8/__init__.py`). An unmatched header type falls back to the
+unknown profile, which creates no entities.
 
-## Frame Structure
+**Salt NET (header 1xx):** takes over the NET layout unverified, minus the
+chlorine pump and chlorine flow rate (a SALT makes chlorine by electrolysis; the
+Aseko Live app gives Salt units a pH- and an algicide canister and an electrode,
+no chlorine canister). Every SALT reading is `assumed` except the serial number
+(`confirmed`, header token 2 on every captured frame).
+
+## 2. Frame structure
 
 Unlike fw v7 (120-byte binary), fw v8 sends a human-readable text frame over TCP:
 
@@ -28,25 +44,19 @@ Unlike fw v7 (120-byte binary), fw v8 sends a human-readable text frame over TCP
  crc16: XXXX}\n
 ```
 
-- Starts with `{v1` — used by `_sync_frame()` to distinguish from binary frames
-- Terminated with `}\n` — the `\n` must be forwarded to Aseko Cloud (line-based protocol)
-- Observed size: ~463 bytes
-- Sentinel value: `-500` = probe absent or measurement unavailable → decoded as `None`
+- Starts with `{v1`, which distinguishes it from binary frames.
+- Terminated with `}\n`; the `\n` must be forwarded to Aseko Cloud (line-based protocol).
+- Observed size: ~463 bytes in these frames; the length varies, the frame ends at its newline.
+- Sentinel `-500` = probe absent or measurement unavailable → decoded as `None`.
 
-**Unit-convention note (v7 vs v8):** The v7 firmware reports
-`delay_after_startup` and `delay_after_dose` in **seconds** (bytes
-74:75 / 106:107, e.g. `120` = 2 min). The v8 firmware reports the
-same fields in **minutes** (`areqs[17]` / `areqs[18]`, e.g. `2` = 2
-min). The v8 decoder multiplies by 60 so that `AsekoDevice.delay_*`
-is always in **seconds** and the existing `UnitOfTime.SECONDS`
-sensor in [`sensor.py`](../../custom_components/aseko_local/sensor.py)
-stays numerically stable for v7 users. A 2-min delay reads as `120 s`
-on both v7 and v8; a 5-min delay reads as `300 s`. See
-[salt_net_v8_device_analysis.md §7](../device%20analyzes/salt_net_v8_device_analysis.md) for the SALT-NET confirmation.
+### Representative frames
 
-### Reference frames used for analysis
+> The frames below are **illustrative excerpts**: some sections are shortened with `...`, and
+> the serial numbers may have been anonymised when they were shared (the two frames carry
+> different serials although they were described as one unit). They are not replay fixtures;
+> the complete frames used by the tests are in `tests/test_decode_v8.py`.
 
-**Sep 16, 2025, 22:27 CEST** (from Issue #49 comment):
+**2025-09-16, 22:27 CEST** (Issue #49 comment):
 ```
 {v1 110999999 804 0 27 ins: 314 -500 -500 -500 0 0 0 0 1 -500 -500 -500 0 24 6 29 22 27 0
 ains: 708 708 774 7790 0 0 779 779 0 0 0 0 0 0 0 0
@@ -56,7 +66,7 @@ reqs: 0 0 0 0 0 0 0 24 0 1 0 0 ... fncs: 0 0 3 0 0 0 2 0
 mods: 2 0 0 1 0 0 0 0 flags: 2 0 0 0 0 0 0 0 crc16: C3C8}
 ```
 
-**Apr 13, 2026, 12:27 CEST** (from Issue #49 comments + Aseko Pool Live screenshot):
+**2026-04-13, 12:27 CEST** (Issue #49 comments, compared with the Aseko Live app):
 ```
 {v1 110203680 804 0 27 ins: 180 -500 -500 -500 0 0 0 0 1 -500 -500 -500 0 25 1 24 12 27 0
 ains: 649 649 804 8090 0 0 809 809 0 0 0 0 0 0 0 0
@@ -65,167 +75,192 @@ areqs: 74 74 4 5 0 36 36 0 0 0 6 0 36 0 45 0 255 2 2 10 0 15 0 0 0 0
 ... crc16: C3C8}
 ```
 
----
+## 3. Byte map
 
-## Header
+Positions are section indices (`section[n]`); values quoted as Sep / Apr.
 
-| Position | Sep value | Apr value | Meaning | Status |
+### Header
+
+| Byte | Field | Decoding | Evidence | Notes |
 |---|---|---|---|---|
-| `v1` | — | — | Protocol version identifier | confirmed |
-| header[0] | `110203680` | `110203680` | `serial_number` | ✅ confirmed |
-| header[1] | `804` | `804` | unknown — constant across frames | ❓ |
-| header[2] | `0` | `0` | unknown — always 0 | ❓ |
-| header[3] | `27` | `27` | unknown — always 27 | ❓ |
+| `v1` | protocol version identifier | literal | confirmed | |
+| header[0] (token 2) | `serial_number` | integer | confirmed | 110203680 |
+| header[1] | header type (product line + firmware version) | 8xx NET, 1xx SALT | observed | 804 / 804; picks the profile |
+| header[2] | unknown | — | observed | always 0 |
+| header[3] | unknown | — | observed | always 27 |
 
----
+### `ins` — instantaneous sensor values
 
-## `ins:` section — instantaneous sensor values
+| Byte | Field | Decoding | Evidence | Notes |
+|---|---|---|---|---|
+| `ins[0]` | `water_temperature` | ÷ 10 → °C | confirmed | 314 / 180 |
+| `ins[1–3]` | — | `-500` → `None` | confirmed | absent probes |
+| `ins[8]` | `water_flow_to_probes` | bool | confirmed | 1 / 1 |
+| `ins[9–11]` | — | `-500` | observed | |
+| `ins[13]` | unit calendar year + 2000 | not read | observed | 24 / 25 |
+| `ins[14]` | unit calendar month | not read | observed | 6 / 1 |
+| `ins[15]` | unit calendar day | not read | observed | 29 / 24 |
+| `ins[16]` | `timestamp` hour | local hour | confirmed | 22 / 12; matches HA log timestamps |
+| `ins[17]` | `timestamp` minute | local minute | confirmed | 27 / 27; date is taken from HA |
 
-| index | Sep | Apr | Formula | `AsekoDevice` field | Confirmed by |
-|---|---|---|---|---|---|
-| `ins[0]` | 314 | 180 | ÷ 10 → °C | `water_temperature` | ✅ 31.4°C Sep / 18.1°C Apr matches app |
-| `ins[1–3]` | -500 | -500 | — | `None` | ✅ absent probes |
-| `ins[8]` | 1 | 1 | `bool` | `water_flow_to_probes` | ✅ app shows "Water flow: YES" |
-| `ins[13]` | 24 | 25 | ? | unknown | ❓ |
-| `ins[14]` | 6 | 1 | ? | unknown | ❓ |
-| `ins[15]` | 29 | 24 | ? | unknown | ❓ |
-| `ins[16]` | 22 | 12 | local hour | `timestamp.hour` | ✅ matches HA log timestamps |
-| `ins[17]` | 27 | 27 | local minute | `timestamp.minute` | ✅ matches HA log timestamps |
+`ins[13-15]` is a date that runs correctly but is set wrong: both frames of
+this unit are **444 days** behind the moment they were captured (2024-06-29
+on 2025-09-16, 2025-01-24 on 2026-04-13), 209 days apart. Salt NET units are
+730 and 736 days behind (see [SALT NET v8](salt_net_v8_device_analysis.md)).
+The date is therefore taken from Home Assistant on every v8 model.
 
-**Note on `ins[13–15]`:** These change between frames and could encode a date (day/month/year or similar).
-Not yet confirmed — `timestamp` currently falls back to HA clock date with device hour/minute.
+### `ains` — analog inputs (probe measurements)
 
----
+| Byte | Field | Decoding | Evidence | Notes |
+|---|---|---|---|---|
+| `ains[0]` | `ph` | ÷ 100 | confirmed | 708 / 649; `!= -500` → pH probe present (`configuration`, confirmed) |
+| `ains[1]` | — | ÷ 100 | observed | 708 / 649; probable duplicate of `ains[0]` |
+| `ains[2]` | unknown | — | observed | 774 / 804; ~5 below `ains[6]` but not exactly |
+| `ains[3]` | — | ÷ 10 → mV | observed | 7790 / 8090; = `ains[6] × 10`, not used |
+| `ains[4–5]` | — | — | observed | always 0 |
+| `ains[6]` | `redox` | direct mV | confirmed | 779 / 809; `!= -500` → REDOX probe present (`configuration`, confirmed) |
+| `ains[7]` | — | — | observed | 779 / 809; identical to `ains[6]` |
 
-## `ains:` section — analog inputs (probe measurements)
+### `outs` — output states
 
-| index | Sep | Apr | Formula | `AsekoDevice` field | Confirmed by |
-|---|---|---|---|---|---|
-| `ains[0]` | 708 | 649 | ÷ 100 → pH | `ph` | ✅ 7.08 Sep / app shows 6.56 Apr |
-| `ains[1]` | 708 | 649 | ÷ 100 (duplicate) | — | probable duplicate of `ains[0]` |
-| `ains[2]` | 774 | 804 | ? | unknown | ❓ ~5 below `ains[6]` but not exactly |
-| `ains[3]` | 7790 | 8090 | ÷ 10 → mV | — | = `ains[6] × 10`; not used |
-| `ains[4–5]` | 0 | 0 | — | — | always 0 |
-| `ains[6]` | 779 | 809 | direct mV | `redox` | ✅ app shows 848 mV (later reading) |
-| `ains[7]` | 779 | 809 | duplicate | — | identical to `ains[6]` |
+| Byte | Field | Decoding | Evidence | Notes |
+|---|---|---|---|---|
+| `outs[0]` | unknown | bool | observed | 0 / 0; once a dosing-pump candidate |
+| `outs[1]` | unknown | bool | observed | 0 / 0; once a dosing-pump candidate |
+| `outs[2]` | `filtration_relay` (→ `filtration_running`) | bool | confirmed | 1 / 1 |
+| `outs[8]` | `ph_minus_pump_running` | bool | assumed | 0 / 0; no frame shows a pump running |
+| `outs[9]` | `chlorine_pump_running` | bool | assumed | 0 / 0; no frame shows a pump running |
 
-**pH vs app discrepancy (Apr 13):** `ains[0]=649` → 6.49, app shows 6.56.
-Difference = 0.07 pH — likely the app shows a calibrated/averaged value, or the frame and screenshot were from slightly different moments.
+### `areqs` — setpoints
 
-**Probe configuration detection:**
-`ains[0] != -500` → `AsekoProbeType.PH` present
-`ains[6] != -500` → `AsekoProbeType.REDOX` present
+| Byte | Field | Decoding | Evidence | Notes |
+|---|---|---|---|---|
+| `areqs[0]` | `ph_target` | ÷ 10 | confirmed | 74 / 74 |
+| `areqs[1]` | `redox_target` | × 10 → mV | confirmed | 73 / 74; setpoint likely changed between Sep and Apr |
+| `areqs[2]` | unknown | — | observed | 4 / 4 |
+| `areqs[3]` | unknown | — | observed | 5 / 5 |
+| `areqs[5–6]` | unknown | — | observed | 36 / 36 |
+| `areqs[10]` | unknown | — | observed | 6 / 6 |
+| `areqs[12]` | unknown | — | observed | 36 / 36 |
+| `areqs[14]` | `pool_volume` | m³ | confirmed | 45 / 45 |
+| `areqs[16]` | unknown | 0xFF = unspecified | observed | 255 / 255 |
+| `areqs[17]` | `startup_delay` | minutes | confirmed | 2 / 2 |
+| `areqs[18]` | `dosing_delay` | minutes | confirmed | 2 / 2 |
+| `areqs[19]` | unknown | — | observed | 10 / 10 |
+| `areqs[21]` | unknown | — | observed | 15 / 15 |
 
----
+### `reqs`
 
-## `outs:` section — output states (pumps)
+Mostly zeros; non-zero values are the same in both frames.
 
-| index | Sep | Apr | Formula | `AsekoDevice` field | Confirmed by |
-|---|---|---|---|---|---|
-| `outs[0]` | 0 | 0 | `bool` | `cl_pump_running`? | ❓ unconfirmed |
-| `outs[1]` | 0 | 0 | `bool` | `ph_minus_pump_running`? | ❓ unconfirmed |
-| `outs[2]` | 1 | 1 | `bool` | `filtration_pump_running` | ✅ app shows "Pump: ON / NONSTOP" |
+| Byte | Field | Decoding | Evidence | Notes |
+|---|---|---|---|---|
+| `reqs[7]` | filtration duration? | hours | assumed | 24; app shows req filtration 24 h (probable) |
+| `reqs[9]` | unknown | — | observed | 1 |
+| `reqs[33–34]` | unknown | — | observed | 10 |
 
----
+### `fncs`
 
-## `areqs:` section — application requirements / setpoints
+| Byte | Field | Decoding | Evidence | Notes |
+|---|---|---|---|---|
+| `fncs[2]` | unknown | — | observed | 3 |
+| `fncs[6]` | unknown | — | observed | 2 |
 
-| index | Sep | Apr | Formula | `AsekoDevice` field | Confirmed by |
-|---|---|---|---|---|---|
-| `areqs[0]` | 74 | 74 | ÷ 10 | `required_ph` | ✅ app shows 7.4 |
-| `areqs[1]` | 73 | 74 | × 10 → mV | `required_redox` | ✅ 74×10=740 mV matches app (Apr) |
-| `areqs[2]` | 4 | 4 | ? | unknown | ❓ |
-| `areqs[3]` | 5 | 5 | ? | unknown | ❓ |
-| `areqs[5–6]` | 36 | 36 | ? | unknown | ❓ |
-| `areqs[10]` | 6 | 6 | ? | unknown | ❓ |
-| `areqs[12]` | 36 | 36 | ? | unknown | ❓ |
-| `areqs[14]` | 45 | 45 | m³ | `pool_volume` | ✅ app shows 45 m³ |
-| `areqs[16]` | 255 | 255 | = 0xFF | unknown — always `UNSPECIFIED` | ❓ |
-| `areqs[17]` | 2 | 2 | minutes (× 60 → s) | `delay_after_startup` | ✅ app shows 2 min |
-| `areqs[18]` | 2 | 2 | minutes (× 60 → s) | `delay_after_dose` | ✅ app shows 2 min |
-| `areqs[19]` | 10 | 10 | ? | unknown | ❓ |
-| `areqs[21]` | 15 | 15 | ? | unknown | ❓ |
+### `mods`
 
-**Note on `areqs[1]`:** Sep frame had `73` → 730 mV; Apr frame has `74` → 740 mV (matches app).
-The user likely changed the setpoint between Sep 2025 and Apr 2026.
+| Byte | Field | Decoding | Evidence | Notes |
+|---|---|---|---|---|
+| `mods[0]` | operating mode? | — | assumed | 2 |
+| `mods[3]` | unknown | — | observed | 1 |
 
----
+### `flags`
 
-## `reqs:` section
+| Byte | Field | Decoding | Evidence | Notes |
+|---|---|---|---|---|
+| `flags[0]` | unknown | — | observed | 2 |
 
-Mostly zeros. Non-zero values observed (same in both frames):
+### `crc16`
 
-| index | value | Hypothesis |
-|---|---|---|
-| `reqs[7]` | 24 | filtration duration = 24h (app shows "req filtration: 24h") |
-| `reqs[9]` | 1 | ? |
-| `reqs[33–34]` | 10 | ? |
+| Byte | Field | Decoding | Evidence | Notes |
+|---|---|---|---|---|
+| `crc16` | checksum | hex, parsed as an integer | observed | `C3C8` in both frames; not validated — the algorithm is not known |
 
----
+## 4. Bit fields
 
-## `fncs:` section
+Nothing known yet.
 
-| index | value | Hypothesis |
-|---|---|---|
-| `fncs[2]` | 3 | ? |
-| `fncs[6]` | 2 | ? |
+## 5. Model-specific behaviour
 
----
+### Units and flow rates
 
-## `mods:` section
+Delays are transmitted in minutes (profile flag `DELAYS_IN_MINUTES`), not seconds
+as on v7. Pump flow rates are not transmitted; the chlorine and pH-minus flow
+rates are `assumed` at 60 ml/min so the consumption counters have something to
+integrate.
 
-| index | value | Hypothesis |
-|---|---|---|
-| `mods[0]` | 2 | operating mode? |
-| `mods[3]` | 1 | ? |
+### Probe configuration
 
----
+A probe counts as installed when its `ains` slot is not `-500`: `ains[0]` → pH,
+`ains[6]` → REDOX.
 
-## `flags:` section
+### Timestamp
 
-| index | value | Hypothesis |
-|---|---|---|
-| `flags[0]` | 2 | ? |
+Only hour and minute are in the frame (`ins[16]`, `ins[17]`). `ins[13–15]`
+change between frames and could encode a date, but this is not confirmed, so the
+date comes from the Home Assistant clock.
 
----
+### pH offset against the app
 
-## `crc16:` section
+On 2026-04-13 `ains[0]=649` → 6.49 while the app showed 6.56 (0.07 difference):
+either the app shows a calibrated/averaged value, or the frame and the app
+reading were taken at slightly different moments.
 
-Value `C3C8` in both frames. Hex string — not parsed as integer by the decoder.
-CRC16 validation **not yet implemented**.
+## 6. Ground truth
 
----
+| Date | Field | Decoded | Unit / app | Result |
+|---|---|---|---|---|
+| 2025-09-16 | `water_temperature` | 31.4 °C (`ins[0]=314`) | 31.4 °C (app) | match |
+| 2025-09-16 | `ph` | 7.08 (`ains[0]=708`) | — | recorded as matching; app value not noted |
+| 2026-04-13 | `water_temperature` | 18.0 °C (`ins[0]=180`) | 18.1 °C (app) | match (0.1 °C) |
+| 2026-04-13 | `ph` | 6.49 (`ains[0]=649`) | 6.56 (app, later reading) | ≈ 0.07 off |
+| 2026-04-13 | `redox` | 809 mV (`ains[6]`) | 848 mV (app, later in the day) | plausible, not simultaneous |
+| 2026-04-13 | `filtration_running` | on (`outs[2]=1`) | Pump ON, filtration NONSTOP | match |
+| 2026-04-13 | `water_flow_to_probes` | yes (`ins[8]=1`) | Water flow YES; water flow meter ON | match |
+| 2026-04-13 | `ph_target` | 7.4 (`areqs[0]=74`) | 7.4 | match |
+| 2026-04-13 | `redox_target` | 740 mV (`areqs[1]=74`) | 740 mV | match |
+| 2026-04-13 | `pool_volume` | 45 m³ (`areqs[14]`) | 45 m³ | match |
+| 2026-04-13 | `startup_delay` | 2 min (`areqs[17]`) | 2 min | match |
+| 2026-04-13 | `dosing_delay` | 2 min (`areqs[18]`) | 2 min | match |
+| 2026-04-13 | req filtration | 24 (`reqs[7]`) | 24 h | probable, not decoded |
+| — | `timestamp` hour/minute | `ins[16]`, `ins[17]` | HA log timestamps | match |
 
-## App Screenshots (Apr 13, 2026) — Reference Values
+## 7. Settings the frame does not carry
 
-| App field | App value | Mapped to |
-|---|---|---|
-| Status: pH | 6.56 | `ains[0]=649` ÷ 100 = 6.49 (≈0.07 diff) |
-| Status: Redox | 848 mV | `ains[6]=809` (taken at 12:27; screenshot from later in the day) |
-| Status: Water temp | 18.1°C | `ins[0]=180` ÷ 10 = 18.0°C ✅ |
-| Status: Pump | ON | `outs[2]=1` ✅ |
-| Status: Filtration | NONSTOP | `outs[2]=1` ✅ |
-| Status: Water flow | YES | `ins[8]=1` ✅ |
-| Config: req pH | 7.4 | `areqs[0]=74` ÷ 10 = 7.4 ✅ |
-| Config: req Redox | 740 mV | `areqs[1]=74` × 10 = 740 ✅ |
-| Config: Pool volume | 45 m³ | `areqs[14]=45` ✅ |
-| Config: Delay startup | 2 min | `areqs[17]=2` ✅ |
-| Config: Delay after dose | 2 min | `areqs[18]=2` ✅ |
-| Config: req filtration | 24 h | `reqs[7]=24` (probable) |
-| Config: Water flow meter | ON | `ins[8]=1` ✅ |
+Nothing known yet.
 
----
+## 8. Open questions
 
-## Open Questions
+1. What are `ins[13–15]` (date-related?) — more frames on different days.
+2. Which `outs` slots are the dosing pumps (`outs[8]`/`outs[9]` as decoded, or `outs[0]`/`outs[1]`)? — a frame captured while a pump is dosing.
+3. What is `ains[2]` — slightly below `ains[6]`, not a simple duplicate? — frames with a wider redox range.
+4. What do header fields `0` and `27` mean? — constant in all known frames; frames from other units.
+5. What are `areqs[2–3]` (`4`, `5`)? — frames before and after changing settings on the unit.
+6. What are `areqs[5, 6, 10, 12]` (`36` or `6`)? — same.
+7. Is `reqs[7]=24` the filtration hours per day? — a frame after changing the filtration requirement.
+8. Should CRC16 be validated? — decision pending.
+9. Are there v8 frames from SALT / OXY / HOME devices? Salt NET (header 105) is known by header type only; its layout is unverified — a Salt NET diagnostics dump compared with the app.
 
-| # | Question | Status |
-|---|---|---|
-| 1 | What are `ins[13–15]`? (date-related?) | ❓ need more frames |
-| 2 | What are `outs[0]` and `outs[1]`? (dosing pumps?) | ❓ need frame with pumps running |
-| 3 | What is `ains[2]`? — slightly below `ains[6]`, not a simple duplicate | ❓ |
-| 4 | What do header fields `804 0 27` mean? | ❓ constant in all known frames |
-| 5 | What are `areqs[2–3]` (`4`, `5`)? | ❓ |
-| 6 | What are `areqs[5, 6, 10, 12]` (all `36` or `6`)? | ❓ |
-| 7 | What is `reqs[7]=24`? Filtration hours per day? | probable ✅ |
-| 8 | CRC16 validation — implement? | decision pending |
-| 9 | Are there v8 frames from SALT / OXY / HOME devices? | ❓ unknown |
+## 9. History
+
+- Pump outputs: this analysis once listed `outs[0]` / `outs[1]` as dosing-pump candidates; the decoder reads `outs[8]` (pH-minus) and `outs[9]` (chlorine), both still unconfirmed.
+- The header type `804` was once treated as an unknown constant; it is now read as product line + firmware version (812 added with firmware 8.12, PR #119; 105 mapped to Salt NET).
+- The `{v1` prefix was detected by the old `_sync_frame()` routine to tell text frames from binary ones.
+- Earlier notes mapped fields to `AsekoDevice` directly; decoding now lives in per-feature modules and the v8 profiles.
+
+## 10. References
+
+- Issue #49 — source of both v8 NET frames and the app comparison.
+- PR #119 — firmware 8.12 header type 812.
+- Profiles: [`v8/net.py`](../../custom_components/aseko_local/decoding/profiles/v8/net.py), [`v8/salt.py`](../../custom_components/aseko_local/decoding/profiles/v8/salt.py), [`v8/__init__.py`](../../custom_components/aseko_local/decoding/profiles/v8/__init__.py)
+- Related: [NET (v7) device analysis](net_device_analysis.md), [support matrix](../support_matrix.md), [evidence rules](../evidence-rules.md)
+- Tests: `tests/test_decode_v8.py`
