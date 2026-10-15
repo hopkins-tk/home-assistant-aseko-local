@@ -2,7 +2,7 @@
 
 [Documentation](../README.md) / [Device analyses](README.md)
 
-> **Status:** core values checked against the Aseko Live app on one CLF unit (2026-04-28) plus settings bits from REDOX-unit diagnostics (Issues #110–#151); pump running bits, heating running and the algicide flow rate are still open.
+> **Status:** core values checked against the Aseko Live app on one CLF unit (2026-04-28) plus settings bits from REDOX-unit diagnostics (Issues #110–#151); pump running bits and heating running are still open. The algicide flow rate is observed at byte 97 (Issue #173), not compared with a display.
 > **Profile:** [`profiles/v7/home.py`](../../custom_components/aseko_local/decoding/profiles/v7/home.py) · **Support:** [support matrix](../support_matrix.md)
 > **Evidence words** (`confirmed`, `confirmed on X`, `observed`, `assumed`, `not located`): see [evidence rules](../evidence-rules.md).
 
@@ -102,7 +102,7 @@ Example values are from the representative frame unless stated otherwise.
 | 94 | unknown | — | — | `0x00` |
 | 95 | `ph_minus_flow_rate` | ml/min | observed | 60; the Aseko Live app lists the pH− pump, the rate itself was not compared (`byte[95]` confirmed on SALT) |
 | 96 | unknown | — | — | `0x00` |
-| 97 | unknown | — | — | `0x3c` = 60; `ph_plus_flow_rate`? unconfirmed, not mapped |
+| 97 | `algaecide_flow_rate` | ml/min | observed | 60 on serials 110128063 and 110215864 (Issue #173); the former pH+ terminal, which second-generation units use for the algicide pump |
 | 98 | unknown | — | — | `0x00` |
 | 99 | `chlorine_flow_rate` | ml/min | confirmed | 60 (serials 110071590 / 110128063, Issues #110, #115) |
 | 100 | unknown | — | — | `0x00` |
@@ -111,7 +111,6 @@ Example values are from the representative frame unless stated otherwise.
 | 103 | `water_level_refill_start` | cm | confirmed on SALT | 33, between low alarm 13 and refill stop 55 |
 | 104 | `water_level_refill_stop` | cm | confirmed | 55 (domin211, DomSchCoding, Issue #110) |
 | 105 | `water_level_high_alarm` | cm | confirmed | 100 (domin211, Issue #110) |
-| — | `algaecide_flow_rate` | — | not located | entity reads unknown; §5 |
 | 106–107 | `dosing_delay` | u16 s | confirmed | 240 s |
 | 108 | unknown | — | — | `0x14` = 20 |
 | 109–110 | unknown | — | — | `0x0258` = 600 |
@@ -160,7 +159,7 @@ Example values are from the representative frame unless stated otherwise.
 | `0x02` | water filling active (`refilling`) | confirmed | DomSchCoding, Issue #100; also on SALT (2026-09-06) against the refill thresholds |
 | `0x04` | heating running (`heating_running`) | assumed | JS-DE-Tech relay_byte bit 2; no HOME frame with the heater running |
 | `0x08` | filtration pump relay (`filtration_relay`) | confirmed | stays set under the manual override; `filtration_running` is derived, §5 |
-| `0x10` | algicide pump running (`algaecide_pump_running`) | assumed | as on OXY; read only once the algicide flow rate is located, so no state yet |
+| `0x10` | algicide pump running (`algaecide_pump_running`) | assumed | as on OXY; reported once byte 97 reads as a flow rate (Issue #173) |
 | `0x20` | flocculant pump running (`flocculant_pump_running`) | assumed | as on OXY (confirmed there) |
 | `0x40` | chlorine pump running (`chlorine_pump_running`) | assumed | port may be chlorine or OXY Pure |
 | `0x80` | pH− pump running (`ph_minus_pump_running`) | assumed | |
@@ -243,7 +242,9 @@ Supported on some HOME REDOX units (110175608). The brand is picked on the unit 
 
 ### Algicide flow rate and byte[103]
 
-`byte[103]` was read both as `algaecide_flow_rate` (33 ml/min) and as `water_level_refill_start` (33 cm) on 110128063. It is the threshold: bytes 102–105 are the level thresholds on SALT (confirmed against the unit, 2026-09-11), and 13 / 33 / 55 / 100 cm are in order here. The captured OXY sends its algicide flow rate on `byte[103]`, and it has no level sensor connected. HOME's algicide flow rate is not located, so neither the algicide pump state nor its consumption is computed.
+`byte[103]` was read both as `algaecide_flow_rate` (33 ml/min) and as `water_level_refill_start` (33 cm) on 110128063. It is the threshold: bytes 102–105 are the level thresholds on SALT (confirmed against the unit, 2026-09-11), and 13 / 33 / 55 / 100 cm are in order here. The captured OXY sends its algicide flow rate on `byte[103]`, and it has no level sensor connected.
+
+HOME's rate is `byte[97]` (Issue #173). The flow-rate block is one value every two bytes — 95, 97, 99, 101 — and follows the terminals. First-generation HOME manuals list the pumps pH−, pH+, chlorine and Flocc/Alg on the terminals `pH- Cl F pH+`. Second-generation manuals put chlorine, pH, algicide and flocculant on the same terminals, with the algicide on the former pH+ output. HOME has no separate pH+ pump: the pH output doses pH minus or pH plus. `byte[97]` is 60 on 110128063 and on 110215864. OXY also reads 60 there, so the value alone does not identify the pump; the terminal history does. The unit does not display ml/min, so this stays observed. With a rate present, `byte[29]` bit `0x10` is reported as the algicide pump and consumption is counted again.
 
 ### Chlorine / OXY Pure port
 
@@ -289,7 +290,7 @@ Serial 110128063, frame 2026-04-28 08:27:07, against the Aseko Live app; pH and 
 
 ## 7. Settings the frame does not carry
 
-- Algicide flow rate: the app lists the algicide pump, but the value is not located in the frame.
+- Algicide flow rate in ml/min: observed at `byte[97]` (Issue #173), not shown on the unit, so not confirmed.
 - Air temperature: shown in the Aseko Live app on HOME units, but bytes 23–24 were `0xFE70` (no probe marker) in every captured HOME frame.
 - Chlorine / OXY Pure port configuration: no routing byte found.
 
@@ -298,7 +299,7 @@ Serial 110128063, frame 2026-04-28 08:27:07, against the Aseko Live app; pH and 
 1. **Per-pump bits in `byte[29]`** (chlorine, pH−, algicide, flocculant) are placeholders taken from OXY/NET. A capture with a single HOME pump running (e.g. algicide only) would pin each bit.
 2. **`heating_running`** (`byte[29]` `0x04`): needs a frame captured while the heat pump / electric heater is actually running.
 3. **`water_temperature_target`**: confirmed as heating setpoint on 110175608; a frame from a unit where the app actively shows a target temperature (not `---`) would validate it further.
-4. **Algicide flow rate location**: download diagnostics, change the algicide flow rate on the unit, download again.
+4. **Algicide flow rate**: `byte[97]` (Issue #173) is observed, not confirmed — the unit does not show ml/min. A HOME frame whose byte 97 is not 60, or a display that names a different rate, would disprove it.
 5. **`byte[37]` `0x40` (Waterlevel) and `0x02` (Flow detection) on HOME**: a HOME owner toggling each setting once, with a marked test case after each change.
 6. **`byte[22]` on the HOME VSP unit = `0x83`**: bits `0x01` and `0x02` both set (never on SALT) and `0x80` unknown; a HOME capture before/after changing the heating condition would explain them.
 7. **Manual OFF sub-flags**: in the `0x35` frame bytes 31, 38 and 65 each rise by about 1 (`0x00→0x02`, `0x02→0x03`, `0xa3→0xa4`). Single observation, no meaning assigned; repeated OFF/ON captures would tell.
@@ -311,7 +312,7 @@ Serial 110128063, frame 2026-04-28 08:27:07, against the Aseko Live app; pH and 
 ## 9. History
 
 - **2026-09-13 — one HOME, not two firmwares.** HOME v7 was split into "firmware A" and "firmware B" by `byte[37]` bit `0x40` (with two HOME profiles in the decoder). Toggling settings on an ASIN AQUA Salt showed `0x40` is the Waterlevel setting; all former A/B values decode with one bit field, and one profile covers every HOME unit. Consequences versus the old firmware-A decoding: `0x53` is period 1 (was "period 1 and 2"); `0x47` / `0x57` decode to a schedule with the menu open (were "transitional edit states" with no schedule).
-- **`byte[103]`** was decoded as `algaecide_flow_rate` (Issues #110, #115, marked fixed); now the refill start threshold, algicide flow rate not located. Previously bit `0x20` counted algicide and flocculant for one running pump ("bit 5, HOME shared"); pump bits now follow OXY (algicide `0x10`, flocculant `0x20`).
+- **`byte[103]`** was decoded as `algaecide_flow_rate` (Issues #110, #115, marked fixed); now the refill start threshold. v2.0.0 then left the algicide rate not located, which also hid the pump and froze consumption. Issue #173 reads it from `byte[97]`. Previously bit `0x20` counted algicide and flocculant for one running pump ("bit 5, HOME shared"); pump bits now follow OXY (algicide `0x10`, flocculant `0x20`).
 - **`max_refill_time`** was read from bytes 94–95 (`0x003c` = 60, overlapping the pH− flow rate on byte 95) before v1.9; moved to bytes 76–77 in seconds (verified on SALT against Aseko Live). Byte 94 is unknown again.
 - **Issue #133 fix:** bytes 60–63 were gated on `byte[37]` `0x20`, so existing period 2 entities flipped to unknown when the user switched from P1 & P2 to P1 only; now read unconditionally.
 - **Issue #115:** HOME `algaecide_pump_running` was missing; fixed by reading the pump ports independently of `byte[37]` (independent-pump-port branch).
