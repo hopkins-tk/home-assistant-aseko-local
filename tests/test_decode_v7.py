@@ -1182,10 +1182,11 @@ def test_decode_home_independent_flowrates() -> None:
 
     byte[103] was read as the algicide flow rate too, but bytes 102-105 are the
     water level thresholds (confirmed on SALT); on HOME byte[103] is the refill
-    start, and where HOME sends the algicide flow rate is not known yet.
+    start. The algicide rate is byte[97] (Issue #173).
     """
     data = _make_base_bytes()
     data[4] = 0x02  # HOME CLF
+    data[97] = 60  # algaecide_flow_rate
     data[99] = 60  # chlorine_flow_rate (Chlor Pure)
     data[101] = 10  # flocculant_flow_rate
     data[103] = 33  # the refill start threshold
@@ -1197,7 +1198,7 @@ def test_decode_home_independent_flowrates() -> None:
     assert device.ph_minus_flow_rate == 60
     assert device.flocculant_flow_rate == 10
     assert device.water_level_refill_start == 33
-    assert device.algaecide_flow_rate is None  # not located
+    assert device.algaecide_flow_rate == 60
     assert "algaecide_flow_rate" in device.features
     # byte[37] bit 7 has no meaning on HOME (no shared pump port)
     data[37] = 0xB3
@@ -1209,52 +1210,54 @@ def test_decode_home_flowrates_unspecified() -> None:
     """HOME flowrates: 0xFF → None (e.g. pump not installed)."""
     data = _make_base_bytes()
     data[4] = 0x02  # HOME CLF
+    data[97] = 0xFF  # algicide pump not installed
     data[99] = 0xFF  # chlorine pump not installed
     data[101] = 0xFF  # flocculant pump not installed
-    data[103] = 0xFF  # algicide pump not installed
 
     device = decode(bytes(data))
     assert device.device_type == AsekoDeviceType.HOME
     assert device.chlorine_flow_rate is None
     assert device.flocculant_flow_rate is None
     assert device.algaecide_flow_rate is None
+    assert "algaecide_flow_rate" not in device.features
 
 
 def test_decode_home_pump_bits_follow_oxy() -> None:
-    """HOME has OXY's four independent ports: bit 0x20 is the flocculant only.
+    """HOME has OXY's four independent ports: bit 0x20 is flocculant, 0x10 algicide.
 
-    The algicide pump (bit 0x10 on OXY) is not read until the algicide flow
-    rate is located, so one running pump no longer counts two chemicals.
+    One running pump does not count as both chemicals (Issue #115). The
+    algicide bit is reported once byte[97] is a flow rate (Issue #173).
     """
     data = _make_base_bytes()
     data[4] = 0x02  # HOME CLF
+    data[97] = 60  # algicide pump installed
     data[99] = 60
     data[101] = 10  # floc pump installed
-    data[103] = 20
+    data[103] = 20  # refill start, not the algicide rate
     data[37] = 0x53
 
     data[29] = 0x28  # bit 0x20 + filtration
     device = decode(bytes(data))
     assert device.flocculant_pump_running is True
-    assert device.algaecide_pump_running is None
-    assert "algaecide_pump_running" not in device.features
+    assert device.algaecide_pump_running is False
 
     data[29] = 0x18  # bit 0x10 + filtration
     device = decode(bytes(data))
     assert device.flocculant_pump_running is False
+    assert device.algaecide_pump_running is True
 
 
 def test_decode_home_floc_pump_running_independent() -> None:
     """On HOME the floc pump runs independently of algicide (different pump ports).
 
-    byte[101] set (floc installed) and byte[103] = 0xFF (no algicide) →
+    byte[101] set (floc installed) and byte[97] = 0xFF (no algicide) →
     flocculant_pump_running tracks byte[29] bit 5, algaecide_pump_running stays None.
     """
     data = _make_base_bytes()
     data[4] = 0x02  # HOME CLF
+    data[97] = 0xFF  # NO algicide pump
     data[99] = 0xFF  # no chlor
     data[101] = 10  # floc installed
-    data[103] = 0xFF  # NO algicide pump
     data[37] = 0x53
 
     data[29] = 0x28
