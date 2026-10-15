@@ -1154,6 +1154,55 @@ def test_decode_home_clf_real_frame() -> None:
     assert device.flocculant_flow_rate == 10
 
 
+def test_decode_home_110215864_real_frame() -> None:
+    """Real frame from serial 110215864 (ASIN AQUA Home, CLF), Issue #173.
+
+    Captured 2026-10-15 12:43:50 with filtration and heating on and no pump
+    dosing (byte[29] = 0x0c).  byte[97] is the algicide rate, byte[103] the
+    refill start level.
+    """
+    device = decode(
+        bytes.fromhex(
+            # Segment 1: real-time sensor data
+            "0691c2b802011a0a0f0c2b32000002bd00310031003590fe70011839aa0c516500000000005b0231"
+            # Segment 2: setpoints and schedule
+            "0691c2b802031a0a0f0c2b3248050a1d061e16001200160002d80118070c1e0c0a14030c0e10b27b"
+            # Segment 3: pool parameters and flowrates
+            "0691c2b802021a0a0f0c2b32001b003c003c003c000a19283c50021c0502580f190f1e1effcd0255"
+        )
+    )
+
+    assert device.device_type == AsekoDeviceType.HOME
+    assert device.serial_number == 110_215_864
+    assert device.configuration == {AsekoProbeType.PH, AsekoProbeType.CLF}
+    assert device.ph == pytest.approx(7.01)
+    assert device.free_chlorine == pytest.approx(0.49)
+    assert device.water_temperature == pytest.approx(28.0)
+    assert device.ph_target == pytest.approx(7.2)
+    assert device.free_chlorine_target == pytest.approx(0.5)
+    assert device.water_temperature_target == 29
+    assert device.pool_volume == 27
+    # Flow-rate block: 95 pH-, 97 algicide (former pH+ terminal), 99 chlorine,
+    # 101 flocculant
+    assert device.ph_minus_flow_rate == 60
+    assert device.algaecide_flow_rate == 60
+    assert device.chlorine_flow_rate == 60
+    assert device.flocculant_flow_rate == 10
+    assert device.algaecide_dose_target == 10  # byte[72]
+    assert device.flocculant_dose_target == 10  # byte[54]
+    # Level thresholds 102-105: byte[103] is the refill start, not a rate
+    assert device.water_level_low_alarm == 25
+    assert device.water_level_refill_start == 40
+    assert device.water_level_refill_stop == 60
+    assert device.water_level_high_alarm == 80
+    assert device.filtration_running is True
+    assert device.heating_running is True
+    assert device.chlorine_pump_running is False
+    assert device.ph_minus_pump_running is False
+    assert device.algaecide_pump_running is False
+    assert device.flocculant_pump_running is False
+
+
 def test_decode_issue_99_salt() -> None:
     """Test decoding data from issue #99 (SALT with CLF - 0x0d)."""
 

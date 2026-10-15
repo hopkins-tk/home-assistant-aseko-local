@@ -46,7 +46,7 @@ class AlgaecideFlowRate(Feature):
         return byte_or_absent(frame[103])
 
     def decode_v7_byte97(self, frame: V7Frame, device: AsekoDevice) -> int | NotPresent:
-        """HOME: the slot between pH− (byte 95) and chlorine (byte 99)."""
+        """HOME: the former pH+ output, now the algicide pump (Issue #173)."""
         return byte_or_absent(frame[97])
 
     def decode_v7_routed_by_byte37(

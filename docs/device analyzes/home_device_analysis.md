@@ -102,7 +102,7 @@ Example values are from the representative frame unless stated otherwise.
 | 94 | unknown | — | — | `0x00` |
 | 95 | `ph_minus_flow_rate` | ml/min | observed | 60; the Aseko Live app lists the pH− pump, the rate itself was not compared (`byte[95]` confirmed on SALT) |
 | 96 | unknown | — | — | `0x00` |
-| 97 | `algaecide_flow_rate` | ml/min | observed | 60 on serials 110128063 and 110215864 (Issue #173); HOME has no pH+ pump, and the manual rates every dosing pump at 60 ml/min except FLOC+C at 10 |
+| 97 | `algaecide_flow_rate` | ml/min | observed | 60 on serials 110128063 and 110215864 (Issue #173); the former pH+ terminal, which second-generation units use for the algicide pump |
 | 98 | unknown | — | — | `0x00` |
 | 99 | `chlorine_flow_rate` | ml/min | confirmed | 60 (serials 110071590 / 110128063, Issues #110, #115) |
 | 100 | unknown | — | — | `0x00` |
@@ -244,7 +244,7 @@ Supported on some HOME REDOX units (110175608). The brand is picked on the unit 
 
 `byte[103]` was read both as `algaecide_flow_rate` (33 ml/min) and as `water_level_refill_start` (33 cm) on 110128063. It is the threshold: bytes 102–105 are the level thresholds on SALT (confirmed against the unit, 2026-09-11), and 13 / 33 / 55 / 100 cm are in order here. The captured OXY sends its algicide flow rate on `byte[103]`, and it has no level sensor connected.
 
-HOME's rate is `byte[97]` (Issue #173). The flow-rate block is one value every two bytes — 95 pH−, 97, 99 chlorine, 101 flocculant — and HOME's four pumps are chlorine, pH−, algicide and flocculant, with no pH+ pump. `byte[97]` is 60 on 110128063 and on 110215864, which is the manual's dosing-pump rate (FLOC+C is the 10 ml/min exception, and that is `byte[101]`). The unit does not display ml/min, so this stays observed. With a rate present, `byte[29]` bit `0x10` is reported as the algicide pump and consumption is counted again.
+HOME's rate is `byte[97]` (Issue #173). The flow-rate block is one value every two bytes — 95, 97, 99, 101 — and follows the terminals. First-generation HOME manuals list the pumps pH−, pH+, chlorine and Flocc/Alg on the terminals `pH- Cl F pH+`. Second-generation manuals put chlorine, pH, algicide and flocculant on the same terminals, with the algicide on the former pH+ output. HOME has no separate pH+ pump: the pH output doses pH minus or pH plus. `byte[97]` is 60 on 110128063 and on 110215864. OXY also reads 60 there, so the value alone does not identify the pump; the terminal history does. The unit does not display ml/min, so this stays observed. With a rate present, `byte[29]` bit `0x10` is reported as the algicide pump and consumption is counted again.
 
 ### Chlorine / OXY Pure port
 

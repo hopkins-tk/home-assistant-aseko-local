@@ -281,7 +281,7 @@ Values captured from real units that nobody has yet checked against the unit dis
 
 ### v7 HOME
 
-- `algaecide_flow_rate` — observed: byte[97] = 60 on serials 110128063 and 110215864, the spare slot between pH- (byte 95) and chlorine (byte 99); HOME has no pH+ pump and the manual rates every dosing pump at 60 ml/min except FLOC+C at 10 (Issue #173). byte[103] is the refill start, not this rate
+- `algaecide_flow_rate` — observed: byte[97] = 60 on serials 110128063 and 110215864 (Issue #173). First-generation HOME manuals list the pumps pH-, pH+, chlorine and Flocc/Alg on the terminals pH- Cl F pH+, matching bytes 95, 97, 99 and 101; second-generation manuals put chlorine, pH, algicide and flocculant on the same terminals, the algicide on the former pH+ output. HOME has no separate pH+ pump (the pH output doses pH minus or pH plus). OXY also reads 60 on byte[97], so the value alone does not identify the pump. byte[103] is the refill start, not this rate
 - `backwash_schedule_enabled` — observed: byte[22] 0x10 set on serial 110128063 with backwash every 3 days (0x90); confirmed on an ASIN AQUA Salt (2026-09-13)
 - `max_ph_doses` — observed: byte[115] = 20 on serial 110128063; the position is confirmed on SALT, the HOME setting was never compared
 - `ph_minus_flow_rate` — observed: byte[95] = 60 on serial 110128063; Aseko Live lists the pH- pump but the rate was not compared; the position is confirmed on SALT

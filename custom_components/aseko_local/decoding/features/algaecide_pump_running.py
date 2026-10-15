@@ -4,7 +4,8 @@ v7: byte[29] bit 0x20 on SALT (confirmed: 27 algicide frames read 0x28 =
 0x08 | 0x20, PR #87), bit 0x10 on OXY (confirmed: 2026-04-11 Winnetoux log,
 0x08 -> 0x18 with the pump on).  HOME has the same four independent pump
 ports as OXY and reads 0x10 too (``decode_v7_oxy``, assumed); its algicide
-flow rate is not located, so no HOME algicide state is reported yet.
+flow rate is byte[97] (observed, Issue #173), so the state is reported once
+that byte reads as a rate.
 
 On SALT the same bit also means flocculant: one physical port, configured for
 either chemical.  Whether the port is set up for algicide at all is settled
