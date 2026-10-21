@@ -16,7 +16,7 @@ Support depends on both the model and the value. Use the summary below to orient
 | ASIN Aqua Net | 8.x | ✅ | ✅ filtration · ❓ cl, pH− | ❓ cl, pH− |
 | ASIN Aqua Salt | ≤ 7.x | ✅ | ✅ filtration, electrolyzer, algicide, flocculant · ❓ pH− | ✅ algicide, flocculant · ❓ pH− |
 | ASIN Aqua Oxy | ≤ 7.x | 👁 pH, temperature | ✅ filtration, oxy, algicide, flocculant, pH− | ✅ oxy, algicide, flocculant, pH− |
-| ASIN Aqua Home | ≤ 7.x | ✅ | ✅ filtration · ❓ cl, algicide, flocculant, pH− | ❓ cl, flocculant, pH− · 🔍 algicide (flow rate not located, not counted) |
+| ASIN Aqua Home | ≤ 7.x | ✅ | ✅ filtration · ❓ cl, algicide, flocculant, pH− | ❓ cl, flocculant, pH− · 👁 algicide (byte 97, Issue #173) |
 | ASIN Aqua Salt NET | 8.x | ❓ | ❓ filtration, pH− | ❓ pH− |
 | ASIN Aqua Profi | ≤ 7.x | ❓ no real frame yet | ❓ filtration, cl, flocculant, pH− | ❓ cl, flocculant, pH− |
 

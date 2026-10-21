@@ -7,7 +7,7 @@ be bit 0x40 of byte[37] -- the Waterlevel setting.  One profile covers both.
 from __future__ import annotations
 
 from ....models import AsekoDeviceType, AsekoProfileFlag
-from ...evidence import assumed, confirmed, confirmed_on, not_located, observed
+from ...evidence import assumed, confirmed, confirmed_on, observed
 from ...features import (
     AirTemperature,
     AlarmMaxDisinfectionDose,
@@ -132,9 +132,9 @@ HOME = Profile(
         # four independent pump ports like OXY: algicide is bit 0x10, not the
         # 0x20 flocculant bit, which counted both chemicals for one pump
         AlgaecidePumpRunning: "decode_v7_oxy",
-        # byte[103] is the refill start threshold here; where HOME sends the
-        # algicide flow rate is not known
-        AlgaecideFlowRate: "decode_v7_not_located",
+        # byte[103] is the refill start threshold; the algicide pump sits on
+        # the former pH+ output, whose rate is byte[97] (Issue #173)
+        AlgaecideFlowRate: "decode_v7_byte97",
     },
     flags=frozenset({AsekoProfileFlag.MENU_BIT_SWITCHES_FILTRATION_OFF}),
     evidence={
@@ -168,7 +168,7 @@ HOME = Profile(
             "byte[13] 0x08 was set on serial 110128063 with no matching alarm known in the app"
         ),
         AlgaecidePumpRunning: assumed(
-            "byte[29] 0x10 as on OXY, which has the same four independent pump ports (0x20 is the flocculant); read only once the algicide flow rate is located, so no state yet"
+            "byte[29] 0x10 as on OXY, which has the same four independent pump ports (0x20 is the flocculant); reported once byte[97] reads as a flow rate (Issue #173)"
         ),
         FreezeProtectionEnabled: confirmed(
             "byte[37] 0x80, serial 110175608 (Issue #136)"
@@ -204,8 +204,8 @@ HOME = Profile(
             "byte[37] 0x10 / 0x20, 0x01 / 0x11 / 0x31 on serial 110169464 (Issue #133); the values once read as firmware A (0x43 nonstop, 0x53 timer) are the same bits with Waterlevel (0x40) and Flow detection (0x02) set"
         ),
         FlocculantPumpRunning: assumed("byte[29] 0x20 as on OXY (confirmed there)"),
-        AlgaecideFlowRate: not_located(
-            "byte[103] was read as the algicide flow rate (Issues #110, #115), but bytes 102-105 are the water level thresholds -- confirmed on SALT against the unit (2026-09-11) and 13 / 33 / 55 / 100 cm in order on serial 110128063; the captured OXY sends its algicide flow rate there, and has no level sensor connected"
+        AlgaecideFlowRate: observed(
+            "byte[97] = 60 on serials 110128063 and 110215864 (Issue #173). First-generation HOME manuals list the pumps pH-, pH+, chlorine and Flocc/Alg on the terminals pH- Cl F pH+, matching bytes 95, 97, 99 and 101; second-generation manuals put chlorine, pH, algicide and flocculant on the same terminals, the algicide on the former pH+ output. HOME has no separate pH+ pump (the pH output doses pH minus or pH plus). OXY also reads 60 on byte[97], so the value alone does not identify the pump. byte[103] is the refill start, not this rate"
         ),
         ChlorineFlowRate: confirmed(
             "byte[99], serials 110071590 / 110128063 (Issues #110, #115)"

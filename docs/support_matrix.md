@@ -25,7 +25,7 @@ Further profiles exist that no unit is meant to decode with and that the tables 
 | `alarm_ph_dosing_ineffective` | ✅ | ❓ | ❓ | ❓ | ❓ |
 | `alarm_rapid_ph_change` | ❓ | ❓ | ❓ | ❓ | ❓ |
 | `algaecide_dose_target` | ✅ | ✅ `decode_v7_routed_by_byte37` | ✅ | — | — |
-| `algaecide_flow_rate` | 🔍 | ✅ `decode_v7_routed_by_byte37` | ✅ | — | — |
+| `algaecide_flow_rate` | 👁 `decode_v7_byte97` | ✅ `decode_v7_routed_by_byte37` | ✅ | — | — |
 | `algaecide_pump_running` | ❓ `decode_v7_oxy` | ✅ | ✅ `decode_v7_oxy` | — | — |
 | `backwash_duration` | ✅ | ✅ | 👁 | — | ❓ |
 | `backwash_interval` | ✅ | ✅ | 👁 | — | ❓ |
@@ -146,7 +146,7 @@ Every entry below is read today without a confirming capture.  If you own one of
 - `air_temperature` — assumed: bytes 23-24 = 0xFE70 (no air probe, the SALT marker) in every captured HOME frame, so its entity has stayed disabled; the Aseko Live app shows air temperature on HOME units
 - `alarm_no_flow_to_probes` — confirmed on NET: byte[13] 0x04 (DomSchCoding, NET frame)
 - `alarm_rapid_ph_change` — assumed: byte[13] 0x08 was set on serial 110128063 with no matching alarm known in the app
-- `algaecide_pump_running` — assumed: byte[29] 0x10 as on OXY, which has the same four independent pump ports (0x20 is the flocculant); read only once the algicide flow rate is located, so no state yet
+- `algaecide_pump_running` — assumed: byte[29] 0x10 as on OXY, which has the same four independent pump ports (0x20 is the flocculant); reported once byte[97] reads as a flow rate (Issue #173)
 - `backwash_running` — assumed: byte[29] 0x01, confirmed on SALT
 - `chlorine_dose_target` — assumed: byte[53] with a DOSE unit type, as on NET; no DOSE HOME frame captured
 - `chlorine_pump_running` — assumed: byte[29] 0x40, port may be chlorine or OXY Pure
@@ -269,10 +269,6 @@ Every entry below is read today without a confirming capture.  If you own one of
 
 Values these models have but nobody has found in the frame.  If you own one of these units, download diagnostics, change the setting on the unit, wait a minute and download again: the two frames show where it is.
 
-### v7 HOME
-
-- `algaecide_flow_rate` — not located: byte[103] was read as the algicide flow rate (Issues #110, #115), but bytes 102-105 are the water level thresholds -- confirmed on SALT against the unit (2026-09-11) and 13 / 33 / 55 / 100 cm in order on serial 110128063; the captured OXY sends its algicide flow rate there, and has no level sensor connected
-
 ### v7 OXY
 
 - `freeze_protection_enabled` — not located: the ASIN AQUA Oxygen manual describes freeze protection; no OXY frame has been compared with it
@@ -285,6 +281,7 @@ Values captured from real units that nobody has yet checked against the unit dis
 
 ### v7 HOME
 
+- `algaecide_flow_rate` — observed: byte[97] = 60 on serials 110128063 and 110215864 (Issue #173). First-generation HOME manuals list the pumps pH-, pH+, chlorine and Flocc/Alg on the terminals pH- Cl F pH+, matching bytes 95, 97, 99 and 101; second-generation manuals put chlorine, pH, algicide and flocculant on the same terminals, the algicide on the former pH+ output. HOME has no separate pH+ pump (the pH output doses pH minus or pH plus). OXY also reads 60 on byte[97], so the value alone does not identify the pump. byte[103] is the refill start, not this rate
 - `backwash_schedule_enabled` — observed: byte[22] 0x10 set on serial 110128063 with backwash every 3 days (0x90); confirmed on an ASIN AQUA Salt (2026-09-13)
 - `max_ph_doses` — observed: byte[115] = 20 on serial 110128063; the position is confirmed on SALT, the HOME setting was never compared
 - `ph_minus_flow_rate` — observed: byte[95] = 60 on serial 110128063; Aseko Live lists the pH- pump but the rate was not compared; the position is confirmed on SALT

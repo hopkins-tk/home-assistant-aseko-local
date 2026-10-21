@@ -1154,6 +1154,55 @@ def test_decode_home_clf_real_frame() -> None:
     assert device.flocculant_flow_rate == 10
 
 
+def test_decode_home_110215864_real_frame() -> None:
+    """Real frame from serial 110215864 (ASIN AQUA Home, CLF), Issue #173.
+
+    Captured 2026-10-15 12:43:50 with filtration and heating on and no pump
+    dosing (byte[29] = 0x0c).  byte[97] is the algicide rate, byte[103] the
+    refill start level.
+    """
+    device = decode(
+        bytes.fromhex(
+            # Segment 1: real-time sensor data
+            "0691c2b802011a0a0f0c2b32000002bd00310031003590fe70011839aa0c516500000000005b0231"
+            # Segment 2: setpoints and schedule
+            "0691c2b802031a0a0f0c2b3248050a1d061e16001200160002d80118070c1e0c0a14030c0e10b27b"
+            # Segment 3: pool parameters and flowrates
+            "0691c2b802021a0a0f0c2b32001b003c003c003c000a19283c50021c0502580f190f1e1effcd0255"
+        )
+    )
+
+    assert device.device_type == AsekoDeviceType.HOME
+    assert device.serial_number == 110_215_864
+    assert device.configuration == {AsekoProbeType.PH, AsekoProbeType.CLF}
+    assert device.ph == pytest.approx(7.01)
+    assert device.free_chlorine == pytest.approx(0.49)
+    assert device.water_temperature == pytest.approx(28.0)
+    assert device.ph_target == pytest.approx(7.2)
+    assert device.free_chlorine_target == pytest.approx(0.5)
+    assert device.water_temperature_target == 29
+    assert device.pool_volume == 27
+    # Flow-rate block: 95 pH-, 97 algicide (former pH+ terminal), 99 chlorine,
+    # 101 flocculant
+    assert device.ph_minus_flow_rate == 60
+    assert device.algaecide_flow_rate == 60
+    assert device.chlorine_flow_rate == 60
+    assert device.flocculant_flow_rate == 10
+    assert device.algaecide_dose_target == 10  # byte[72]
+    assert device.flocculant_dose_target == 10  # byte[54]
+    # Level thresholds 102-105: byte[103] is the refill start, not a rate
+    assert device.water_level_low_alarm == 25
+    assert device.water_level_refill_start == 40
+    assert device.water_level_refill_stop == 60
+    assert device.water_level_high_alarm == 80
+    assert device.filtration_running is True
+    assert device.heating_running is True
+    assert device.chlorine_pump_running is False
+    assert device.ph_minus_pump_running is False
+    assert device.algaecide_pump_running is False
+    assert device.flocculant_pump_running is False
+
+
 def test_decode_issue_99_salt() -> None:
     """Test decoding data from issue #99 (SALT with CLF - 0x0d)."""
 
@@ -1182,10 +1231,11 @@ def test_decode_home_independent_flowrates() -> None:
 
     byte[103] was read as the algicide flow rate too, but bytes 102-105 are the
     water level thresholds (confirmed on SALT); on HOME byte[103] is the refill
-    start, and where HOME sends the algicide flow rate is not known yet.
+    start. The algicide rate is byte[97] (Issue #173).
     """
     data = _make_base_bytes()
     data[4] = 0x02  # HOME CLF
+    data[97] = 60  # algaecide_flow_rate
     data[99] = 60  # chlorine_flow_rate (Chlor Pure)
     data[101] = 10  # flocculant_flow_rate
     data[103] = 33  # the refill start threshold
@@ -1197,7 +1247,7 @@ def test_decode_home_independent_flowrates() -> None:
     assert device.ph_minus_flow_rate == 60
     assert device.flocculant_flow_rate == 10
     assert device.water_level_refill_start == 33
-    assert device.algaecide_flow_rate is None  # not located
+    assert device.algaecide_flow_rate == 60
     assert "algaecide_flow_rate" in device.features
     # byte[37] bit 7 has no meaning on HOME (no shared pump port)
     data[37] = 0xB3
@@ -1209,52 +1259,54 @@ def test_decode_home_flowrates_unspecified() -> None:
     """HOME flowrates: 0xFF → None (e.g. pump not installed)."""
     data = _make_base_bytes()
     data[4] = 0x02  # HOME CLF
+    data[97] = 0xFF  # algicide pump not installed
     data[99] = 0xFF  # chlorine pump not installed
     data[101] = 0xFF  # flocculant pump not installed
-    data[103] = 0xFF  # algicide pump not installed
 
     device = decode(bytes(data))
     assert device.device_type == AsekoDeviceType.HOME
     assert device.chlorine_flow_rate is None
     assert device.flocculant_flow_rate is None
     assert device.algaecide_flow_rate is None
+    assert "algaecide_flow_rate" not in device.features
 
 
 def test_decode_home_pump_bits_follow_oxy() -> None:
-    """HOME has OXY's four independent ports: bit 0x20 is the flocculant only.
+    """HOME has OXY's four independent ports: bit 0x20 is flocculant, 0x10 algicide.
 
-    The algicide pump (bit 0x10 on OXY) is not read until the algicide flow
-    rate is located, so one running pump no longer counts two chemicals.
+    One running pump does not count as both chemicals (Issue #115). The
+    algicide bit is reported once byte[97] is a flow rate (Issue #173).
     """
     data = _make_base_bytes()
     data[4] = 0x02  # HOME CLF
+    data[97] = 60  # algicide pump installed
     data[99] = 60
     data[101] = 10  # floc pump installed
-    data[103] = 20
+    data[103] = 20  # refill start, not the algicide rate
     data[37] = 0x53
 
     data[29] = 0x28  # bit 0x20 + filtration
     device = decode(bytes(data))
     assert device.flocculant_pump_running is True
-    assert device.algaecide_pump_running is None
-    assert "algaecide_pump_running" not in device.features
+    assert device.algaecide_pump_running is False
 
     data[29] = 0x18  # bit 0x10 + filtration
     device = decode(bytes(data))
     assert device.flocculant_pump_running is False
+    assert device.algaecide_pump_running is True
 
 
 def test_decode_home_floc_pump_running_independent() -> None:
     """On HOME the floc pump runs independently of algicide (different pump ports).
 
-    byte[101] set (floc installed) and byte[103] = 0xFF (no algicide) →
+    byte[101] set (floc installed) and byte[97] = 0xFF (no algicide) →
     flocculant_pump_running tracks byte[29] bit 5, algaecide_pump_running stays None.
     """
     data = _make_base_bytes()
     data[4] = 0x02  # HOME CLF
+    data[97] = 0xFF  # NO algicide pump
     data[99] = 0xFF  # no chlor
     data[101] = 10  # floc installed
-    data[103] = 0xFF  # NO algicide pump
     data[37] = 0x53
 
     data[29] = 0x28
