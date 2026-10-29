@@ -90,6 +90,7 @@ Further profiles exist that no unit is meant to decode with and that the tables 
 | `water_level_sensor_enabled` | ❓ | ✅ | ❓ | — | — |
 | `water_temperature` | ✅ | ✅ | 👁 | ✅ | ❓ |
 | `water_temperature_target` | ✅ | ✅ | 👁 | — | ❓ |
+| `winter_mode` | ✅ | — | — | — | — |
 
 ## v8
 
@@ -331,7 +332,7 @@ Fields that exist on `AsekoDevice` but that nothing knows how to read yet.
 
 ## Totals
 
-- features known: 73
-- with a v7 reading: 71
+- features known: 74
+- with a v7 reading: 72
 - with a v8 reading: 31
 - profiles: 9

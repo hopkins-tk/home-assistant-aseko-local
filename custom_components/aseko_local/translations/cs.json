@@ -127,6 +127,9 @@
       "backwash_schedule_enabled": {
         "name": "Plán proplachu"
       },
+      "winter_mode": {
+        "name": "Zimní režim"
+      },
       "heating_allowed": {
         "name": "Ohřev povolen"
       },
