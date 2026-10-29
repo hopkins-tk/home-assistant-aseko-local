@@ -246,6 +246,7 @@ class AsekoDevice:
     water_level_sensor_enabled: bool | None = None  # byte 37 bit 0x40
     flow_detection_enabled: bool | None = None  # byte 37 bit 0x02
     backwash_schedule_enabled: bool | None = None  # byte 22 bit 0x10
+    winter_mode: bool | None = None  # byte 22 bit 0x04 (HOME)
     heating_condition: AsekoHeatingCondition | None = None  # byte 22 0x01/0x02/0x20
     heating_condition_met: bool | None = None  # byte 78 bit 0x80 (live)
     heating_allowed: bool | None = None  # derived: control on and condition met

@@ -147,8 +147,9 @@ Example values are from the representative frame unless stated otherwise.
 | Bit / mask | Meaning | Evidence | Notes |
 |---|---|---|---|
 | `0x01`, `0x02`, `0x20` | heating condition on SALT (time window / outside temperature / below) | — | not decoded on HOME: the HOME VSP frames carry `0x83` with both `0x01` and `0x02`, never seen on SALT |
+| `0x04` | Winter mode (`winter_mode`) | confirmed | 110215864: `0x90` in summer, `0x84` with Winter mode ON and freeze protection OFF on the display (2026-10-29); same bit as SALT's winter mode |
 | `0x08` | variable-speed pump setting (`variable_speed_pump_enabled`) | confirmed | Issue #137, 110175608: `0x83` off, `0x8b` on (any brand); also toggled on SALT |
-| `0x10` | backwash schedule (`backwash_schedule_enabled`) | observed | set on 110128063 with backwash every 3 days (`0x90`); confirmed on SALT (2026-09-13) |
+| `0x10` | backwash schedule (`backwash_schedule_enabled`) | observed | set on 110128063 with backwash every 3 days (`0x90`); confirmed on SALT (2026-09-13); cleared on 110215864 when Winter mode switched the backwash off |
 | `0x80` | unknown | — | |
 
 ### `byte[29]` — actuators
@@ -177,7 +178,7 @@ One bit field of settings shared by HOME and SALT. These are settings, not hardw
 | `0x10` | filtration period 1 enabled | confirmed | Issue #133 |
 | `0x20` | filtration period 2 enabled | confirmed | Issue #133 |
 | `0x40` | Waterlevel enabled (`water_level_sensor_enabled`) | confirmed on SALT | 2026-09-13; set on the level-meter HOME units, clear on 110169464 and in the antifreeze frame `0x81` |
-| `0x80` | antifreeze enabled (`freeze_protection_enabled`) | confirmed | Issue #136, 110175608; on SALT this bit is algicide routing |
+| `0x80` | antifreeze enabled (`freeze_protection_enabled`) | confirmed | Issue #136, 110175608; on SALT this bit is algicide routing; on 110215864 in Winter mode (freeze protection OFF) it is set only while the winter circulation runs, see §5 |
 
 No period bit → nonstop 24 h. Every captured HOME value, read with these bits:
 
@@ -194,6 +195,8 @@ No period bit → nonstop 24 h. Every captured HOME value, read with these bits:
 | `0x45` | Issue #135 | nonstop 24 h | ✓ | — | — | — | ✓ |
 | `0x49` | Issue #135 | nonstop 24 h | — | ✓ | — | — | ✓ |
 | `0x81` | Issue #136 | nonstop 24 h | — | — | ✓ | — | — |
+| `0x5b` / `0x5f` | 110215864, summer | period 1 | — / ✓ | ✓ | — | ✓ | ✓ |
+| `0x93` / `0x13` | 110215864, Winter mode, pump running / standing | period 1 | — | — | bit set / clear, setting OFF | ✓ | — |
 
 ### `byte[78]` — live state and VS pump type
 
@@ -202,7 +205,7 @@ No period bit → nonstop 24 h. Every captured HOME value, read with these bits:
 | `0x0C` | VS pump type group (`variable_speed_pump_type`) | confirmed | `0x22` → `0x00` Speck / Uwe EO PM (kept with the VS pump off), `0x26` → `0x04` Pentair / Dab E.SWIM, `0x2a` → `0x08` Hayward (Issue #137); same groups on SALT (2026-09-13/14) |
 | `0x02` / `0x01` | filtration running / standing | confirmed on SALT | all HOME values have `0x02` set (filtration running at capture) |
 | `0x20` | unknown | — | set in all HOME values |
-| `0x40` | winter mode active | confirmed on SALT | |
+| `0x40` | winter mode active | confirmed on SALT | set alike on 110215864 in Winter mode (`0xd2` running, `0xd0` standing); not decoded, `byte[22]` `0x04` is the setting |
 | `0x80` | heating allowed now | confirmed on SALT | |
 
 ## 5. Model-specific behaviour
@@ -226,6 +229,12 @@ The override is HOME-only. On SALT the same bit marks the settings menu being op
 ### Heating and antifreeze (`byte[55]`)
 
 `byte[55]` is the heating setpoint (Issue #135). With antifreeze on, it drops from the heating setpoint (e.g. 27 °C) to the antifreeze setpoint (e.g. 4, 5 or 9 °C, user-set; Issue #136). On SALT the corresponding winter mode is `byte[22]` `0x04`, because `byte[37]` `0x80` is algicide routing there. `heating_control_enabled` (`byte[37]` `0x08`) is the master enable, separate from the heating output `byte[29]` `0x04`.
+
+### Winter mode and freeze protection are two settings
+
+The HOME Configuration menu lists **Winter mode** (page 2) and **Freeze protection** (page 4) as separate switches (110215864, 2026-10-29). Winter mode is `byte[22]` `0x04` (`winter_mode`), the bit SALT uses for its winter mode. Switching it on moved the unit to the winter program the manual describes: water target 2 °C in `byte[55]` (from 29), algicide 2 ml/m³, filtration 12:00–12:15, backwash schedule off (`byte[22]` `0x10` cleared, interval 0); chlorine, pH and flocculant stop dosing, the algicide keeps its daily dose.
+
+With freeze protection OFF on the display, `byte[37]` `0x80` still goes up and down with the winter circulation (the pump starting every few hours for about 11 minutes without an air thermometer): `0x93` while the pump runs, `0x13` while it stands. So on this unit the bit reads as the circulation running rather than as the setting, unlike the Issue #136 frames. Whether that is a firmware difference or the setting and the live state sharing a bit is open (§8).
 
 ### Dosing alarms: two encodings of one fault
 
@@ -308,6 +317,7 @@ Serial 110128063, frame 2026-04-28 08:27:07, against the Aseko Live app; pH and 
 10. **`byte[112]` raw vs %**: the 110128063 frame has `0x0f` (15) at byte 112 while the app showed 5 %; Issue #139 frames confirm the byte tracks the setting. A frame with a known concentration on a CLF unit would clarify the encoding.
 11. **`max_refill_time`, `max_ph_doses`, refill start threshold**: a glance at the unit settings compared with bytes 76–77, 115 and 103.
 12. **REDOX variant values** (`redox`, `redox_target` on byte 53): no evidence recorded; a REDOX HOME dump with the app's REDOX value.
+13. **`byte[37]` `0x80` in Winter mode**: on 110215864 it follows the winter circulation with freeze protection OFF. A frame with freeze protection ON and the pump standing, on either unit, would tell whether the bit is the setting, the live state, or both.
 
 ## 9. History
 

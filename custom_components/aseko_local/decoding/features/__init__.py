@@ -82,11 +82,13 @@ from .water_level_refill_stop import WaterLevelRefillStop
 from .water_level_sensor_enabled import WaterLevelSensorEnabled
 from .water_temperature import WaterTemperature
 from .water_temperature_target import WaterTemperatureTarget
+from .winter_mode import WinterMode
 
 ALL_FEATURES: tuple[type[Feature], ...] = (
     WaterLevelSensorEnabled,
     FlowDetectionEnabled,
     BackwashScheduleEnabled,
+    WinterMode,
     HeatingConditionMet,
     HeatingCondition,
     VariableSpeedPumpType,
@@ -234,4 +236,5 @@ __all__ = [
     "WaterLevelSensorEnabled",
     "WaterTemperature",
     "WaterTemperatureTarget",
+    "WinterMode",
 ]
