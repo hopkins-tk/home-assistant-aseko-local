@@ -1,7 +1,9 @@
 """Configured pH-plus pump flow rate (ml/min).
 
-Not mapped: byte[97] is the suspected position but no frame has confirmed
-it, so the field stays None everywhere and no profile lists this feature.
+Not mapped: byte[97] was the pH+ output on first-generation HOME units, but
+second-generation HOME units put the algicide pump there and HOME reads it as
+the algicide rate (Issue #173).  No frame has shown a pH+ rate, so the field
+stays None everywhere and no profile lists this feature.
 """
 
 from __future__ import annotations

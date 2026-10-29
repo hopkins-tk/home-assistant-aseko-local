@@ -103,7 +103,7 @@ _BYTE_LABELS: dict[int, str] = {
     94: "unknown",
     95: "ph_minus_flow_rate (ml/min)",
     96: "unknown",
-    97: "ph_plus_flow_rate (ml/min) – byte position uncertain",
+    97: "algaecide_flow_rate (ml/min) on HOME (Issue #173); ph_plus_flow_rate elsewhere, byte position uncertain",
     98: "unknown",
     99: "chlorine_flow_rate (ml/min)",
     100: "unknown",

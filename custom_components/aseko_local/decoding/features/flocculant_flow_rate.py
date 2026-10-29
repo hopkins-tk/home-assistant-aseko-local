@@ -4,11 +4,10 @@ Two layouts exist for the algicide / flocculant pair, and which one a model
 uses is a property of the model -- so this feature offers both readings and
 the profile picks:
 
-Independent ports (OXY, HOME): flocculant at byte[101], algicide at
-    byte[103] -- confirmed on OXY (2026-04-11, algicide = 60 ml/min).  HOME
-    reads flocculant at byte[101] (Issues #110, #115); its algicide rate is
-    not located, because byte[103] is the refill start level there (see the
-    HOME profile evidence).
+Independent ports (OXY, HOME): flocculant at byte[101].  OXY sends the
+    algicide rate at byte[103] (confirmed 2026-04-11, 60 ml/min).  HOME reads
+    flocculant at byte[101] (Issues #110, #115) and the algicide rate at
+    byte[97] (Issue #173): byte[103] is the refill start level there.
 
 Shared port (SALT; PROFI assumed): one physical pump at byte[101], configured
     for either chemical.  NET has neither pump.  byte[37] bit 0x80 set = algicide, clear =
