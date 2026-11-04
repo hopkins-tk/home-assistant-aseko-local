@@ -178,7 +178,7 @@ One bit field of settings shared by HOME and SALT. These are settings, not hardw
 | `0x10` | filtration period 1 enabled | confirmed | Issue #133 |
 | `0x20` | filtration period 2 enabled | confirmed | Issue #133 |
 | `0x40` | Waterlevel enabled (`water_level_sensor_enabled`) | confirmed on SALT | 2026-09-13; set on the level-meter HOME units, clear on 110169464 and in the antifreeze frame `0x81` |
-| `0x80` | antifreeze enabled (`freeze_protection_enabled`) | confirmed | Issue #136, 110175608; on SALT this bit is algicide routing; on 110215864 in Winter mode (freeze protection OFF) it is set only while the winter circulation runs, see §5 |
+| `0x80` | antifreeze enabled (`freeze_protection_enabled`) | observed | Issue #136, 110175608; on SALT this bit is algicide routing; observed: set with freeze protection OFF in the 110215864 winter frames, only while the winter circulation runs, see §5 |
 
 No period bit → nonstop 24 h. Every captured HOME value, read with these bits:
 
@@ -233,6 +233,8 @@ The override is HOME-only. On SALT the same bit marks the settings menu being op
 ### Winter mode and freeze protection are two settings
 
 The HOME Configuration menu lists **Winter mode** (page 2) and **Freeze protection** (page 4) as separate switches (110215864, 2026-10-29). Winter mode is `byte[22]` `0x04` (`winter_mode`), the bit SALT uses for its winter mode. Switching it on moved the unit to the winter program the manual describes: water target 2 °C in `byte[55]` (from 29), algicide 2 ml/m³, filtration 12:00–12:15, backwash schedule off (`byte[22]` `0x10` cleared, interval 0); chlorine, pH and flocculant stop dosing, the algicide keeps its daily dose.
+
+On this firmware the two settings exclude each other: with Winter mode on, the Configuration menu does not let Freeze protection be switched on (110215864, 2026-11-03). That supports keeping them as separate fields.
 
 With freeze protection OFF on the display, `byte[37]` `0x80` still goes up and down with the winter circulation (the pump starting every few hours for about 11 minutes without an air thermometer): `0x93` while the pump runs, `0x13` while it stands. So on this unit the bit reads as the circulation running rather than as the setting, unlike the Issue #136 frames. Whether that is a firmware difference or the setting and the live state sharing a bit is open (§8).
 
@@ -317,7 +319,9 @@ Serial 110128063, frame 2026-04-28 08:27:07, against the Aseko Live app; pH and 
 10. **`byte[112]` raw vs %**: the 110128063 frame has `0x0f` (15) at byte 112 while the app showed 5 %; Issue #139 frames confirm the byte tracks the setting. A frame with a known concentration on a CLF unit would clarify the encoding.
 11. **`max_refill_time`, `max_ph_doses`, refill start threshold**: a glance at the unit settings compared with bytes 76–77, 115 and 103.
 12. **REDOX variant values** (`redox`, `redox_target` on byte 53): no evidence recorded; a REDOX HOME dump with the app's REDOX value.
-13. **`byte[37]` `0x80` in Winter mode**: on 110215864 it follows the winter circulation with freeze protection OFF. A frame with freeze protection ON and the pump standing, on either unit, would tell whether the bit is the setting, the live state, or both.
+13. **`byte[37]` `0x80` in Winter mode**: on 110215864 it follows the winter circulation with freeze protection OFF. It may be the circulation itself or the overflow / bottom drain valve, which the SALT 2025 and HOME DE 2025 manuals say Winter mode and freeze protection switch. Winter mode blocks Freeze protection in the menu, so two frames are planned for when the pump is connected and Winter mode is off:
+    1. Freeze protection ON, pump standing. With the water above 0 °C the freeze circulation should not start, so this shows whether `0x80` follows the setting or the circulation.
+    2. Freeze protection OFF, pump running, as the control.
 
 ## 9. History
 

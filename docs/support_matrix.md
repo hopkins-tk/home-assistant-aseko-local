@@ -53,7 +53,7 @@ Further profiles exist that no unit is meant to decode with and that the tables 
 | `free_chlorine` | ✅ | ✅ | — | ✅ | ❓ |
 | `free_chlorine_mv` | ✅ | — | — | ✅ | ❓ |
 | `free_chlorine_target` | ✅ | ✅ | — | 👁 | ❓ |
-| `freeze_protection_enabled` | ✅ | ✅ `decode_v7_winter_mode` | 🔍 | — | — |
+| `freeze_protection_enabled` | 👁 | ✅ `decode_v7_winter_mode` | 🔍 | — | — |
 | `heating_condition` | — | ✅ | — | — | — |
 | `heating_condition_met` | — | ✅ | — | — | — |
 | `heating_control_enabled` | ✅ | ✅ | 🔍 | — | — |
@@ -284,6 +284,7 @@ Values captured from real units that nobody has yet checked against the unit dis
 
 - `algaecide_flow_rate` — observed: byte[97] = 60 on serials 110128063 and 110215864 (Issue #173). First-generation HOME manuals list the pumps pH-, pH+, chlorine and Flocc/Alg on the terminals pH- Cl F pH+, matching bytes 95, 97, 99 and 101; second-generation manuals put chlorine, pH, algicide and flocculant on the same terminals, the algicide on the former pH+ output. HOME has no separate pH+ pump (the pH output doses pH minus or pH plus). OXY also reads 60 on byte[97], so the value alone does not identify the pump. byte[103] is the refill start, not this rate
 - `backwash_schedule_enabled` — observed: byte[22] 0x10 set on serial 110128063 with backwash every 3 days (0x90); confirmed on an ASIN AQUA Salt (2026-09-13)
+- `freeze_protection_enabled` — observed: byte[37] 0x80: 0x81 with antifreeze ON, 0x41 OFF on serial 110175608 (Issue #136); lowered from confirmed because on 110215864 in Winter mode, with freeze protection OFF on the display, the bit is set while the winter circulation runs (0x93) and clear while it stands (0x13), frames of 2026-10-29 in test_decode_home_winter_mode
 - `max_ph_doses` — observed: byte[115] = 20 on serial 110128063; the position is confirmed on SALT, the HOME setting was never compared
 - `ph_minus_flow_rate` — observed: byte[95] = 60 on serial 110128063; Aseko Live lists the pH- pump but the rate was not compared; the position is confirmed on SALT
 
