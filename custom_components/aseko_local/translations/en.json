@@ -127,6 +127,9 @@
       "backwash_schedule_enabled": {
         "name": "Backwash schedule"
       },
+      "winter_mode": {
+        "name": "Winter mode"
+      },
       "heating_allowed": {
         "name": "Heating allowed"
       },

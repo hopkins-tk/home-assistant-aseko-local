@@ -127,6 +127,9 @@
       "backwash_schedule_enabled": {
         "name": "Rückspülplan"
       },
+      "winter_mode": {
+        "name": "Wintermodus"
+      },
       "heating_allowed": {
         "name": "Heizen erlaubt"
       },

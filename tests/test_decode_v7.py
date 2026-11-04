@@ -1201,6 +1201,45 @@ def test_decode_home_110215864_real_frame() -> None:
     assert device.ph_minus_pump_running is False
     assert device.algaecide_pump_running is False
     assert device.flocculant_pump_running is False
+    assert device.winter_mode is False  # byte[22] = 0x90
+    assert device.freeze_protection_enabled is False  # byte[37] = 0x5b
+
+
+# Serial 110215864 in Winter mode, freeze protection OFF on the display
+# (2026-10-29): one frame with the winter circulation running, one standing.
+_HOME_WINTER_RUNNING_HEX = (
+    "0691c2b802011a0a1d0c100a000002a300000000000184fe7000b946aa080046000000000093abd6"
+    "0691c2b802031a0a1d0c100a48050a020c000c0f1200160002be00b9000c1e0c0214030c0e10d2dd"
+    "0691c2b802021a0a1d0c100a001b003c003c003c000a19283c50021c3202580f190f1e1effcd0273"
+)
+_HOME_WINTER_STANDING_HEX = (
+    "0691c2b802011a0a1d0d160a000002ae00000000000184fe7000b7460000ffff000000000013223f"
+    "0691c2b802031a0a1d0d160a48050a020c000c0f1200160002c900b7000c1e0c0214030c0e10d0a1"
+    "0691c2b802021a0a1d0d160a001b003c003c003c000a19283c50021c3202580f190f1e1effcd0274"
+)
+
+
+@pytest.mark.parametrize(
+    ("hex_dump", "running"),
+    [(_HOME_WINTER_RUNNING_HEX, True), (_HOME_WINTER_STANDING_HEX, False)],
+    ids=["circulation-running", "circulation-standing"],
+)
+def test_decode_home_winter_mode(hex_dump: str, running: bool) -> None:
+    """byte[22] 0x04 is Winter mode on HOME, a setting apart from freeze protection.
+
+    It holds in both frames; byte[37] 0x80 follows the winter circulation
+    (0x93 / 0x13) although freeze protection is switched off on the unit.
+    """
+    device = decode(bytes.fromhex(hex_dump))
+
+    assert device.device_type == AsekoDeviceType.HOME
+    assert "winter_mode" in device.features
+    assert device.winter_mode is True
+    assert device.backwash_schedule_enabled is False  # byte[22] 0x84
+    assert device.water_temperature_target == 2  # winter program
+    assert device.algaecide_dose_target == 2
+    assert device.filtration_relay is running
+    assert device.freeze_protection_enabled is running
 
 
 def test_decode_issue_99_salt() -> None:
