@@ -1007,7 +1007,9 @@ def test_decode_oxy_normal_frame() -> None:
     assert device.oxygen_flow_rate == 60  # byte[99] = 0x3c (OXY Pure pump slot)
     assert device.chlorine_flow_rate is None  # not set on OXY devices
     assert device.flocculant_flow_rate == 10  # byte[101] = 0x0a
-    assert device.algaecide_flow_rate == 60  # byte[103] = 0x3c
+    assert device.algaecide_flow_rate == 60  # byte[97] = 0x3c (Issue #183)
+    # bytes 102-105 = 30 / 60 / 110 / 150: thresholds of a unit without a level sensor
+    assert device.water_level_refill_start == 60  # byte[103] = 0x3c
 
     # Basic data
     assert device.serial_number == 110_157_485
@@ -1017,6 +1019,41 @@ def test_decode_oxy_normal_frame() -> None:
     assert device.ph_target == pytest.approx(7.2, abs=0.01)
     assert device.water_temperature_target == 25
     assert device.pool_volume == 41
+
+
+# OXY with a level sensor (Issue #183, anonymized serial): level meter ON,
+# 52 cm; thresholds on the unit display 30 / 35 / 55 / 90 cm; algicide
+# measured at 60 ml/min against the canister markings
+_OXY_LEVEL_SENSOR_HEX = (
+    "0690dead05011a0b080a1828000002bc001e001ef5ff90fe70013534aa08000000000000005b00eb"
+    "0690dead05031a0b080a1828460f071e080014001200160002ad01350e0c1e0a0f2801e00e10a205"
+    "0690dead05021a0b080a18280026003c003c003c000a1e23375a00f00f02580f0f0f1e14aace003f"
+)
+
+
+def test_decode_oxy_with_level_sensor() -> None:
+    """OXY reads the algicide flow rate on byte[97], byte[103] is the refill start.
+
+    Issue #183: byte[97] = 60 matches the measured 60 ml/min; bytes 102-105
+    match the thresholds on the unit display.  The Winnetoux frame, without a
+    level sensor, had 60 in both byte[97] and byte[103].
+    """
+    data = bytearray(_oxy_bytes(_OXY_LEVEL_SENSOR_HEX))
+    device = decode(bytes(data))
+    assert device.device_type == AsekoDeviceType.OXY
+    assert device.algaecide_flow_rate == 60  # byte[97]
+    assert device.flocculant_flow_rate == 10  # byte[101]
+    assert device.water_level_sensor_enabled is True  # byte[37] = 0x5B
+    assert device.water_level == 52  # byte[27]
+    assert device.water_level_low_alarm == 30  # byte[102]
+    assert device.water_level_refill_start == 35  # byte[103]
+    assert device.water_level_refill_stop == 55  # byte[104]
+    assert device.water_level_high_alarm == 90  # byte[105]
+    assert device.refilling is False
+
+    data[97] = 0xFF  # algicide pump not installed
+    device = decode(bytes(data))
+    assert device.algaecide_flow_rate is None
 
 
 def test_decode_oxy_floc_pump_running() -> None:
@@ -1478,11 +1515,7 @@ def test_water_level_decoded_for_oxy_and_salt() -> None:
         assert device.water_level == 14, f"byte[4]={device_byte:#x}"
         assert device.refilling is True, f"byte[4]={device_byte:#x}"
         assert device.water_level_low_alarm == 9, f"byte[4]={device_byte:#x}"
-        # OXY sends its algicide flow rate in byte[103]: refill start not located
-        expected_start = None if device_byte == 0x05 else 11
-        assert device.water_level_refill_start == expected_start, (
-            f"byte[4]={device_byte:#x}"
-        )
+        assert device.water_level_refill_start == 11, f"byte[4]={device_byte:#x}"
         assert device.water_level_refill_stop == 13, f"byte[4]={device_byte:#x}"
         assert device.water_level_high_alarm == 15, f"byte[4]={device_byte:#x}"
 

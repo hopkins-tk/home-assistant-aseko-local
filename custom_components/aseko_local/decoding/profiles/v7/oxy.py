@@ -109,8 +109,6 @@ OXY = Profile(
         *ALARMS,
     ),
     overrides={
-        # byte[103] is the algicide flow rate here, not the refill threshold
-        WaterLevelRefillStart: "decode_v7_not_located",
         Configuration: "decode_v7_ph_and_oxy",
         AlgaecidePumpRunning: "decode_v7_oxy",
         HeatingControlEnabled: "decode_v7_not_located",
@@ -120,8 +118,8 @@ OXY = Profile(
         FlowDetectionEnabled: assumed(
             "byte[37] 0x02 as on SALT; set in the OXY frames (0x03)"
         ),
-        WaterLevelSensorEnabled: assumed(
-            "byte[37] 0x40 as on SALT; clear in the OXY frames (0x03), which fits byte[27] = 0xFE (no level sensor)"
+        WaterLevelSensorEnabled: confirmed(
+            "byte[37] 0x40: set (0x5B) on the Issue #183 unit with the level meter ON; clear (0x03) on the Winnetoux OXY, which has no level sensor (byte[27] = 0xFE)"
         ),
         AirTemperature: assumed(
             "bytes 23-24 = 0xFE70 (no air probe, the SALT marker) in every captured OXY frame, so its entity has stayed disabled; the Aseko Live app shows air temperature on Oxygen units"
@@ -168,7 +166,9 @@ OXY = Profile(
         FlocculantPumpRunning: confirmed(
             "byte[29] 0x20 toggles at the 19:33:52 floc event"
         ),
-        AlgaecideFlowRate: confirmed("byte[103] = 60 ml/min (2026-04-11)"),
+        AlgaecideFlowRate: confirmed(
+            "byte[97] = 60 ml/min, measured against the canister markings on the Issue #183 unit; byte[103] was read before, 60 in the Winnetoux frame as well, but it is the refill start (35 cm there)"
+        ),
         FlocculantFlowRate: confirmed("byte[101]"),
         OxygenFlowRate: confirmed("byte[99]"),
         PhMinusFlowRate: confirmed(
@@ -227,18 +227,20 @@ OXY = Profile(
         WaterFlowToProbes: observed(
             "byte[28] = 0xAA on the Winnetoux OXY (serial 110157165); not compared with the app"
         ),
-        WaterLevel: assumed("byte[27], confirmed on HOME"),
-        WaterLevelLowAlarm: assumed(
-            "byte[102] as on SALT; the captured OXY has no level sensor"
+        WaterLevel: confirmed(
+            "byte[27] = 52 cm on the Issue #183 unit, the level the owner reads with the level meter ON"
         ),
-        WaterLevelRefillStop: assumed(
-            "byte[104] as on SALT; the captured OXY has no level sensor"
+        WaterLevelLowAlarm: confirmed(
+            "byte[102] = 30 cm vs the unit display on the Issue #183 unit"
         ),
-        WaterLevelHighAlarm: assumed(
-            "byte[105] as on SALT; the captured OXY has no level sensor"
+        WaterLevelRefillStop: confirmed(
+            "byte[104] = 55 cm vs the unit display on the Issue #183 unit"
         ),
-        WaterLevelRefillStart: not_located(
-            "byte[103] carries the algicide flow rate on OXY (confirmed, 60 ml/min), so the refill start threshold is elsewhere on an OXY with a level sensor; the captured OXY has none"
+        WaterLevelHighAlarm: confirmed(
+            "byte[105] = 90 cm vs the unit display on the Issue #183 unit"
+        ),
+        WaterLevelRefillStart: confirmed(
+            "byte[103] = 35 cm vs the unit display on the Issue #183 unit; 60 in the Winnetoux frame, whose bytes 102-105 = 30 / 60 / 110 / 150 are the thresholds of a unit without a level sensor"
         ),
         WaterTemperature: observed(
             "bytes 25-26 = 9.5 C on the Winnetoux OXY (serial 110157165); not compared with the app"

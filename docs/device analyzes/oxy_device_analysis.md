@@ -78,7 +78,7 @@ Values are from the Winnetoux unit. Setpoint values marked (04-11) come from the
 | 22 | settings | bit field | assumed | `0x80`. See §4. |
 | 23–24 | `air_temperature` | ÷10 | assumed | `0xFE70` (no air probe, the SALT marker) in every OXY frame, so no entity yet. See §7. |
 | 25–26 | `water_temperature` | ÷10 | observed | `00 5f` = 9.5 °C; not compared with the app. |
-| 27 | `water_level` | cm | assumed | Confirmed on HOME; `0xFE` on the captured OXY = no level sensor connected (other OXY units may have one). |
+| 27 | `water_level` | cm | confirmed | 52 cm on the Issue #183 unit, which has a level sensor; `0xFE` on the Winnetoux OXY = no level sensor connected. |
 | 28 | `water_flow_to_probes` | `== 0xAA` | observed | `0xAA` = flow; not compared with the app. |
 | 29 | actuators | bit field | confirmed | See §4. |
 | 37 | settings / routing | bit field | assumed | `0x03` in every frame. See §4. |
@@ -115,11 +115,10 @@ Values are from the Winnetoux unit. Setpoint values marked (04-11) come from the
 | 85 | segment type | `0x02` | confirmed | |
 | 92–93 | `pool_volume` | m³ | observed | `00 29` = 41 m³; not compared with the app. |
 | 95 | `ph_minus_flow_rate` | ml/min | confirmed | 60 ml/min. |
-| 97 | pH+ flow rate | ml/min | assumed | 60; position unconfirmed, `ph_plus_flow_rate` is not mapped on any protocol. |
+| 97 | `algaecide_flow_rate` | ml/min | confirmed | 60 in the 04-11 frame; 60 ml/min measured against the canister markings on the unit of Issue #183. |
 | 99 | `oxygen_flow_rate` | ml/min | confirmed | 60 ml/min. |
 | 101 | `flocculant_flow_rate` | ml/min | confirmed | 10 ml/min; see §6 for the consumption check. |
-| 102, 104, 105 | water level thresholds | cm | assumed | Level thresholds on SALT. `water_level_refill_start` is not located on OXY: `byte[103]` is the algicide flow rate. |
-| 103 | `algaecide_flow_rate` | ml/min | confirmed | 60 ml/min (04-11), stable across sessions. |
+| 102–105 | water level thresholds | cm | confirmed | Low alarm / refill start / refill stop / high alarm: 30 / 35 / 55 / 90 cm vs the unit display on the Issue #183 unit. 30 / 60 / 110 / 150 in the 04-11 frame, the values of a unit without a level sensor. |
 | 106–107 | `dosing_delay` | s | observed | `00 78` = 120 s; not compared with the app. |
 | 112 | `ph_minus_concentration` | % | assumed | Confirmed on HOME. |
 | 115 | `max_ph_doses` | count | observed | `0x1e` = 30; position confirmed on SALT, OXY setting never compared. |
@@ -191,7 +190,7 @@ All bits are independent and additive; any combination is valid (see §5).
 | `0x04` | `service_menu_open` | observed | Clear in every OXY frame; menu never captured open. |
 | `0x10` | filtration period 1 | observed | Clear; with `0x20` clear reads nonstop, matching 24 h filtration. No schedule transition captured. |
 | `0x20` | filtration period 2 | observed | Clear. Same bits on OXY, HOME and SALT. |
-| `0x40` | `water_level_sensor_enabled` | assumed | As on SALT; clear on OXY, fits `byte[27]` = `0xFE`. |
+| `0x40` | `water_level_sensor_enabled` | confirmed | Set (`0x5B`) on the Issue #183 unit with the level meter ON; clear on the Winnetoux OXY, which fits `byte[27]` = `0xFE`. |
 | `0x80` | SALT third-pump routing | assumed | Clear; not applied on OXY, algicide and flocculant have their own bytes. |
 
 ### `byte[78]` — live state
@@ -240,7 +239,7 @@ On 2026-04-12 11:37:58 `byte[29]` = `0xa8` = `0x08 | 0x20 | 0x80`: filtration, f
 
 ### Third pump routing
 
-On SALT, `byte[37]` routes the third pump slot to algicide or flocculant. On OXY that routing does not apply: `algaecide_flow_rate` (`byte[103]`), `flocculant_flow_rate` (`byte[101]`) and both dose targets are read from their own bytes.
+On SALT, `byte[37]` routes the third pump slot to algicide or flocculant. On OXY that routing does not apply: `algaecide_flow_rate` (`byte[97]`), `flocculant_flow_rate` (`byte[101]`) and both dose targets are read from their own bytes.
 
 ### Filtration period 2 (Issue #133)
 
@@ -248,7 +247,7 @@ Like SALT (PR #122 frame diff) and HOME (Issue #133), the unit is assumed to kee
 
 ### Water level
 
-No level sensor on the captured unit (`byte[27]` = `0xFE`, `byte[37]` `0x40` clear). The level features are read with the HOME/SALT positions but have no OXY evidence; `water_level_high_alarm`, `water_level_low_alarm` and `water_level_refill_stop` have none recorded at all.
+No level sensor on the Winnetoux unit (`byte[27]` = `0xFE`, `byte[37]` `0x40` clear). The Issue #183 unit has one: `byte[27]` = 52 cm, `byte[37]` `0x40` set, and bytes 102–105 = 30 / 35 / 55 / 90 cm match the low alarm, refill start, refill stop and high alarm on the unit display. The level features use the HOME/SALT positions on OXY too.
 
 ## 6. Ground truth
 
@@ -279,8 +278,8 @@ No level sensor on the captured unit (`byte[27]` = `0xFE`, `byte[37]` `0x40` cle
 5. **Actuator bits `0x01` / `0x02` / `0x04`** (backwash, refill, heating) — frames while each runs.
 6. **Filtration schedule bits** — a frame after switching from nonstop to period 1 / period 2, and after disabling period 2 (bytes 60–63).
 7. **`byte[54]` / `byte[72]`** read `0x01` in the 2026-04-02 frame but 10 / 15 on 2026-04-11 — were the setpoints changed in between? An app history check for that week.
-8. **`byte[97]` pH+ flow rate** — a frame from a unit with a pH+ pump.
-9. **Water level on OXY** — a frame from an Oxygen unit with a level sensor (thresholds versus the algicide flow rate at `byte[103]`).
+8. **pH+ flow rate** — a frame from a unit with a pH+ pump; `byte[97]` is the algicide flow rate on OXY (Issue #183).
+9. ~~**Water level on OXY**~~ — resolved by Issue #183: a unit with a level sensor, `byte[27]` = 52 cm, bytes 102–105 match the unit display, `byte[37]` 0x40 set.
 10. **Unknown bytes** `byte[38]` = `0x08`, `byte[73]` = `0x28`, `byte[78]` `0x20` / `0x80` — dumps before and after changing settings.
 11. **Observed values** (pH, water temperature, targets, schedule, backwash, delays, pool volume, max pH doses) — a glance at the unit or app next to the entities.
 
@@ -293,7 +292,7 @@ No level sensor on the captured unit (`byte[27]` = `0xFE`, `byte[37]` `0x40` cle
 - **v1.4.0 (branch `feat/pump-monitoring-consumption`, single branch):** unconfirmed pump masks defaulted to `0x00`. Changes:
   - `const.py`: `UNIT_TYPE_OXY = 0x05`.
   - `aseko_data.py`: `AsekoDeviceType.OXY = "ASIN AQUA Oxygen"`; OXY actuator masks filtration `0x08`, algicide `0x10`, flocculant `0x20`, oxy `0x40`, pH− `0x80`.
-  - `aseko_decoder.py`: `_unit_type()` returned `None` instead of raising and matched `0x05`; `_configuration()` returned `{PH, OXY}` for OXY; CLF/REDOX fill skipped for OXY; OXY paths for dose targets (`byte[54]`, `byte[72]`) and flow rates (`byte[99]`, `byte[101]`, `byte[103]`). A dedicated `required_sanosil` field for `byte[53]` was planned instead of reusing `free_chlorine_target`.
+  - `aseko_decoder.py`: `_unit_type()` returned `None` instead of raising and matched `0x05`; `_configuration()` returned `{PH, OXY}` for OXY; CLF/REDOX fill skipped for OXY; OXY paths for dose targets (`byte[54]`, `byte[72]`) and flow rates (`byte[99]`, `byte[101]`, `byte[103]` — the algicide moved to `byte[97]` with Issue #183). A dedicated `required_sanosil` field for `byte[53]` was planned instead of reusing `free_chlorine_target`.
   - Tests: normal, floc (`0x28`) and pH− (`0x88`) frames; algicide (`0x18`) and OXY (`0x48`) frame tests were still to do.
 - **Why the pre-v1.4.0 decoder failed on OXY:** `0x05` matched none of the PROFI / SALT / HOME / NET checks, so `_unit_type()` raised `ValueError("Unknown unit type: 5")`. In `aseko_server.py` the frame was already forwarded to the cloud, but the exception closed the TCP connection, forcing a reconnect every ~10 s. The probe flags would also have added a CLF probe (bit `0x02` clear), and the REDOX fallback (`bytes[18:20] == 0xFFFF`) did not catch `0x001E`, so OXY would have shown REDOX 30 mV and CLF 0.30 mg/L.
 - **Known misclassification at the time:** a NET in DOSE mode (`byte[4]` = `0x0b`) decoded as HOME because the HOME check matched first; flagged as a separate issue, out of scope for the OXY work. A per-serial "device type override" in the config entry was proposed as a future enhancement.

@@ -25,7 +25,7 @@ Further profiles exist that no unit is meant to decode with and that the tables 
 | `alarm_ph_dosing_ineffective` | ✅ | ❓ | ❓ | ❓ | ❓ |
 | `alarm_rapid_ph_change` | ❓ | ❓ | ❓ | ❓ | ❓ |
 | `algaecide_dose_target` | ✅ | ✅ `decode_v7_routed_by_byte37` | ✅ | — | — |
-| `algaecide_flow_rate` | 👁 `decode_v7_byte97` | ✅ `decode_v7_routed_by_byte37` | ✅ | — | — |
+| `algaecide_flow_rate` | 👁 | ✅ `decode_v7_routed_by_byte37` | ✅ | — | — |
 | `algaecide_pump_running` | ❓ `decode_v7_oxy` | ✅ | ✅ `decode_v7_oxy` | — | — |
 | `backwash_duration` | ✅ | ✅ | 👁 | — | ❓ |
 | `backwash_interval` | ✅ | ✅ | 👁 | — | ❓ |
@@ -82,12 +82,12 @@ Further profiles exist that no unit is meant to decode with and that the tables 
 | `variable_speed_pump_enabled` | ✅ | ✅ | ❓ | — | — |
 | `variable_speed_pump_type` | ✅ | ✅ | — | — | — |
 | `water_flow_to_probes` | ✅ | ✅ | 👁 | ✅ | ❓ |
-| `water_level` | ✅ | ✅ | ❓ | — | ❓ |
-| `water_level_high_alarm` | ✅ | ✅ | ❓ | — | ❓ |
-| `water_level_low_alarm` | ✅ | ✅ | ❓ | — | ❓ |
-| `water_level_refill_start` | ❓ | ✅ | 🔍 | — | ❓ |
-| `water_level_refill_stop` | ✅ | ✅ | ❓ | — | ❓ |
-| `water_level_sensor_enabled` | ❓ | ✅ | ❓ | — | — |
+| `water_level` | ✅ | ✅ | ✅ | — | ❓ |
+| `water_level_high_alarm` | ✅ | ✅ | ✅ | — | ❓ |
+| `water_level_low_alarm` | ✅ | ✅ | ✅ | — | ❓ |
+| `water_level_refill_start` | ❓ | ✅ | ✅ | — | ❓ |
+| `water_level_refill_stop` | ✅ | ✅ | ✅ | — | ❓ |
+| `water_level_sensor_enabled` | ❓ | ✅ | ✅ | — | — |
 | `water_temperature` | ✅ | ✅ | 👁 | ✅ | ❓ |
 | `water_temperature_target` | ✅ | ✅ | 👁 | — | ❓ |
 
@@ -184,11 +184,6 @@ Every entry below is read today without a confirming capture.  If you own one of
 - `ph_minus_concentration` — assumed: byte[112], confirmed on HOME
 - `refilling` — assumed: byte[29] 0x02, confirmed on HOME and SALT
 - `variable_speed_pump_enabled` — assumed: byte[22] 0x08, confirmed on HOME
-- `water_level` — assumed: byte[27], confirmed on HOME
-- `water_level_high_alarm` — assumed: byte[105] as on SALT; the captured OXY has no level sensor
-- `water_level_low_alarm` — assumed: byte[102] as on SALT; the captured OXY has no level sensor
-- `water_level_refill_stop` — assumed: byte[104] as on SALT; the captured OXY has no level sensor
-- `water_level_sensor_enabled` — assumed: byte[37] 0x40 as on SALT; clear in the OXY frames (0x03), which fits byte[27] = 0xFE (no level sensor)
 
 ### v7 NET
 
@@ -273,7 +268,6 @@ Values these models have but nobody has found in the frame.  If you own one of t
 
 - `freeze_protection_enabled` — not located: the ASIN AQUA Oxygen manual describes freeze protection; no OXY frame has been compared with it
 - `heating_control_enabled` — not located: the ASIN AQUA Oxygen manual describes heating control; no OXY frame has been compared with it
-- `water_level_refill_start` — not located: byte[103] carries the algicide flow rate on OXY (confirmed, 60 ml/min), so the refill start threshold is elsewhere on an OXY with a level sensor; the captured OXY has none
 
 ## Seen, not compared
 
@@ -281,7 +275,7 @@ Values captured from real units that nobody has yet checked against the unit dis
 
 ### v7 HOME
 
-- `algaecide_flow_rate` — observed: byte[97] = 60 on serials 110128063 and 110215864 (Issue #173). First-generation HOME manuals list the pumps pH-, pH+, chlorine and Flocc/Alg on the terminals pH- Cl F pH+, matching bytes 95, 97, 99 and 101; second-generation manuals put chlorine, pH, algicide and flocculant on the same terminals, the algicide on the former pH+ output. HOME has no separate pH+ pump (the pH output doses pH minus or pH plus). OXY also reads 60 on byte[97], so the value alone does not identify the pump. byte[103] is the refill start, not this rate
+- `algaecide_flow_rate` — observed: byte[97] = 60 on serials 110128063 and 110215864 (Issue #173). First-generation HOME manuals list the pumps pH-, pH+, chlorine and Flocc/Alg on the terminals pH- Cl F pH+, matching bytes 95, 97, 99 and 101; second-generation manuals put chlorine, pH, algicide and flocculant on the same terminals, the algicide on the former pH+ output. HOME has no separate pH+ pump (the pH output doses pH minus or pH plus). OXY sends its algicide rate on byte[97] too (confirmed, Issue #183). byte[103] is the refill start, not this rate
 - `backwash_schedule_enabled` — observed: byte[22] 0x10 set on serial 110128063 with backwash every 3 days (0x90); confirmed on an ASIN AQUA Salt (2026-09-13)
 - `max_ph_doses` — observed: byte[115] = 20 on serial 110128063; the position is confirmed on SALT, the HOME setting was never compared
 - `ph_minus_flow_rate` — observed: byte[95] = 60 on serial 110128063; Aseko Live lists the pH- pump but the rate was not compared; the position is confirmed on SALT

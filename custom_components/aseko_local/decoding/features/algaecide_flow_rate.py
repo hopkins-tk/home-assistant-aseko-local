@@ -4,10 +4,12 @@ Two layouts exist for the algicide / flocculant pair, and which one a model
 uses is a property of the model -- so this feature offers both readings and
 the profile picks:
 
-Independent ports (OXY, HOME): flocculant at byte[101].  OXY sends the
-    algicide rate at byte[103] (confirmed 2026-04-11, 60 ml/min).  HOME reads
-    flocculant at byte[101] (Issues #110, #115) and the algicide rate at
-    byte[97] (Issue #173): byte[103] is the refill start level there.
+Independent ports (OXY, HOME): flocculant at byte[101], algicide at
+    byte[97] -- confirmed on OXY (Issue #183: 60 ml/min measured against the
+    canister), observed on HOME (Issue #173).  byte[103] is the refill start
+    level on both; OXY read the algicide there first because the 2026-04-11
+    frame, from a unit without a level sensor, has 60 in byte[97] and in
+    byte[103] (its default thresholds 30 / 60 / 110 / 150 cm).
 
 Shared port (SALT; PROFI assumed): one physical pump at byte[101], configured
     for either chemical.  NET has neither pump.  byte[37] bit 0x80 set = algicide, clear =
@@ -36,17 +38,13 @@ ROUTED_TO_ALGICIDE = 0x80
 
 
 class AlgaecideFlowRate(Feature):
-    """v7: byte[103], byte[97] on HOME, or byte[101] on a shared third port."""
+    """v7: byte[97], or byte[101] when byte[37] routes the shared port to algicide."""
 
     field = "algaecide_flow_rate"
 
     @override
     def decode_v7(self, frame: V7Frame, device: AsekoDevice) -> int | NotPresent:
-        """Independent algicide port (OXY)."""
-        return byte_or_absent(frame[103])
-
-    def decode_v7_byte97(self, frame: V7Frame, device: AsekoDevice) -> int | NotPresent:
-        """HOME: the former pH+ output, now the algicide pump (Issue #173)."""
+        """Independent algicide port (OXY, HOME), the former pH+ output."""
         return byte_or_absent(frame[97])
 
     def decode_v7_routed_by_byte37(
