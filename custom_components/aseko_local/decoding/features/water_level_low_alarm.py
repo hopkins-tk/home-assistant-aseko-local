@@ -11,8 +11,8 @@ byte positions (domin211, DomSchCoding #100, Issue #110):
     byte[105] = high alarm threshold (cm)
 
 NET carries unrelated non-0xFF data in bytes 102-104, so no NET profile
-lists these.  byte[103] doubles as algaecide_flow_rate on OXY and HOME, whose
-independent-port layout reads it for both; SALT ignores it there.
+lists these.  byte[103] was once read as algaecide_flow_rate on OXY and HOME; it is the
+refill start threshold on every model with these bytes (Issue #183).
 """
 
 from __future__ import annotations
