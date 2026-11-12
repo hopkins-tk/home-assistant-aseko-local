@@ -127,6 +127,13 @@ BINARY_SENSORS: tuple[AsekoLocalBinarySensorEntityDescription, ...] = (
         value_fn=lambda device: device.backwash_schedule_enabled,
     ),
     AsekoLocalBinarySensorEntityDescription(
+        key="winter_mode",
+        feature="winter_mode",
+        translation_key="winter_mode",
+        icon="mdi:snowflake",
+        value_fn=lambda device: device.winter_mode,
+    ),
+    AsekoLocalBinarySensorEntityDescription(
         key="heating_allowed",
         feature="heating_allowed",
         translation_key="heating_allowed",

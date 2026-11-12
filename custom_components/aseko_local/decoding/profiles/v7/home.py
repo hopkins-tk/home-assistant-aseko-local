@@ -71,6 +71,7 @@ from ...features import (
     WaterLevelSensorEnabled,
     WaterTemperature,
     WaterTemperatureTarget,
+    WinterMode,
 )
 from ...frames import Protocol
 from ...profile import Profile
@@ -117,6 +118,7 @@ _HOME_FEATURES = (
     WaterLevelSensorEnabled,
     FlowDetectionEnabled,
     BackwashScheduleEnabled,
+    WinterMode,
     VariableSpeedPumpType,
     *BACKWASH,
     *ALARMS,
@@ -167,8 +169,11 @@ HOME = Profile(
         AlgaecidePumpRunning: assumed(
             "byte[29] 0x10 as on OXY, which has the same four independent pump ports (0x20 is the flocculant); reported once byte[97] reads as a flow rate (Issue #173)"
         ),
-        FreezeProtectionEnabled: confirmed(
-            "byte[37] 0x80, serial 110175608 (Issue #136)"
+        FreezeProtectionEnabled: observed(
+            "byte[37] 0x80: 0x81 with antifreeze ON, 0x41 OFF on serial 110175608 (Issue #136); lowered from confirmed because on 110215864 in Winter mode, with freeze protection OFF on the display, the bit is set while the winter circulation runs (0x93) and clear while it stands (0x13), frames of 2026-10-29 in test_decode_home_winter_mode"
+        ),
+        WinterMode: confirmed(
+            "byte[22] 0x04, serial 110215864: 0x90 in summer, 0x84 after switching Winter mode on (Configuration shows Winter mode ON, freeze protection OFF), in frames with the pump running and standing; byte[78] 0x40 set alike, setpoints switched to the winter program as on SALT"
         ),
         BackwashRunning: assumed("byte[29] 0x01, confirmed on SALT"),
         BackwashDuration: confirmed(
